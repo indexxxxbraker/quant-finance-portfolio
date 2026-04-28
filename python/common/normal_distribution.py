@@ -6,7 +6,7 @@ distribution functions used throughout the portfolio (e.g. in the
 Black-Scholes pricing formula).
 """
 
-import math
+from scipy.stats import norm
 
 
 def standard_normal_cdf(x: float) -> float:
@@ -23,14 +23,14 @@ def standard_normal_cdf(x: float) -> float:
     float
         Phi(x) = P(Z <= x) where Z ~ N(0, 1).
     """
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+    return norm.cdf(x)
 
 
 def standard_normal_pdf(x: float) -> float:
     """
     Probability density function of the standard normal N(0, 1).
     """
-    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+    return norm.pdf(x)
 
 
 if __name__ == "__main__":
