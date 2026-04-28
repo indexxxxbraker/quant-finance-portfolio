@@ -1,0 +1,76 @@
+# ============= Python =============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+.env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ============= C++ =============
+# Archivos compilados
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Archivos de build
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# ============= LaTeX =============
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.run.xml
+*.bcf
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+
+# ============= Editores e IDEs =============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============= Sistema =============
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============= Datos sensibles =============
+*.csv
+*.xlsx
+!data/example_*.csv
+.env
+secrets/
