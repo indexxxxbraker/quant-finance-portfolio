@@ -1,76 +1,55 @@
-# ============= Python =============
+# =====================================================================
+# Python
+# =====================================================================
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Entornos virtuales
-venv/
 .venv/
+venv/
 env/
-.env/
-
-# Jupyter
+.pytest_cache/
 .ipynb_checkpoints/
-*.ipynb_checkpoints
+*.egg-info/
 
-# ============= C++ =============
-# Archivos compilados
+# =====================================================================
+# C++ / CMake
+# =====================================================================
+build/
+cmake-build-*/
 *.o
 *.obj
 *.so
 *.dylib
 *.dll
 *.exe
-*.out
-*.app
-
-# Archivos de build
-build/
-cmake-build-*/
+*.a
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
 
-# ============= LaTeX =============
+# =====================================================================
+# LaTeX (auxiliary files; the .tex source is tracked, the .pdf is not)
+# =====================================================================
 *.aux
 *.log
 *.out
 *.toc
-*.synctex.gz
 *.fls
 *.fdb_latexmk
+*.synctex.gz
 *.bbl
 *.blg
 *.run.xml
 *.bcf
-*.lof
-*.lot
-*.nav
-*.snm
-*.vrb
+*.pdf
 
-# ============= Editores e IDEs =============
+# =====================================================================
+# Editors / OS
+# =====================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-
-# ============= Sistema =============
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# ============= Datos sensibles =============
-*.csv
-*.xlsx
-!data/example_*.csv
-.env
-secrets/
