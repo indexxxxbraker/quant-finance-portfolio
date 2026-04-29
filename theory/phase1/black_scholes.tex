@@ -1,0 +1,331 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+
+% ---------- Document metadata ----------
+\title{The Black--Scholes Formula via the Martingale Approach}
+\author{Quant Finance Portfolio --- Phase 1, Algorithm 1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We derive the Black--Scholes price of a European call option using the
+equivalent martingale measure framework. The argument is self-contained
+modulo the standard tools of stochastic calculus---It\^{o}'s lemma,
+Girsanov's theorem, and the fundamental theorems of asset pricing---which
+we state without proof and apply directly. Beyond the formula itself,
+we record three conceptual observations whose appreciation goes beyond
+the algebraic manipulation: the distinction between physical and risk-neutral
+probabilities of exercise, the change-of-num\'{e}raire interpretation
+of \(N(d_1)\), and the way the formula encodes its own replicating
+portfolio.
+\end{abstract}
+
+% ============================================================
+\section{Model}
+% ============================================================
+
+Fix a finite horizon \(T > 0\) and a filtered probability space
+\((\Omega, \F, \{\F_t\}_{t \in [0,T]}, \Prob)\) supporting a standard
+Brownian motion \(W\), with \(\{\F_t\}\) the \(\Prob\)-augmentation of
+the natural filtration of \(W\). The market consists of two assets:
+
+\begin{itemize}
+    \item A \emph{risky} asset (the stock), whose price \(S\) follows a
+    geometric Brownian motion under \(\Prob\):
+    \begin{equation}
+        \dd S_t = \mu S_t \dd t + \sigma S_t \dd W_t,
+        \qquad S_0 > 0,
+        \label{eq:gbm-P}
+    \end{equation}
+    with constants \(\mu \in \R\) and \(\sigma > 0\), paying no dividends.
+    \item A \emph{riskless} asset (the money-market account) with price
+    \(B_t = e^{rt}\), \(r \geq 0\).
+\end{itemize}
+
+We seek the time-\(t\) price \(C_t\) of a European call option with strike
+\(K > 0\) and maturity \(T\), whose payoff at expiry is \((S_T - K)^+\).
+
+% ============================================================
+\section{Change of Measure}
+% ============================================================
+
+Define the discounted stock price \(\tilde{S}_t \eqdef e^{-rt} S_t\).
+Applying It\^{o}'s lemma to~\eqref{eq:gbm-P},
+\begin{equation}
+    \dd \tilde{S}_t
+    = (\mu - r) \tilde{S}_t \dd t + \sigma \tilde{S}_t \dd W_t.
+    \label{eq:discounted-P}
+\end{equation}
+
+For the model to admit no arbitrage, the discounted price must be a
+martingale under the pricing measure. The drift in~\eqref{eq:discounted-P}
+prevents this under \(\Prob\), so we look for an equivalent measure
+\(\Q \sim \Prob\) under which the drift vanishes.
+
+Set the \emph{market price of risk}
+\[
+    \lambda \eqdef \frac{\mu - r}{\sigma},
+\]
+and define the Radon--Nikodym derivative
+\[
+    \left.\frac{\dd \Q}{\dd \Prob}\right|_{\F_T}
+    = \exp\!\left(-\lambda W_T - \tfrac{1}{2}\lambda^2 T\right).
+\]
+Since \(\lambda\) is constant, Novikov's condition
+\(\E^{\Prob}\!\left[\exp\!\left(\tfrac{1}{2}\int_0^T \lambda^2 \dd s\right)\right] < \infty\)
+holds trivially. By Girsanov's theorem,
+\[
+    \widetilde{W}_t \eqdef W_t + \lambda t
+\]
+is a standard Brownian motion under \(\Q\). Substituting
+in~\eqref{eq:gbm-P} and~\eqref{eq:discounted-P},
+\begin{align}
+    \dd S_t
+    &= r S_t \dd t + \sigma S_t \dd \widetilde{W}_t,
+    \label{eq:gbm-Q} \\
+    \dd \tilde{S}_t
+    &= \sigma \tilde{S}_t \dd \widetilde{W}_t.
+\end{align}
+Under \(\Q\), the discounted price is a (local, in fact true) martingale,
+and the model is therefore arbitrage-free. Moreover, since the market
+has a single source of randomness driving a single risky asset, the
+second fundamental theorem of asset pricing implies that \(\Q\) is the
+\emph{unique} equivalent martingale measure, and the market is complete.
+
+% ============================================================
+\section{The Pricing Formula}
+% ============================================================
+
+By the first fundamental theorem of asset pricing, the no-arbitrage
+price at time \(t\) of any \(\F_T\)-measurable, sufficiently integrable
+contingent claim \(X\) is
+\[
+    \pi_t(X)
+    = B_t \, \E^{\Q}\!\left[\frac{X}{B_T} \,\Big|\, \F_t\right].
+\]
+For the European call,
+\begin{equation}
+    C_t
+    = e^{-r\tau}
+      \E^{\Q}\!\left[(S_T - K)^+ \,\big|\, \F_t\right],
+    \qquad \tau \eqdef T - t.
+    \label{eq:risk-neutral-pricing}
+\end{equation}
+
+% ============================================================
+\section{The Distribution of \(S_T\) under \(\Q\)}
+% ============================================================
+
+To evaluate~\eqref{eq:risk-neutral-pricing} we need the law of \(S_T\)
+under \(\Q\), conditional on \(\F_t\). Applying It\^{o}'s lemma to
+\(\log S_t\) using~\eqref{eq:gbm-Q},
+\[
+    \dd(\log S_t)
+    = \left(r - \tfrac{1}{2}\sigma^2\right)\dd t
+      + \sigma \dd \widetilde{W}_t.
+\]
+Integrating from \(t\) to \(T\),
+\[
+    \log\!\left(\frac{S_T}{S_t}\right)
+    = \left(r - \tfrac{1}{2}\sigma^2\right)\tau
+      + \sigma\bigl(\widetilde{W}_T - \widetilde{W}_t\bigr),
+\]
+and since \(\widetilde{W}_T - \widetilde{W}_t \sim \mathcal{N}(0, \tau)\)
+under \(\Q\) and is independent of \(\F_t\),
+\begin{equation}
+    S_T \,\big|\, \F_t
+    \;\overset{\Q}{=}\;
+    S_t \exp\!\left(
+        \left(r - \tfrac{1}{2}\sigma^2\right)\tau
+        + \sigma\sqrt{\tau}\, Z
+    \right),
+    \qquad Z \sim \mathcal{N}(0,1).
+    \label{eq:S_T-law}
+\end{equation}
+
+% ============================================================
+\section{Evaluating the Expectation}
+% ============================================================
+
+Let \(\varphi\) and \(N\) denote the standard normal density and CDF
+respectively. Substituting~\eqref{eq:S_T-law}
+into~\eqref{eq:risk-neutral-pricing},
+\[
+    C_t
+    = e^{-r\tau}
+      \int_{\R}\!\left(
+          S_t \exp\!\left(
+              (r - \tfrac{1}{2}\sigma^2)\tau + \sigma\sqrt{\tau}\, z
+          \right) - K
+      \right)^+ \!\!\varphi(z) \dd z.
+\]
+The integrand is positive iff
+\[
+    S_t \exp\!\left(
+        (r - \tfrac{1}{2}\sigma^2)\tau + \sigma\sqrt{\tau}\, z
+    \right) > K
+    \;\;\Longleftrightarrow\;\;
+    z > -d_2,
+\]
+where
+\begin{equation}
+    d_2 \eqdef
+    \frac{\log(S_t / K) + (r - \tfrac{1}{2}\sigma^2)\tau}
+         {\sigma \sqrt{\tau}}.
+    \label{eq:d2}
+\end{equation}
+
+Splitting the integral over the region where the payoff is positive,
+\begin{equation}
+    C_t
+    = \underbrace{
+        e^{-r\tau} S_t
+        \int_{-d_2}^{\infty}
+            e^{(r - \sigma^2/2)\tau + \sigma\sqrt{\tau}\, z}
+            \varphi(z) \dd z
+      }_{I_1}
+      \;-\;
+      \underbrace{
+        e^{-r\tau} K
+        \int_{-d_2}^{\infty}\!\varphi(z) \dd z
+      }_{I_2}.
+    \label{eq:split}
+\end{equation}
+
+\paragraph{Second integral.} By symmetry of the standard normal density,
+\[
+    I_2 = e^{-r\tau} K\, \Prob(Z > -d_2)
+        = e^{-r\tau} K\, N(d_2).
+\]
+
+\paragraph{First integral.} Combine the exponentials in the integrand and
+complete the square:
+\[
+    -\frac{z^2}{2} + \sigma\sqrt{\tau}\, z
+    = -\frac{(z - \sigma\sqrt{\tau})^2}{2} + \frac{\sigma^2 \tau}{2}.
+\]
+The term \(+\sigma^2 \tau / 2\) cancels the \(-\sigma^2 \tau / 2\)
+inside \((r - \sigma^2/2)\tau\), and the prefactor \(e^{r\tau}\) cancels
+the discount \(e^{-r\tau}\). With the change of variable
+\(u \eqdef z - \sigma\sqrt{\tau}\),
+\[
+    I_1
+    = S_t \int_{-d_2 - \sigma\sqrt{\tau}}^{\infty}\!\varphi(u) \dd u
+    = S_t\, N\!\left(d_2 + \sigma\sqrt{\tau}\right)
+    \eqdef S_t\, N(d_1),
+\]
+where
+\begin{equation}
+    d_1 \eqdef d_2 + \sigma\sqrt{\tau}
+        = \frac{\log(S_t/K) + (r + \tfrac{1}{2}\sigma^2)\tau}
+               {\sigma \sqrt{\tau}}.
+    \label{eq:d1}
+\end{equation}
+
+% ============================================================
+\section{Result}
+% ============================================================
+
+Combining the two integrals:
+
+\begin{theorem}[Black--Scholes formula]
+The no-arbitrage price at time \(t\) of a European call option with
+strike \(K\) and maturity \(T\) on a non-dividend-paying stock
+following~\eqref{eq:gbm-P} is
+\begin{equation}
+    \boxed{\;
+        C_t
+        = S_t\, N(d_1) \;-\; K e^{-r\tau} N(d_2)
+    \;},
+    \label{eq:bs}
+\end{equation}
+where \(\tau = T - t\) and \(d_1, d_2\) are given
+by~\eqref{eq:d1}--\eqref{eq:d2}.
+\end{theorem}
+
+The price of the corresponding European put follows from put--call
+parity, an identity independent of any model assumption beyond
+no-arbitrage, which we record for completeness:
+\[
+    C_t - P_t = S_t - K e^{-r\tau}.
+\]
+Combined with~\eqref{eq:bs} and the symmetry \(N(x) + N(-x) = 1\), this
+gives
+\begin{equation}
+    P_t = K e^{-r\tau} N(-d_2) - S_t N(-d_1).
+    \label{eq:bs-put}
+\end{equation}
+
+% ============================================================
+\section{Conceptual Remarks}
+% ============================================================
+
+\begin{remark}[\(N(d_2)\) is not the physical probability of exercise]
+By construction,
+\(N(d_2) = \Q(S_T > K \mid \F_t)\), the \emph{risk-neutral} probability
+that the option finishes in the money. Under the physical measure, the
+same probability would replace \(r\) by \(\mu\) in the numerator of
+\(d_2\); the gap between the two is, exactly, the market price of risk
+\(\lambda\). Conflating these two probabilities is one of the most
+common conceptual errors in introductions to derivatives pricing.
+\end{remark}
+
+\begin{remark}[\(N(d_1)\) and the change of num\'{e}raire]
+A second probabilistic interpretation, less commonly emphasised, is that
+\[
+    N(d_1) = \Prob^{S}(S_T > K \mid \F_t),
+\]
+where \(\Prob^{S}\) is the equivalent measure obtained by taking the
+stock \(S\) (rather than the bond \(B\)) as num\'{e}raire. Under
+\(\Prob^{S}\), the process \(B_t / S_t\) is a martingale, and the same
+change-of-measure machinery used to construct \(\Q\) applies. The
+simultaneous appearance of \(N(d_1)\) and \(N(d_2)\) in the formula is
+therefore not coincidental: it is the signature of two distinct
+num\'{e}raires being used implicitly. This perspective generalises far
+beyond Black--Scholes and is the natural setting for pricing exchange
+options, LIBOR-based interest-rate products, and most exotic derivatives.
+\end{remark}
+
+\begin{remark}[The formula encodes its own hedge]
+The decomposition \(C_t = S_t\, N(d_1) - K e^{-r\tau} N(d_2)\) is,
+literally, the time-\(t\) value of the replicating portfolio: long
+\(N(d_1)\) shares, financed by borrowing \(K e^{-r\tau} N(d_2)\) at the
+riskless rate. When in the next algorithm we differentiate~\eqref{eq:bs}
+with respect to \(S\) and obtain \(\partial C / \partial S = N(d_1)\)
+(the \emph{delta}), with all the \(\varphi\)-terms cancelling cleanly,
+this will be a manifestation of the same internal consistency: the
+formula is structured around its own hedge.
+\end{remark}
+
+\end{document}
