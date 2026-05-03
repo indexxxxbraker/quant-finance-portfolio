@@ -1,0 +1,537 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\BS}{\mathrm{BS}}
+\newcommand{\IV}{\mathrm{IV}}
+
+% ---------- Document metadata ----------
+\title{Implied Volatility: Existence, Uniqueness, and Numerical Computation}
+\author{Quant Finance Portfolio --- Phase 1, Algorithm 3}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We define the implied volatility of a European call as the unique
+solution to an inverse problem in the Black--Scholes model, prove that
+this solution exists and is unique exactly when the market price
+respects the model-free no-arbitrage bounds, and analyse the
+Newton--Raphson iteration that recovers it. The standard pathologies
+of Newton's method---vanishing derivative, poor initial guess---are
+shown to manifest in this problem in specific regimes (near expiry,
+deep in or out of the money, extreme volatility levels), motivating
+both a domain-aware initial guess (the Brenner--Subrahmanyam
+approximation) and a robust fallback strategy via bracketing methods.
+\end{abstract}
+
+% ============================================================
+\section{The Inverse Problem}
+% ============================================================
+
+The Black--Scholes formula derived in the companion document
+\texttt{black\_scholes.tex} expresses the no-arbitrage price of a
+European call option as a function
+\[
+    C^{\BS}: (0, \infty)^2 \times \R \times (0, \infty)^2 \to \R,
+    \qquad
+    (S, K, r, \sigma, T) \;\longmapsto\; C^{\BS}(S, K, r, \sigma, T).
+\]
+Among the five arguments, four are observable from the market at the
+moment of pricing: the spot price \(S\), the strike \(K\), the
+risk-free rate \(r\), and the time to maturity \(T\). The fifth, the
+volatility \(\sigma\), is a parameter of the model and is \emph{not}
+directly observable. In practice, \(\sigma\) is inferred from market
+prices of options through an inverse procedure.
+
+\begin{definition}[Implied volatility]
+\label{def:iv}
+Given observable parameters \(S, K, r, T > 0\) and a market price
+\(C^{\mathrm{mkt}} > 0\) of a European call, the \emph{implied
+volatility} \(\sigma^{\IV} = \sigma^{\IV}(S, K, r, T, C^{\mathrm{mkt}})\)
+is the value of \(\sigma > 0\) satisfying
+\begin{equation}
+    C^{\BS}(S, K, r, \sigma, T) = C^{\mathrm{mkt}},
+    \label{eq:iv-equation}
+\end{equation}
+provided such a value exists and is unique.
+\end{definition}
+
+The qualifier in the last clause is essential. Without it, the
+definition would assign no value when no \(\sigma\) reproduces the
+market price, and would be ambiguous if more than one did. We
+therefore begin by establishing the conditions under which
+\eqref{eq:iv-equation} is a well-posed inversion problem.
+
+\begin{remark}[Implied volatility is a model-dependent object]
+The implied volatility is \emph{the volatility that, plugged into
+Black--Scholes, reproduces the market price}. It is not, despite the
+informal name, "the volatility of the underlying" in any
+model-independent sense. The same market price interpreted under a
+different model (Heston, local volatility, jump-diffusion) yields a
+different implied object. The Black--Scholes implied volatility is a
+quoting convention: a one-to-one rescaling of price into a more
+intuitive number with the model serving as the dictionary.
+\end{remark}
+
+% ============================================================
+\section{Existence and Uniqueness}
+% ============================================================
+
+We fix \(S, K, r, T > 0\) throughout this section and study
+\eqref{eq:iv-equation} as a one-dimensional equation in the unknown
+\(\sigma\). Define the auxiliary function
+\[
+    g: (0, \infty) \to \R,
+    \qquad
+    g(\sigma) \eqdef C^{\BS}(S, K, r, \sigma, T) - C^{\mathrm{mkt}}.
+\]
+The implied volatility, when it exists, is a positive root of \(g\).
+
+% ------------------------------------------------------------
+\subsection{Strict monotonicity}
+% ------------------------------------------------------------
+
+\begin{lemma}[Vega is strictly positive]
+\label{lem:vega-positive}
+For all \(\sigma > 0\),
+\[
+    \frac{\partial C^{\BS}}{\partial \sigma}(S, K, r, \sigma, T)
+    = S\,\varphi(d_1)\,\sqrt{T} > 0,
+\]
+where \(\varphi\) denotes the standard normal density and
+\(d_1\) is given by the formula in \texttt{black\_scholes.tex}.
+\end{lemma}
+
+\begin{proof}
+The closed-form expression for Vega is derived in the companion
+document on the Greeks. Positivity follows from \(S > 0\),
+\(\sqrt{T} > 0\), and \(\varphi(x) > 0\) for every \(x \in \R\).
+\end{proof}
+
+\begin{corollary}[Strict monotonicity of \(g\)]
+\label{cor:g-monotone}
+The function \(\sigma \mapsto g(\sigma)\) is strictly increasing on
+\((0, \infty)\). In particular, if a root of \(g\) exists, it is unique.
+\end{corollary}
+
+\begin{proof}
+\(g\) and \(C^{\BS}(\,\cdot\,)\) differ by a constant, so \(g\) inherits
+the strict positivity of the derivative from
+Lemma~\ref{lem:vega-positive}. A strictly increasing function takes
+each value in its image exactly once.
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Asymptotic behaviour}
+% ------------------------------------------------------------
+
+To prove existence we examine the limits of \(C^{\BS}\) at the
+boundaries of \(\sigma > 0\).
+
+\begin{proposition}[Limits of \(C^{\BS}\) in \(\sigma\)]
+\label{prop:limits}
+Fix \(S, K, r, T > 0\). Then
+\begin{align}
+    \lim_{\sigma \to 0^+} C^{\BS}(S, K, r, \sigma, T)
+    &= \bigl(S - K e^{-rT}\bigr)^+,
+    \label{eq:limit-zero}\\[2pt]
+    \lim_{\sigma \to \infty} C^{\BS}(S, K, r, \sigma, T)
+    &= S.
+    \label{eq:limit-infty}
+\end{align}
+\end{proposition}
+
+\begin{proof}
+\textbf{Limit \(\sigma \to 0^+\).} The argument \(d_1\) of the BS
+formula is
+\[
+    d_1
+    = \frac{\log(S/K) + (r + \tfrac{1}{2}\sigma^2) T}{\sigma\sqrt{T}}
+    = \frac{\log(S/K) + r T}{\sigma\sqrt{T}}
+        + \tfrac{1}{2}\sigma\sqrt{T}.
+\]
+The second term vanishes as \(\sigma \to 0^+\). The first term diverges
+to \(+\infty\), \(-\infty\), or is undefined depending on the sign of
+\(\log(S/K) + r T = \log(S/(Ke^{-rT}))\):
+
+\begin{itemize}
+    \item If \(S > K e^{-rT}\) (forward-ITM), then
+    \(d_1, d_2 \to +\infty\), so \(N(d_1), N(d_2) \to 1\), and
+    \(C^{\BS} \to S - K e^{-rT} = (S - K e^{-rT})^+\).
+
+    \item If \(S < K e^{-rT}\) (forward-OTM), then
+    \(d_1, d_2 \to -\infty\), so \(N(d_1), N(d_2) \to 0\), and
+    \(C^{\BS} \to 0 = (S - K e^{-rT})^+\).
+
+    \item If \(S = K e^{-rT}\), then the leading term in \(d_1, d_2\)
+    is \(\pm \tfrac{1}{2}\sigma\sqrt{T} \to 0\), so
+    \(N(d_1), N(d_2) \to \tfrac{1}{2}\), and
+    \(C^{\BS} \to \tfrac{1}{2}(S - K e^{-rT}) = 0 = (S - K e^{-rT})^+\).
+\end{itemize}
+All three branches agree with~\eqref{eq:limit-zero}.
+
+\textbf{Limit \(\sigma \to \infty\).} As \(\sigma \to \infty\), the
+\(\tfrac{1}{2}\sigma^2 T\) term dominates the numerator of \(d_1\),
+so \(d_1 \to +\infty\) and \(d_2 = d_1 - \sigma\sqrt{T} \to -\infty\)
+(since \(\sigma\sqrt{T}\) grows faster than \(d_1\)). Hence
+\(N(d_1) \to 1\), \(N(d_2) \to 0\), and
+\(C^{\BS} \to S\).
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Main result}
+% ------------------------------------------------------------
+
+Combining strict monotonicity with the boundary behaviour gives a
+sharp characterisation of when implied volatility is well-defined.
+
+\begin{theorem}[Existence and uniqueness of implied volatility]
+\label{thm:existence}
+Fix \(S, K, r, T > 0\) and \(C^{\mathrm{mkt}} \in \R\). The
+equation~\eqref{eq:iv-equation} has a unique solution
+\(\sigma^{\IV} \in (0, \infty)\) if and only if
+\begin{equation}
+    \bigl(S - K e^{-rT}\bigr)^+ < C^{\mathrm{mkt}} < S.
+    \label{eq:no-arbitrage-bounds}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+By Corollary~\ref{cor:g-monotone}, \(C^{\BS}\) is strictly increasing
+in \(\sigma\) on \((0, \infty)\). By Proposition~\ref{prop:limits} and
+continuity, the image of \((0, \infty)\) under
+\(\sigma \mapsto C^{\BS}\) is the open interval
+\(\bigl((S - Ke^{-rT})^+, S\bigr)\). Hence~\eqref{eq:iv-equation} has a
+solution if and only if \(C^{\mathrm{mkt}}\) lies in this open
+interval, and when it does, the solution is unique by strict
+monotonicity.
+\end{proof}
+
+\begin{remark}[Connection with no-arbitrage]
+\label{rem:no-arbitrage}
+The bounds in~\eqref{eq:no-arbitrage-bounds} are not artefacts of the
+Black--Scholes model. They are the model-free no-arbitrage bounds for
+a European call: on any market admitting no arbitrage, every quoted
+call price must satisfy them, regardless of which model one believes
+generates returns. Theorem~\ref{thm:existence} can therefore be
+restated as: \emph{within the Black--Scholes framework, every
+no-arbitrage price admits a unique implied volatility, and conversely,
+prices outside the no-arbitrage range cannot be reproduced by any
+choice of \(\sigma\)}.
+
+This duality is conceptually important. A pricing routine that fails
+to find an implied volatility is signalling either (i)~corrupt input
+data, (ii)~mismatched parameters (e.g.\ wrong rate or wrong spot), or
+(iii)~a genuine arbitrage opportunity. The first two are common; the
+third is rare but real. In all cases, the failure is informative and
+should be surfaced to the user, not silently absorbed.
+\end{remark}
+
+\begin{remark}[Behaviour in the second derivative]
+\label{rem:convexity}
+A direct calculation gives
+\[
+    \frac{\partial^2 C^{\BS}}{\partial \sigma^2}
+    = \frac{S\,\varphi(d_1)\,\sqrt{T}}{\sigma}\, d_1\, d_2.
+\]
+Unlike the first derivative, the sign of the second derivative is not
+constant: it agrees with the sign of \(d_1 d_2\). For options near the
+forward-ATM region with moderate volatility, \(d_1\) and \(d_2\)
+typically have opposite signs and \(C^{\BS}\) is locally concave in
+\(\sigma\); for options far from ATM, or for large \(\sigma\), the two
+agree in sign and \(C^{\BS}\) is convex. The change of curvature occurs
+at the locus \(d_1 d_2 = 0\). This non-uniform convexity has direct
+consequences for Newton's method, as we discuss below.
+\end{remark}
+
+% ============================================================
+\section{Newton--Raphson for Implied Volatility}
+% ============================================================
+
+Theorem~\ref{thm:existence} establishes the well-posedness of the
+inversion. We turn now to its computation.
+
+% ------------------------------------------------------------
+\subsection{The iteration}
+% ------------------------------------------------------------
+
+The Newton--Raphson iteration applied to \(g(\sigma) = 0\) is
+\begin{equation}
+    \sigma_{n+1}
+    = \sigma_n - \frac{g(\sigma_n)}{g'(\sigma_n)}
+    = \sigma_n
+        - \frac{C^{\BS}(\sigma_n) - C^{\mathrm{mkt}}}{\mathcal{V}(\sigma_n)},
+    \label{eq:newton}
+\end{equation}
+where \(\mathcal{V}(\sigma) = S\,\varphi(d_1)\,\sqrt{T}\) is Vega
+evaluated at \(\sigma\).
+
+The iteration is \emph{cheap}: each step requires one evaluation of
+\(C^{\BS}\) and one of \(\mathcal{V}\), both already implemented.
+The iteration is \emph{geometrically natural}: the next iterate is
+the intersection of the tangent line to \(g\) at \((\sigma_n, g(\sigma_n))\)
+with the horizontal axis.
+
+\begin{proposition}[Local quadratic convergence]
+\label{prop:newton-quadratic}
+Suppose \(\sigma^* > 0\) is the unique root of \(g\), and let
+\(\sigma_n\) be the \(n\)-th Newton iterate. There exists a
+neighbourhood \(U\) of \(\sigma^*\) such that, if \(\sigma_0 \in U\),
+the sequence \(\sigma_n\) converges to \(\sigma^*\) with
+\[
+    |\sigma_{n+1} - \sigma^*|
+    \leq C\, |\sigma_n - \sigma^*|^2
+\]
+for some constant \(C > 0\) depending on \(g'(\sigma^*)\) and on the
+sup-norm of \(g''\) on \(U\).
+\end{proposition}
+
+The proof is standard (Taylor expansion of \(g\) around \(\sigma^*\)
+combined with \(g'(\sigma^*) > 0\)) and is omitted; see, e.g., Burden
+and Faires, \emph{Numerical Analysis}, Theorem 2.9.
+
+% ------------------------------------------------------------
+\subsection{Failure modes}
+% ------------------------------------------------------------
+
+The proposition is local: it guarantees fast convergence \emph{once
+\(\sigma_n\) is close enough}. The behaviour from arbitrary starting
+points can fail in three ways specific to the implied volatility
+problem.
+
+\paragraph{Vanishing Vega.}
+The Newton step in~\eqref{eq:newton} is inversely proportional to
+\(\mathcal{V}(\sigma_n)\). When Vega is small, the step becomes
+arbitrarily large even for moderate values of the residual
+\(g(\sigma_n)\), and the next iterate is propelled into a region of
+parameter space unrelated to the root.
+
+Vega vanishes (as a function of \(\sigma\)) in two distinct regimes:
+
+\begin{itemize}
+    \item \emph{Near expiry.} As \(T \to 0\), \(\mathcal{V} = S\varphi(d_1)\sqrt{T} \to 0\)
+    pointwise in \(\sigma\), with the exception of the ATM case where
+    a more careful expansion shows \(\mathcal{V} \to 0\) at the slower
+    rate \(O(\sqrt{T})\).
+    \item \emph{Deep in or out of the money.} For \(|\log(S/K)| \gg \sigma\sqrt{T}\),
+    one has \(d_1 \to \pm\infty\), so \(\varphi(d_1) \to 0\)
+    super-exponentially.
+\end{itemize}
+
+In both regimes Newton becomes unsafe. A practical implementation
+must detect \(\mathcal{V}(\sigma_n) < \varepsilon\) for some
+threshold \(\varepsilon > 0\) and abandon Newton in favour of a
+bracketing method (see Section~\ref{sec:fallback}).
+
+\paragraph{Domain violation.}
+The Newton update~\eqref{eq:newton} can produce
+\(\sigma_{n+1} \leq 0\). The iteration is unaware of the constraint
+\(\sigma > 0\); a single overlong step can push the iterate out of
+the feasible domain, after which \(g(\sigma_{n+1})\) is undefined.
+Detection is straightforward (test the sign of \(\sigma_{n+1}\) before
+proceeding) but the response must be a fallback, not a retry.
+
+\paragraph{Curvature flip.}
+By Remark~\ref{rem:convexity}, the second derivative of \(C^{\BS}\) in
+\(\sigma\) changes sign across the locus \(d_1 d_2 = 0\). When the
+initial guess \(\sigma_0\) and the root \(\sigma^*\) lie on opposite
+sides of this locus, Newton can overshoot and oscillate. While such
+oscillation is rare in practice for sensible initial guesses, it is
+a reminder that monotonicity of \(g\) is not by itself enough to
+guarantee global convergence of Newton's method---convexity (or a
+proxy for it, like a good initial guess) is also needed.
+
+% ------------------------------------------------------------
+\subsection{Initial guess: Brenner--Subrahmanyam}
+% ------------------------------------------------------------
+
+The performance of Newton depends sensitively on \(\sigma_0\). A
+constant guess (such as \(\sigma_0 = 0.2\)) works in most ordinary
+cases but fails for markets with extreme implied volatilities (very
+short-dated equity options, low-rate bond options, distressed assets).
+A data-driven initial guess is preferable.
+
+The classical proposal is due to Brenner and Subrahmanyam (1988):
+
+\begin{proposition}[Brenner--Subrahmanyam initial guess]
+\label{prop:bs-guess}
+For an at-the-money call (\(S = K\)), the leading-order asymptotic
+behaviour of \(C^{\BS}\) for small \(\sigma\sqrt{T}\) is
+\begin{equation}
+    C^{\BS}_{\mathrm{ATM}}
+    \;\approx\; S\,\sigma\,\sqrt{\frac{T}{2\pi}},
+    \label{eq:atm-asymptotic}
+\end{equation}
+yielding the inverted approximation
+\begin{equation}
+    \sigma_0 \;=\; \sqrt{\frac{2\pi}{T}}\;\frac{C^{\mathrm{mkt}}}{S}.
+    \label{eq:bs-guess-atm}
+\end{equation}
+For options moderately away from the money, the corresponding
+approximation is
+\begin{equation}
+    \sigma_0 \;=\; \sqrt{\frac{2\pi}{T}}\;
+                   \frac{C^{\mathrm{mkt}} - \tfrac{1}{2}(S - K)}{S}.
+    \label{eq:bs-guess-general}
+\end{equation}
+\end{proposition}
+
+\begin{proof}[Sketch]
+Setting \(S = K\) in the Black--Scholes formula and Taylor-expanding
+\(N(d_1) - N(d_2)\) around \(\sigma\sqrt{T} = 0\),
+\[
+    N(d_1) - N(d_2)
+    = \int_{-\sigma\sqrt{T}/2}^{\sigma\sqrt{T}/2}\!\varphi(u)\,du
+    = \sigma\sqrt{T}\,\varphi(0) + O\bigl((\sigma\sqrt{T})^3\bigr)
+    = \frac{\sigma\sqrt{T}}{\sqrt{2\pi}} + O\bigl((\sigma\sqrt{T})^3\bigr).
+\]
+At ATM, \(C^{\BS} = S(N(d_1) - N(d_2)) + O(rT)\), and to leading
+order this gives~\eqref{eq:atm-asymptotic}. The correction term in
+\eqref{eq:bs-guess-general} adjusts for moneyness by subtracting half
+of the intrinsic value, which is the linear-in-\(K\) approximation
+to the deviation of \(C^{\BS}\) from its ATM value. See the original
+paper for the full derivation.
+\end{proof}
+
+\begin{remark}[Quality of the approximation]
+The Brenner--Subrahmanyam guess is quantitatively excellent in the
+near-ATM regime (\(|\log(S/K)| \lesssim 0.3\)) and degrades
+gracefully outside it. In all but the most exotic regimes it places
+\(\sigma_0\) within the basin of quadratic convergence of
+Proposition~\ref{prop:newton-quadratic}, reducing the typical Newton
+iteration count to between three and six.
+\end{remark}
+
+% ============================================================
+\section{Robust Computation: Fallback to Bracketing}
+\label{sec:fallback}
+% ============================================================
+
+A robust implementation of implied volatility cannot rely on Newton
+alone. Three failure modes have been identified
+(vanishing Vega, domain violation, slow convergence after a fixed
+iteration budget); each calls for the same response: abandon Newton,
+fall back to a method that is guaranteed to converge.
+
+% ------------------------------------------------------------
+\subsection{Bracketing methods}
+% ------------------------------------------------------------
+
+A \emph{bracketing method} for finding a root of \(g\) maintains at
+each step an interval \([a_n, b_n]\) with \(g(a_n)\,g(b_n) < 0\), so
+that by continuity a root is contained inside. The simplest
+bracketing method, \emph{bisection}, halves the interval at every
+step, achieving linear convergence with rate \(1/2\). Bisection is
+unconditionally convergent but slow: roughly \(50\) iterations are
+required for fifteen-digit accuracy.
+
+For implied volatility, an initial bracket is always available. By
+Theorem~\ref{thm:existence}, the root lies in some bounded
+positive interval; the conservative choice \([a, b] = [10^{-4}, 10]\)
+suffices for any realistic market data. The lower endpoint avoids the
+domain singularity at \(\sigma = 0\); the upper endpoint accommodates
+extreme volatility regimes.
+
+% ------------------------------------------------------------
+\subsection{Hybrid algorithms}
+% ------------------------------------------------------------
+
+Brent's algorithm (Brent, 1973) and the related TOMS-748 algorithm
+(Alefeld, Potra, Shi, 1995) combine bracketing with superlinear
+methods (secant interpolation, inverse quadratic interpolation) to
+achieve unconditional convergence at superlinear rate on smooth
+problems. The algorithmic details are intricate but well-documented
+in standard references; we adopt them as a black box, deferring to
+existing high-quality implementations:
+
+\begin{itemize}
+    \item In Python, \texttt{scipy.optimize.brentq} provides a
+    production-grade implementation of Brent's algorithm.
+    \item In C++, the standard library does not include a
+    root-finder. We will use a direct bisection implementation as
+    fallback, accepting the loss of speed in exchange for
+    self-contained code with no external dependencies.
+\end{itemize}
+
+The complete computational strategy can therefore be summarised as
+follows.
+
+\begin{enumerate}
+    \item Verify the no-arbitrage bounds~\eqref{eq:no-arbitrage-bounds}.
+    If \(C^{\mathrm{mkt}}\) violates them, return an error.
+    \item Initialise \(\sigma_0\) via the Brenner--Subrahmanyam
+    formula~\eqref{eq:bs-guess-general}, clamped to a safe positive
+    range.
+    \item Iterate Newton--Raphson~\eqref{eq:newton}, with safeguards
+    that detect (i) vanishing Vega, (ii) negative iterates, and
+    (iii) excessive iteration count.
+    \item Upon any of the safeguard triggers, fall back to a
+    bracketing method on the conservative interval \([10^{-4}, 10]\).
+\end{enumerate}
+
+This structure is standard in production implied-volatility code,
+e.g., as found in the QuantLib library.
+
+% ============================================================
+\section{Conceptual Remarks}
+% ============================================================
+
+\begin{remark}[The smile and the model]
+For a fixed underlying, Theorem~\ref{thm:existence} associates one
+implied volatility per market price. In practice, every traded strike
+and every traded maturity yields its own implied volatility. If the
+Black--Scholes model held, all of these would coincide: a single
+\(\sigma\) would reproduce every price simultaneously. Empirically
+they do not. The function \((K, T) \mapsto \sigma^{\IV}(K, T)\) is
+called the \emph{implied volatility surface}; its non-flatness is the
+clearest empirical refutation of the Black--Scholes model and the
+starting point for every more sophisticated framework (local
+volatility, stochastic volatility, jump-diffusion). The implied
+volatility function is therefore best understood not as "the" model
+parameter but as a \emph{quoting language}: a coordinate change from
+prices to numbers traders can compare across strikes and maturities.
+\end{remark}
+
+\begin{remark}[Implied volatility as a language]
+The replacement of price quotes by implied-volatility quotes is the
+single most consequential application of the Black--Scholes model
+that does \emph{not} rely on the model being literally true. Even
+for desks that price options under fundamentally different dynamics,
+the implied volatility extracted via \eqref{eq:iv-equation} remains
+the universal communication primitive. The mathematical content of
+this report is, in this sense, infrastructure: it ensures that the
+quoting language is well-defined, computable, and free of internal
+inconsistencies.
+\end{remark}
+
+\end{document}
