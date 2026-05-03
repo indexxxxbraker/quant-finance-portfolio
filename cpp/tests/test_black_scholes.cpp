@@ -1,11 +1,11 @@
 // test_black_scholes.cpp
 //
-// Unit tests for the Black-Scholes pricer.
-// Mirror of python/validate_black_scholes.py adapted to Catch2 idioms.
+// Unit tests for the Black-Scholes pricer and Greeks.
 //
 // Run from the build directory with:
 //     ./quant_tests              # run all
 //     ./quant_tests "[parity]"   # run only parity tests
+//     ./quant_tests "[greek]"    # run only Greeks tests
 //     ./quant_tests --list-tests # show all tests
 
 #include "black_scholes.hpp"
@@ -15,26 +15,42 @@
 
 #include <cmath>
 #include <random>
+#include <vector>
 
 using quant::call_price;
 using quant::put_price;
+using quant::call_delta;
+using quant::put_delta;
+using quant::gamma;
+using quant::vega;
+using quant::call_theta;
+using quant::put_theta;
+using quant::call_rho;
+using quant::put_rho;
+
 
 // ---------------------------------------------------------------------------
-// Tolerances. Matched to those used in validate_black_scholes.py.
+// Tolerances
 // ---------------------------------------------------------------------------
 namespace {
-constexpr double TOL_HULL   = 1e-3;     // Hull rounds to 4 decimals.
-constexpr double TOL_PARITY = 1e-12;    // Machine-precision identity.
-constexpr double TOL_LIMIT  = 1e-6;     // Asymptotic checks.
-constexpr double TOL_MONO   = 1e-12;    // Monotonicity FP noise.
+constexpr double TOL_HULL     = 1e-3;     // Hull rounds to 4 decimals.
+constexpr double TOL_PARITY   = 1e-12;    // Machine-precision identity.
+constexpr double TOL_LIMIT    = 1e-6;     // Asymptotic checks.
+constexpr double TOL_MONO     = 1e-12;    // Monotonicity FP noise.
+constexpr double TOL_FD       = 1e-6;     // Finite-difference accuracy.
+constexpr double TOL_PDE      = 1e-10;    // BS PDE residual.
+constexpr double TOL_IDENTITY = 1e-12;    // Vega-Gamma identity.
 }  // namespace
 
 
+// ===========================================================================
+// PRICE TESTS (from algorithm 1)
+// ===========================================================================
+
 // ---------------------------------------------------------------------------
-// Test 1: Hull textbook reference value
+// Test: Hull textbook reference value
 // ---------------------------------------------------------------------------
 TEST_CASE("Hull example 15.6 reference values", "[bs][reference]") {
-    // S=42, K=40, r=10%, sigma=20%, T=0.5 -> C=4.7594, P=0.8086.
     const double S = 42.0, K = 40.0, r = 0.10, sigma = 0.20, T = 0.5;
 
     const double C = call_price(S, K, r, sigma, T);
@@ -56,12 +72,9 @@ TEST_CASE("Hull example 15.6 reference values", "[bs][reference]") {
 
 
 // ---------------------------------------------------------------------------
-// Test 2: Put-call parity over a random parameter grid
+// Test: put-call parity over a random parameter grid
 // ---------------------------------------------------------------------------
 TEST_CASE("Put-call parity holds on random grid", "[bs][parity]") {
-    // Model-free identity: C - P = S - K * exp(-r*T). Must hold to machine
-    // precision regardless of the model. The seed is fixed so the test is
-    // deterministic across runs.
     std::mt19937_64 rng(42);
     std::uniform_real_distribution<double> uS    (50.0, 150.0);
     std::uniform_real_distribution<double> uK    (50.0, 150.0);
@@ -87,14 +100,9 @@ TEST_CASE("Put-call parity holds on random grid", "[bs][parity]") {
 
 
 // ---------------------------------------------------------------------------
-// Test 3: Limit T -> 0+
+// Test: limit T -> 0+
 // ---------------------------------------------------------------------------
 TEST_CASE("Prices converge to intrinsic value as T -> 0", "[bs][limit]") {
-    // At T = 1e-8, ITM/OTM options are essentially at intrinsic value.
-    // The ATM case is special: the time value decays only as O(sqrt(T)),
-    // not exponentially. The leading-order asymptotic is
-    //     C_ATM ~ S * sigma * sqrt(T / (2*pi))
-    // which we use as the target rather than 0.
     const double T = 1e-8, r = 0.05, sigma = 0.20;
 
     SECTION("ITM call -> intrinsic value (S - K)") {
@@ -110,9 +118,6 @@ TEST_CASE("Prices converge to intrinsic value as T -> 0", "[bs][limit]") {
     SECTION("ATM call -> S * sigma * sqrt(T / (2*pi))") {
         const double price = call_price(100.0, 100.0, r, sigma, T);
         const double target = 100.0 * sigma * std::sqrt(T / (2.0 * M_PI));
-        // Looser tolerance: the asymptotic is leading-order only,
-        // with O(T) corrections. At T=1e-8, those corrections are tiny but
-        // nonzero, so we use a relative tolerance instead of TOL_LIMIT.
         REQUIRE_THAT(price, Catch::Matchers::WithinRel(target, 1e-3));
     }
 
@@ -129,7 +134,7 @@ TEST_CASE("Prices converge to intrinsic value as T -> 0", "[bs][limit]") {
 
 
 // ---------------------------------------------------------------------------
-// Test 4: Deep ITM and OTM asymptotics
+// Test: deep ITM and OTM asymptotics
 // ---------------------------------------------------------------------------
 TEST_CASE("Deep ITM and OTM behaviour", "[bs][asymptotic]") {
     const double K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
@@ -150,11 +155,9 @@ TEST_CASE("Deep ITM and OTM behaviour", "[bs][asymptotic]") {
 
 
 // ---------------------------------------------------------------------------
-// Test 5: Monotonicities
+// Test: monotonicities of the call price
 // ---------------------------------------------------------------------------
 TEST_CASE("Call price monotonicities", "[bs][monotonicity]") {
-    // Each monotonicity probes a different partial derivative of the price.
-    // A sign error in any of the formula components would break at least one.
     const double S0 = 100.0, K0 = 100.0, r0 = 0.05, sigma0 = 0.20, T0 = 1.0;
     constexpr int N = 50;
 
@@ -206,7 +209,7 @@ TEST_CASE("Call price monotonicities", "[bs][monotonicity]") {
 
 
 // ---------------------------------------------------------------------------
-// Test 6: No-arbitrage bounds
+// Test: no-arbitrage bounds
 // ---------------------------------------------------------------------------
 TEST_CASE("No-arbitrage bounds hold on random grid", "[bs][bounds]") {
     std::mt19937_64 rng(123);
@@ -237,4 +240,161 @@ TEST_CASE("No-arbitrage bounds hold on random grid", "[bs][bounds]") {
     REQUIRE(call_upper);
     REQUIRE(put_lower);
     REQUIRE(put_upper);
+}
+
+
+// ===========================================================================
+// GREEKS TESTS (algorithm 2)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: finite-difference verification of all Greeks
+// ---------------------------------------------------------------------------
+TEST_CASE("Greeks match central finite differences", "[greek][fd]") {
+    const double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    const double h = 1e-5;
+
+    SECTION("Call Delta = (C(S+h) - C(S-h)) / (2h)") {
+        const double analytic = call_delta(S, K, r, sigma, T);
+        const double numerical =
+            (call_price(S + h, K, r, sigma, T) - call_price(S - h, K, r, sigma, T))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Put Delta = (P(S+h) - P(S-h)) / (2h)") {
+        const double analytic = put_delta(S, K, r, sigma, T);
+        const double numerical =
+            (put_price(S + h, K, r, sigma, T) - put_price(S - h, K, r, sigma, T))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Gamma = (C(S+h) - 2*C(S) + C(S-h)) / h^2") {
+        const double analytic = gamma(S, K, r, sigma, T);
+        const double numerical =
+            (call_price(S + h, K, r, sigma, T)
+             - 2.0 * call_price(S, K, r, sigma, T)
+             + call_price(S - h, K, r, sigma, T))
+            / (h * h);
+        // Looser tolerance: second-derivative central differences amplify
+        // round-off by 1/h^2, giving an irreducible error of order 1e-4.
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, 1e-4));
+    }
+
+    SECTION("Vega = (C(sigma+h) - C(sigma-h)) / (2h)") {
+        const double analytic = vega(S, K, r, sigma, T);
+        const double numerical =
+            (call_price(S, K, r, sigma + h, T) - call_price(S, K, r, sigma - h, T))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Call Theta = -dC/dT (sign flip)") {
+        // Theta = dC/dt and dC/dt = -dC/dT, so we bump T and negate.
+        const double analytic = call_theta(S, K, r, sigma, T);
+        const double numerical = -(
+            call_price(S, K, r, sigma, T + h) - call_price(S, K, r, sigma, T - h))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Put Theta = -dP/dT") {
+        const double analytic = put_theta(S, K, r, sigma, T);
+        const double numerical = -(
+            put_price(S, K, r, sigma, T + h) - put_price(S, K, r, sigma, T - h))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Call Rho = (C(r+h) - C(r-h)) / (2h)") {
+        const double analytic = call_rho(S, K, r, sigma, T);
+        const double numerical =
+            (call_price(S, K, r + h, sigma, T) - call_price(S, K, r - h, sigma, T))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+
+    SECTION("Put Rho = (P(r+h) - P(r-h)) / (2h)") {
+        const double analytic = put_rho(S, K, r, sigma, T);
+        const double numerical =
+            (put_price(S, K, r + h, sigma, T) - put_price(S, K, r - h, sigma, T))
+            / (2.0 * h);
+        REQUIRE_THAT(analytic, Catch::Matchers::WithinAbs(numerical, TOL_FD));
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Test: the Black-Scholes PDE residual
+// ---------------------------------------------------------------------------
+TEST_CASE("Greeks satisfy the Black-Scholes PDE", "[greek][pde]") {
+    // BS PDE: Theta + 0.5 * sigma^2 * S^2 * Gamma + r * S * Delta - r * C = 0.
+    // Must hold to machine precision over the entire parameter space, for both
+    // calls and puts (the PDE is the same; it constrains the price function,
+    // not the option type).
+    std::mt19937_64 rng(7);
+    std::uniform_real_distribution<double> uS    (50.0, 150.0);
+    std::uniform_real_distribution<double> uK    (50.0, 150.0);
+    std::uniform_real_distribution<double> ur    (0.01, 0.10);
+    std::uniform_real_distribution<double> usigma(0.10, 0.50);
+    std::uniform_real_distribution<double> uT    (0.1,  2.0);
+
+    constexpr int N = 10000;
+    double max_call = 0.0, max_put = 0.0;
+    for (int i = 0; i < N; ++i) {
+        const double S = uS(rng), K = uK(rng), r = ur(rng);
+        const double sigma = usigma(rng), T = uT(rng);
+
+        const double Ga = gamma(S, K, r, sigma, T);
+
+        const double C  = call_price(S, K, r, sigma, T);
+        const double Th = call_theta(S, K, r, sigma, T);
+        const double De = call_delta(S, K, r, sigma, T);
+        const double res_call = std::abs(
+            Th + 0.5 * sigma * sigma * S * S * Ga + r * S * De - r * C);
+        if (res_call > max_call) max_call = res_call;
+
+        const double P   = put_price(S, K, r, sigma, T);
+        const double ThP = put_theta(S, K, r, sigma, T);
+        const double DeP = put_delta(S, K, r, sigma, T);
+        const double res_put = std::abs(
+            ThP + 0.5 * sigma * sigma * S * S * Ga + r * S * DeP - r * P);
+        if (res_put > max_put) max_put = res_put;
+    }
+
+    INFO("Max PDE residual (call): " << max_call);
+    INFO("Max PDE residual (put):  " << max_put);
+    REQUIRE(max_call < TOL_PDE);
+    REQUIRE(max_put  < TOL_PDE);
+}
+
+
+// ---------------------------------------------------------------------------
+// Test: the Vega-Gamma identity
+// ---------------------------------------------------------------------------
+TEST_CASE("Vega-Gamma identity holds", "[greek][identity]") {
+    // Algebraic identity: Vega = S^2 * sigma * T * Gamma. Holds at machine
+    // precision for any (S, K, r, sigma, T).
+    std::mt19937_64 rng(99);
+    std::uniform_real_distribution<double> uS    (50.0, 150.0);
+    std::uniform_real_distribution<double> uK    (50.0, 150.0);
+    std::uniform_real_distribution<double> ur    (0.01, 0.10);
+    std::uniform_real_distribution<double> usigma(0.10, 0.50);
+    std::uniform_real_distribution<double> uT    (0.1,  2.0);
+
+    constexpr int N = 10000;
+    double max_residual = 0.0;
+    for (int i = 0; i < N; ++i) {
+        const double S = uS(rng), K = uK(rng), r = ur(rng);
+        const double sigma = usigma(rng), T = uT(rng);
+
+        const double V  = vega (S, K, r, sigma, T);
+        const double Ga = gamma(S, K, r, sigma, T);
+        const double res = std::abs(V - S * S * sigma * T * Ga);
+        if (res > max_residual) max_residual = res;
+    }
+
+    INFO("Max identity residual: " << max_residual);
+    REQUIRE(max_residual < TOL_IDENTITY);
 }
