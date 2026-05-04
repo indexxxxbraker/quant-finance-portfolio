@@ -15,6 +15,7 @@ include_directories(include/quant)
 add_library(quant_lib
     src/black_scholes.cpp
     src/implied_volatility.cpp
+    src/monte_carlo.cpp
 )
 
 add_executable(quant_demo src/main.cpp)
@@ -40,6 +41,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(quant_tests
     tests/test_black_scholes.cpp
     tests/test_implied_volatility.cpp
+    tests/test_monte_carlo.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 
