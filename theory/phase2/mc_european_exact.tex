@@ -1,0 +1,612 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\one}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Pricing of a European Call:\\
+       Exact Simulation under Geometric Brownian Motion}
+\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We construct, analyse, and prepare for implementation the standard
+Monte Carlo estimator of a European call option under geometric
+Brownian motion, using exact simulation of the terminal asset price.
+The setting is analytically degenerate: the price admits the
+Black--Scholes closed form derived in Phase~1, and the algorithm is
+therefore presented not for its practical necessity but as the
+canonical Monte Carlo problem against which every more elaborate method
+of Phase~2 will be measured. Three deliverables emerge. First, the
+estimator is exhibited and the regularity hypotheses of the Block~0
+framework are verified explicitly. Second, the variance of the
+discounted payoff is computed in closed form, providing both an a
+priori sample-size criterion and a sharp baseline for the variance
+reductions of Block~2. Third, a triangulated validation strategy is
+articulated, anchored on the Phase~1 Black--Scholes formula, on the
+$O(n^{-1/2})$ asymptotic error rate, and on the agreement between
+sample variance and its closed-form value.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+The European call option under geometric Brownian motion is the most
+analytically tractable contingent claim in mathematical finance: its
+price is given by the Black--Scholes formula
+\begin{equation}
+\label{eq:bs}
+C_{\mathrm{BS}} \;=\; S_0\,N(d_1) \;-\; K e^{-rT}\,N(d_2),
+\end{equation}
+with the standard definitions of $d_1, d_2$ recalled in
+Section~\ref{sec:setting}. Phase~1 of this project derived this formula
+through the equivalent martingale measure framework and implemented it
+in Python and C++.
+
+The natural question is therefore why one would price this option by
+Monte Carlo simulation at all. The honest answer is that, in this
+setting, one would not---outside of pedagogical or validation contexts.
+The algorithm developed in this writeup is the simplest possible
+instance of the Monte Carlo machinery that will support every other
+method in Phase~2, and its value lies in the role it plays as a
+foundation for what follows.
+
+That role is threefold. First, the algorithm is the canonical reference
+implementation of a Monte Carlo \emph{engine}: a function that consumes
+a model, a payoff, a sample size, and a random source, and returns a
+point estimate together with a quantified uncertainty. The architecture
+designed here---the partitioning of responsibilities between sampling,
+payoff evaluation, and statistical reduction---will recur essentially
+unchanged throughout the phase. Second, this is the only algorithm of
+the phase entirely free of systematic error: the exact transition law
+of the underlying is known and used directly, so no time-discretisation
+bias enters, and no nested estimation introduces regression bias. Any
+discrepancy between the estimator and the Black--Scholes price is
+therefore unambiguously attributable to sampling error, which makes
+this algorithm an unusually clean diagnostic for implementation
+correctness. Third, because the distribution of the discounted payoff
+is known explicitly, its variance admits a closed-form expression,
+which we derive in Section~\ref{sec:variance}. This expression is the
+denominator against which the variance reductions of Block~2 will be
+measured, and it provides an additional independent test of the
+implementation.
+
+The remainder of the document is organised as follows.
+Section~\ref{sec:setting} fixes notation. Section~\ref{sec:exact}
+records the closed-form solution of the Black--Scholes SDE and
+formalises the notion of exact simulation that the title invokes.
+Section~\ref{sec:estimator} presents the estimator, verifies the
+second-moment hypothesis required by the Block~0 framework, and
+specialises the confidence interval to the present setting.
+Section~\ref{sec:variance} derives the closed-form variance of the
+discounted payoff and discusses its implications for sample-size
+selection. Section~\ref{sec:validation} articulates the validation
+strategy. Section~\ref{sec:algorithm} states the algorithm formally.
+Section~\ref{sec:ahead} situates the algorithm within the rest of
+Phase~2.
+
+\section{Setting and notation}
+\label{sec:setting}
+
+\subsection{Risk-neutral dynamics}
+
+We work on a filtered probability space
+$(\Omega, \F, \{\F_t\}_{t \in [0,T]}, \Q)$ supporting a one-dimensional
+$\Q$-Brownian motion $W$. Under $\Q$, the price process of the
+underlying asset satisfies the stochastic differential equation
+\begin{equation}
+\label{eq:gbm-sde}
+\dd S_t \;=\; r\, S_t \dd t \;+\; \sigma\, S_t \dd W_t,
+\qquad S_0 > 0,
+\end{equation}
+where $r \in \R$ is the constant risk-free rate and $\sigma > 0$ is the
+constant volatility. The numeraire is the money-market account
+$B_t = e^{rt}$, so that the deflated price $S_t / B_t$ is a
+$\Q$-martingale, and the discounted payoff of any contingent claim
+admits a $\Q$-expectation interpretation.
+
+\subsection{The European call payoff}
+
+A European call with strike $K > 0$ and maturity $T > 0$ pays
+$(S_T - K)^+$ at time $T$. Its time-zero price is the
+discounted expectation
+\begin{equation}
+\label{eq:price}
+C \;=\; \E^{\Q}\!\left[\, e^{-rT}\,(S_T - K)^+ \,\right]
+\;=\; \E[\, Y \,],
+\end{equation}
+where we have set
+\begin{equation}
+\label{eq:Y-defn}
+Y \;\eqdef\; e^{-rT}\,(S_T - K)^+
+\end{equation}
+and adopt the convention that, where unambiguous, the superscript on
+$\E$ is dropped.
+
+\subsection{The Black--Scholes constants}
+
+We use the notation
+\begin{equation}
+\label{eq:d1d2}
+d_1 \;\eqdef\;
+\frac{\log(S_0/K) + \big(r + \tfrac{1}{2}\sigma^2\big)T}{\sigma\sqrt{T}},
+\qquad
+d_2 \;\eqdef\; d_1 - \sigma\sqrt{T}.
+\end{equation}
+The derivation of~\eqref{eq:bs} from~\eqref{eq:price} via the martingale
+approach is given in the Phase~1 writeup and will not be repeated.
+
+\section{Exact simulation of the terminal price}
+\label{sec:exact}
+
+\subsection{Closed-form solution of the SDE}
+
+The SDE~\eqref{eq:gbm-sde} admits a closed-form solution,
+\begin{equation}
+\label{eq:gbm-solution}
+S_t \;=\; S_0 \exp\!\left(
+\big(r - \tfrac{1}{2}\sigma^2\big) t \;+\; \sigma\, W_t
+\right),
+\qquad t \in [0,T],
+\end{equation}
+which one verifies by applying It\^{o}'s lemma to
+$f(t, x) = \log x$ and integrating. As a consequence,
+$S_T$ is log-normally distributed: $\log S_T$ is Gaussian with mean
+$\log S_0 + (r - \tfrac{1}{2}\sigma^2)T$ and variance $\sigma^2 T$.
+
+\subsection{The single-normal sampling scheme}
+
+Because $W_T \overset{d}{=} \sqrt{T}\, Z$ with $Z \sim N(0,1)$, exact
+samples of $S_T$ are obtained by
+\begin{equation}
+\label{eq:sampling}
+Z \sim N(0,1),
+\qquad
+S_T \;=\; S_0 \exp\!\left(
+\big(r - \tfrac{1}{2}\sigma^2\big) T \;+\; \sigma\sqrt{T}\, Z
+\right),
+\end{equation}
+each replication consuming exactly one standard normal draw. There is
+no time-discretisation: the construction reaches $T$ in a single step.
+
+\begin{remark}[The meaning of ``exact'']
+\label{rem:exact-meaning}
+The qualifier ``exact'' refers strictly to the absence of
+time-discretisation error in the construction~\eqref{eq:sampling}: the
+random variable on the right-hand side has \emph{exactly} the
+distribution of $S_T$ under the model. It does not refer to the
+estimator of the price, which carries the usual statistical error
+inherent to Monte Carlo. The distinction matters because the algorithms
+of Block~1.2 (Euler--Maruyama, Milstein) will not be exact in this
+sense: their simulated terminal values will be drawn from a
+distribution that approximates, but does not coincide with, the true
+distribution of $S_T$.
+\end{remark}
+
+\section{The Monte Carlo estimator}
+\label{sec:estimator}
+
+\subsection{Definition and basic properties}
+
+Let $Z_1, Z_2, \dots, Z_n$ be independent standard normal random
+variables, and set
+\begin{equation}
+\label{eq:Si}
+S_T^{(i)} \;=\; S_0 \exp\!\left(
+\big(r - \tfrac{1}{2}\sigma^2\big) T \;+\; \sigma\sqrt{T}\, Z_i
+\right),
+\qquad
+Y_i \;=\; e^{-rT}\,\big(S_T^{(i)} - K\big)^{+}.
+\end{equation}
+The Monte Carlo estimator of $C$ based on $n$ paths is
+\begin{equation}
+\label{eq:estimator}
+\hat{C}_n \;\eqdef\; \frac{1}{n} \sum_{i=1}^{n} Y_i.
+\end{equation}
+By construction, $\hat{C}_n$ is unbiased: $\E[\hat{C}_n] = C$. By the
+strong law of large numbers,
+$\hat{C}_n \to C$ almost surely as $n \to \infty$.
+
+\subsection{Verification of the second-moment hypothesis}
+\label{sec:second-moment}
+
+The asymptotic apparatus of Block~0---in particular the central limit
+theorem and the resulting confidence interval---requires that
+$\Var(Y) < \infty$, equivalently $\E[Y^2] < \infty$. We verify this
+explicitly.
+
+\begin{lemma}
+\label{lem:second-moment}
+The discounted payoff $Y$ defined in~\eqref{eq:Y-defn} satisfies
+$\E[Y^2] < \infty$.
+\end{lemma}
+
+\begin{proof}
+The pointwise inequality $0 \leq (S_T - K)^+ \leq S_T$ yields
+$0 \leq Y \leq e^{-rT} S_T$. Hence
+$\E[Y^2] \leq e^{-2rT}\, \E[S_T^2]$. From~\eqref{eq:gbm-solution},
+\[
+\E[S_T^2] \;=\; S_0^2\, \E\!\left[
+\exp\!\big(2(r - \tfrac{1}{2}\sigma^2) T + 2\sigma\sqrt{T}\, Z\big)
+\right]
+\;=\; S_0^2\, \exp\!\big((2r + \sigma^2) T\big),
+\]
+where the last equality uses the moment-generating function of the
+standard normal. Therefore
+$\E[Y^2] \leq S_0^2\, e^{(\sigma^2 - 2r) T} \cdot e^{2rT}
+= S_0^2\, e^{\sigma^2 T}$, which is finite.
+\end{proof}
+
+The hypotheses of the Block~0 framework are therefore satisfied without
+restriction, and all conclusions of Sections~2.2--2.6 of that writeup
+specialise directly to the present estimator.
+
+\subsection{Confidence interval and stopping criterion}
+
+Following the Block~0 prescription, the asymptotic
+$(1-\beta)$-confidence interval for $C$ is
+\begin{equation}
+\label{eq:CI}
+\hat{C}_n \;\pm\; z_{\beta/2}\,\frac{S_n}{\sqrt{n}},
+\end{equation}
+with $S_n^2 = (n-1)^{-1}\sum_{i=1}^n (Y_i - \hat{C}_n)^2$ the sample
+variance of the payoffs and $z_{\beta/2}$ the upper $\beta/2$-quantile
+of the standard normal. We denote the half-width by $h_n$. Two natural
+stopping rules emerge:
+\begin{enumerate}
+\item Fix $n$ in advance (the more common choice in benchmarking work).
+\item Continue sampling until $h_n$ falls below a prescribed
+absolute or relative tolerance.
+\end{enumerate}
+Both will be supported by the implementation; the validation tests of
+Section~\ref{sec:validation} use the first.
+
+\section{Closed-form variance of the discounted payoff}
+\label{sec:variance}
+
+We now derive an explicit expression for $\Var(Y)$, which is finite by
+Lemma~\ref{lem:second-moment} and computable in closed form because the
+distribution of $S_T$ is known. The derivation reuses the
+change-of-measure techniques familiar from the proof of~\eqref{eq:bs}
+in Phase~1.
+
+\subsection{Decomposition of the second moment}
+
+On the event $\{S_T > K\}$, the payoff is $S_T - K$; elsewhere it
+vanishes. Hence
+\begin{equation}
+\label{eq:Y2-expansion}
+Y^2 \;=\; e^{-2rT}\, (S_T - K)^2\, \one_{\{S_T > K\}}
+\;=\; e^{-2rT}\!\left[
+S_T^{\,2}\, \one_{\{S_T > K\}}
+- 2K\, S_T\, \one_{\{S_T > K\}}
++ K^2\, \one_{\{S_T > K\}}
+\right].
+\end{equation}
+Three expectations must therefore be computed:
+\begin{equation}
+A \eqdef \E[\one_{\{S_T > K\}}],
+\qquad
+B \eqdef \E[S_T \one_{\{S_T > K\}}],
+\qquad
+D \eqdef \E[S_T^{\,2} \one_{\{S_T > K\}}].
+\end{equation}
+
+\subsection{The three expectations}
+
+The first two are obtained as part of the standard derivation of the
+Black--Scholes formula and we record them without re-deriving:
+\begin{equation}
+\label{eq:A-B}
+A = N(d_2),
+\qquad
+B = S_0\, e^{rT}\, N(d_1).
+\end{equation}
+The third expectation is the new quantity. Writing $S_T$ in the
+form~\eqref{eq:gbm-solution} with $W_T = \sqrt{T} Z$,
+\[
+S_T^{\,2}
+\;=\; S_0^2 \exp\!\big(
+(2r - \sigma^2) T + 2\sigma\sqrt{T}\, Z
+\big),
+\]
+we have, with $\mu \eqdef (2r - \sigma^2) T$ and $\nu \eqdef
+2\sigma\sqrt{T}$,
+\begin{equation}
+\label{eq:D-step1}
+D \;=\; S_0^2\, \E\!\left[
+e^{\mu + \nu Z}\, \one_{\{Z > -d_2\}}
+\right],
+\end{equation}
+where the equivalence $\{S_T > K\} = \{Z > -d_2\}$ follows from
+inverting~\eqref{eq:gbm-solution} for $Z$. Now perform the
+exponential change of measure
+\begin{equation}
+\frac{\dd \tilde{\Q}}{\dd \Q} \;=\; e^{\nu Z - \nu^2/2}.
+\end{equation}
+Under $\tilde{\Q}$, the random variable $\tilde{Z} = Z - \nu$ is
+standard normal (this is the elementary form of the Cameron--Martin
+theorem). Substituting,
+\[
+\E\!\left[ e^{\nu Z}\, \one_{\{Z > -d_2\}} \right]
+\;=\; e^{\nu^2/2}\, \tilde{\E}\!\left[ \one_{\{Z > -d_2\}} \right]
+\;=\; e^{\nu^2/2}\, \tilde{\Prob}(\tilde{Z} > -d_2 - \nu)
+\;=\; e^{\nu^2/2}\, N(d_2 + \nu).
+\]
+Therefore
+\begin{equation}
+\label{eq:D-result}
+D \;=\; S_0^2\, e^{\mu + \nu^2/2}\, N(d_2 + \nu)
+\;=\; S_0^2\, e^{(2r + \sigma^2) T}\, N\!\big(d_1 + \sigma\sqrt{T}\big),
+\end{equation}
+where we used $\mu + \nu^2/2 = (2r - \sigma^2)T + 2\sigma^2 T
+= (2r + \sigma^2)T$ and
+$d_2 + \nu = d_2 + 2\sigma\sqrt{T} = d_1 + \sigma\sqrt{T}$.
+
+\subsection{The closed-form variance}
+
+Substituting~\eqref{eq:A-B} and~\eqref{eq:D-result}
+into~\eqref{eq:Y2-expansion} and combining with $\E[Y] = C_{\mathrm{BS}}$
+yields the following result.
+
+\begin{proposition}[Closed-form variance of the discounted call payoff]
+\label{prop:closed-form-variance}
+Let $Y$ be defined as in~\eqref{eq:Y-defn} under the dynamics
+\eqref{eq:gbm-sde}. Then
+\begin{equation}
+\label{eq:closed-variance}
+\Var(Y)
+\;=\; S_0^{\,2}\, e^{\sigma^2 T}\, N\!\big(d_1 + \sigma\sqrt{T}\big)
+\;-\; 2 K S_0\, e^{-rT}\, N(d_1)
+\;+\; K^2\, e^{-2rT}\, N(d_2)
+\;-\; C_{\mathrm{BS}}^{\,2},
+\end{equation}
+where $d_1, d_2$ are as in~\eqref{eq:d1d2} and $C_{\mathrm{BS}}$ as
+in~\eqref{eq:bs}.
+\end{proposition}
+
+\begin{proof}
+Combine~\eqref{eq:Y2-expansion}, \eqref{eq:A-B}, and~\eqref{eq:D-result}
+to obtain $\E[Y^2]$:
+\[
+\E[Y^2] \;=\; e^{-2rT}\!\left[
+S_0^2 e^{(2r + \sigma^2)T} N(d_1 + \sigma\sqrt{T})
+- 2K \cdot S_0 e^{rT} N(d_1)
++ K^2 N(d_2)
+\right].
+\]
+Distributing $e^{-2rT}$ gives the first three terms
+of~\eqref{eq:closed-variance}. The identity
+$\Var(Y) = \E[Y^2] - \E[Y]^2$ with $\E[Y] = C_{\mathrm{BS}}$ produces
+the last term.
+\end{proof}
+
+\subsection{Implications for sample-size selection}
+
+Proposition~\ref{prop:closed-form-variance} permits an a priori
+calculation of the sample size required to achieve a prescribed
+half-width $\varepsilon$ at confidence level $1-\beta$:
+\begin{equation}
+\label{eq:n-eps}
+n_\varepsilon \;\approx\; \left(\frac{z_{\beta/2}}{\varepsilon}\right)^{\!2}
+\Var(Y).
+\end{equation}
+This is one of the few cases in financial Monte Carlo where the
+required sample size is known before any path is simulated. In every
+later algorithm of the phase the variance must be estimated from a
+preliminary run, and~\eqref{eq:n-eps} becomes a feedback loop rather
+than a one-shot calculation.
+
+The expression also serves a more lasting purpose: it is the
+denominator $\Var_{\mathrm{vanilla}}$ of the variance reduction factors
+\[
+\mathrm{VRF} \;\eqdef\;
+\frac{\Var_{\mathrm{vanilla}}}{\Var_{\mathrm{technique}}}
+\]
+that will be reported throughout Block~2 to quantify the gain of each
+variance reduction technique.
+
+\section{Validation strategy}
+\label{sec:validation}
+
+We follow the triangulation principle established in Phase~1: the
+algorithm is subjected to several independent tests, each closing a
+distinct potential failure mode. Passing any one of them is necessary
+but not sufficient; passing all of them makes incorrectness highly
+improbable, although strictly speaking unproven.
+
+\paragraph{Test 1: containment of the Black--Scholes price.}
+For a representative grid of parameters $(S_0, K, T, r, \sigma)$ and a
+sample size $n$ moderate to large (e.g.\ $n = 10^4$ to $10^6$),
+generate the estimate $\hat{C}_n$ together with its half-width $h_n$,
+and verify that $C_{\mathrm{BS}}$ lies within
+$[\hat{C}_n - h_n, \hat{C}_n + h_n]$. Repeating this experiment over
+many independent seeds, the empirical containment frequency should
+approach the nominal confidence level $1 - \beta$. This is the simplest
+end-to-end check and tests the entire pipeline, from sampling to
+statistical reduction.
+
+\paragraph{Test 2: empirical convergence rate.}
+For a fixed parameter configuration, evaluate $\hat{C}_n$ at sample
+sizes $n_1 < n_2 < \cdots < n_K$ spanning several orders of magnitude.
+Plot $\log |\hat{C}_n - C_{\mathrm{BS}}|$ against $\log n$. The
+expected behaviour is a cloud of points lying around a line of slope
+$-\tfrac{1}{2}$. To stabilise the plot against the variability of a
+single run, average $|\hat{C}_n - C_{\mathrm{BS}}|^2$ over independent
+seeds at each $n$ and plot
+$\tfrac{1}{2}\log\!\big(\overline{|\hat{C}_n - C_{\mathrm{BS}}|^2}\big)$
+against $\log n$, fitting a least-squares line to the resulting points.
+The fitted slope should be close to $-\tfrac{1}{2}$.
+
+\paragraph{Test 3: agreement of sample variance with closed form.}
+For the same parameter configurations, compare the sample variance
+$S_n^2$ produced by the simulation with the closed-form value
+delivered by Proposition~\ref{prop:closed-form-variance}. The relative
+error should decrease at the rate predicted by the variance of the
+sample variance estimator, namely $O(n^{-1/2})$. A persistent
+discrepancy at a level inconsistent with this rate indicates a bug in
+either the sampling scheme or the closed-form computation; the test
+discriminates between these two failure modes by comparison with a
+third independent computation, performed at very large $n$.
+
+\paragraph{Test 4: monotonicities and asymptotic limits.}
+The Black--Scholes price is monotone non-decreasing in $S_0$, in
+$\sigma$, and in $T$ (for fixed strike and rate); it is monotone
+non-increasing in $K$. The Monte Carlo estimator must respect these
+monotonicities up to statistical noise, which can be enforced sharply
+by the use of common random numbers across parameter values (the same
+seed produces the same sequence of $Z_i$ in both runs, and the
+inequality holds path by path). The asymptotic limit
+$\lim_{S_0 \to \infty} C / S_0 = 1$ should also be approximated, as
+should $\lim_{S_0 \to 0} C = 0$.
+
+\section{Algorithmic specification}
+\label{sec:algorithm}
+
+The algorithm is summarised below. The pseudocode is parametric in the
+random source (a generator object accepting a seed) to enforce the
+reproducibility discipline of Block~0, Section~2.5.
+
+\begin{algorithm}[H]
+\caption{Vanilla Monte Carlo for the European call (exact GBM)}
+\label{alg:mc-vanilla}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, strike $K$, maturity $T$, rate $r$, volatility
+$\sigma$, sample size $n$, confidence level $1-\beta$, random
+generator \texttt{rng} initialised with a recorded seed.
+\Ensure Estimate $\hat{C}_n$, half-width $h_n$, sample variance
+$S_n^2$.
+\State $\mu \gets (r - \tfrac{1}{2}\sigma^2)\, T$ \Comment{drift of $\log S_T$}
+\State $s \gets \sigma\, \sqrt{T}$ \Comment{stdev of $\log S_T$}
+\State $D \gets e^{-rT}$ \Comment{discount factor}
+\State Draw $Z_1, \dots, Z_n \sim N(0,1)$ independently using
+\texttt{rng}.
+\For{$i = 1$ to $n$}
+  \State $S^{(i)} \gets S_0 \exp(\mu + s\, Z_i)$
+  \State $Y_i \gets D \cdot \max(S^{(i)} - K,\, 0)$
+\EndFor
+\State $\hat{C}_n \gets \frac{1}{n} \sum_i Y_i$
+\State $S_n^2 \gets \frac{1}{n-1} \sum_i (Y_i - \hat{C}_n)^2$
+\State $h_n \gets z_{\beta/2}\, \sqrt{S_n^2 / n}$
+\State \Return $(\hat{C}_n,\, h_n,\, S_n^2)$
+\end{algorithmic}
+\end{algorithm}
+
+The implementation will compute steps~5--8 in vectorised form on the
+entire vector $(Z_1, \dots, Z_n)$ at once, and the pseudocode is
+written elementwise only for clarity. In neither Python nor C++ should
+this loop appear as an explicit Python or C++ \texttt{for}: in Python
+the entire computation is a sequence of NumPy operations, and in C++
+it is a single contiguous loop with no allocation inside.
+
+\section{Looking ahead}
+\label{sec:ahead}
+
+Three extensions of this algorithm structure the remainder of Phase~2.
+
+\paragraph{Block~1.2: discretisation.} The exactness of the sampling
+scheme~\eqref{eq:sampling} relies on the closed-form solution
+\eqref{eq:gbm-solution} of the SDE, which is unavailable for almost
+every model of practical interest beyond geometric Brownian motion. In
+the next algorithm of the phase, the closed form is replaced by a
+time-discretised approximation (Euler--Maruyama, then Milstein), and
+systematic error of order $\Delta t$ or $\sqrt{\Delta t}$ enters
+alongside the statistical error analysed here. The bias--variance
+tradeoff of Section~5 of the Block~0 writeup becomes operational at
+that point, and the optimal allocation of the computational budget
+between sample size and time-step refinement is the central new
+question.
+
+\paragraph{Block~2: variance reduction.} Each technique introduced in
+Block~2---antithetic variates, control variates, stratified sampling,
+importance sampling---is implemented as a wrapper around the same
+estimator structure developed here, and is benchmarked against the
+present algorithm. The denominator of the variance reduction factor is
+Proposition~\ref{prop:closed-form-variance}; the numerator is the
+sample variance of the new estimator. The structural cleanliness of
+the present algorithm---a single sampling step, a single payoff
+evaluation, no per-replication state---makes it the natural reference
+implementation in this comparison.
+
+\paragraph{Block~4: greeks.} The pathwise and likelihood-ratio
+estimators of price sensitivities reuse the sample paths
+$\{S_T^{(i)}\}_{i=1}^n$ generated by the present algorithm, applying
+to them a different functional in place of the discounted payoff. The
+common-random-numbers technique used in conjunction with
+finite-difference greeks requires that two parameter-perturbed
+estimators consume the same sequence of $Z_i$, a requirement that the
+seed-controlled sampling discipline of this algorithm makes immediate.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The exact-simulation Monte Carlo estimator for the European call under
+geometric Brownian motion is treated, as a textbook starting example,
+in Glasserman~\cite[Section~1.1.2 and Section~3.2]{Glasserman}. The
+closed-form variance computation of
+Proposition~\ref{prop:closed-form-variance} is elementary and appears
+implicitly in many sources; an explicit derivation in the same spirit
+as the present one can be found in Jäckel~\cite[Chapter~3]{Jackel}.
+The variance reduction factor as the figure of merit for Monte Carlo
+techniques is discussed in
+Glasserman~\cite[Section~4.1]{Glasserman}.
+
+\begin{thebibliography}{99}
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Jackel}
+P.\ J\"ackel,
+\emph{Monte Carlo Methods in Finance},
+Wiley, 2002.
+
+\bibitem{Etheridge}
+A.\ Etheridge,
+\emph{A Course in Financial Calculus},
+Cambridge University Press, 2002.
+
+\end{thebibliography}
+
+\end{document}

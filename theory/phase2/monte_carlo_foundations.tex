@@ -1,0 +1,744 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indep}{\perp\!\!\!\perp}
+\DeclareMathOperator{\sgn}{sgn}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Foundations:\\
+       Estimation, Efficiency, and Random Sampling}
+\author{Quant Finance Portfolio --- Phase 2, Block 0}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document opens Phase~2 of the project. It implements no algorithm:
+its purpose is to lay the conceptual groundwork on which every Monte Carlo
+method developed in the remainder of the phase will rest. Two themes are
+developed. First, we formulate derivatives pricing as a numerical
+integration problem and analyse the standard Monte Carlo estimator:
+strong consistency, asymptotic normality, confidence intervals, the
+bias--variance decomposition, and the notion of \emph{computational
+efficiency} that motivates the entire programme of variance reduction.
+Second, we examine how independent samples are obtained from prescribed
+distributions: the desirable properties of pseudorandom number
+generators, the inverse-transform method as a universal device, and the
+two standard routes to the normal distribution---inversion and
+Box--Muller---with attention to the consequences of each choice for the
+low-discrepancy methods of Block~3.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+The pricing of a contingent claim under a chosen risk-neutral measure is
+the computation of an expectation:
+\begin{equation}
+\label{eq:price-as-expectation}
+C \;=\; \E^{\Q}\!\left[\, e^{-rT}\,\Phi(S_{[0,T]}) \,\right],
+\end{equation}
+where $\Phi$ is the discounted payoff functional and $S_{[0,T]}$ denotes
+the relevant trajectory of the underlying state. In Phase~1 we treated
+the case in which~\eqref{eq:price-as-expectation} admits a closed form,
+namely the European call under geometric Brownian motion, where the
+expectation reduces to a one-dimensional Gaussian integral evaluated
+analytically through the Black--Scholes formula. We obtain greeks by
+differentiating that formula, and we recover the implied volatility by
+inverting it numerically.
+
+That regime is the exception, not the rule. The functional $\Phi$ may
+depend on the entire path (Asian, lookback, barrier options); the
+underlying may be high-dimensional (basket options, multi-currency
+products); the dynamics may have no tractable transition density (local
+volatility, stochastic volatility, jump-diffusion). In all these cases
+the expectation in~\eqref{eq:price-as-expectation} must be approximated.
+Of the available numerical strategies, Monte Carlo simulation is the
+most widely applicable: it requires only the ability to sample paths of
+the underlying and evaluate the payoff on those paths.
+
+Phase~2 of this project develops Monte Carlo methods systematically,
+from the elementary estimator for European options to least-squares
+Monte Carlo for American options. Before any of these algorithms can be
+implemented or analysed, two prerequisites must be in place. We must
+understand what a Monte Carlo estimator \emph{is}---what it converges
+to, how fast, with what uncertainty, and at what cost---and we must
+understand how the random samples that drive it are produced. This
+document addresses both. Section~\ref{sec:mc-as-integration} treats the
+estimator. Section~\ref{sec:sampling} treats the samples.
+Section~\ref{sec:roadmap} sketches how the material assembled here
+threads through the remaining blocks of the phase.
+
+We presuppose familiarity with the basic apparatus of probability
+theory---in particular the law of large numbers, the central limit
+theorem, and Slutsky's lemma---and with the risk-neutral pricing
+framework as developed, for instance, in Etheridge~\cite{Etheridge}. The
+principal reference for the material in this document is
+Glasserman~\cite[Chapters~1 and~2]{Glasserman}.
+
+\section{Monte Carlo as Numerical Integration}
+\label{sec:mc-as-integration}
+
+\subsection{The pricing problem as an expectation}
+
+We work on a filtered probability space
+$(\Omega, \F, \{\F_t\}_{t \in [0,T]}, \Q)$ supporting whatever Brownian
+motions and Poisson random measures the model requires. Under the
+risk-neutral measure $\Q$, the time-zero price of a European-style
+contingent claim with $\F_T$-measurable discounted payoff
+$Y \eqdef e^{-rT}\Phi$ is the expectation
+\begin{equation}
+\label{eq:alpha}
+\alpha \;\eqdef\; \E^{\Q}[\,Y\,].
+\end{equation}
+We will treat $\alpha$ throughout as a deterministic real number---the
+quantity to be estimated---and reserve hats for its estimators. The
+Phase~1 framework gives us $\alpha$ in closed form for the European call
+under Black--Scholes; we recall that $C = S_0\,N(d_1) - K e^{-rT} N(d_2)$
+arises precisely as the evaluation of~\eqref{eq:alpha} when $S_T$ is
+log-normal under $\Q$.
+
+The Monte Carlo approach to~\eqref{eq:alpha} is structurally trivial: if
+we can produce a sequence $Y_1, Y_2, \dots$ of independent copies of
+$Y$, we estimate $\alpha$ by their average. The substance of the method
+lies entirely in two questions: how good is this estimator, and how do
+we produce the samples?
+
+\subsection{The standard Monte Carlo estimator}
+
+Let $Y_1, Y_2, \dots, Y_n$ be independent and identically distributed
+copies of $Y$, with finite second moment. The \emph{Monte Carlo
+estimator} of $\alpha$ based on $n$ samples is
+\begin{equation}
+\label{eq:mc-estimator}
+\hat{\alpha}_n \;\eqdef\; \frac{1}{n}\sum_{i=1}^{n} Y_i.
+\end{equation}
+
+Two properties are immediate. First, $\hat{\alpha}_n$ is unbiased:
+$\E[\hat{\alpha}_n] = \alpha$. Second, by the strong law of large
+numbers, $\hat{\alpha}_n \to \alpha$ almost surely as $n \to \infty$.
+The estimator is therefore strongly consistent. Neither property tells
+us how large $n$ must be to attain a given precision; for that we need
+the variance of the estimator and its asymptotic distribution.
+
+Writing $\sigma^2 \eqdef \Var(Y) < \infty$, we have, by independence,
+\begin{equation}
+\label{eq:mc-variance}
+\Var(\hat{\alpha}_n) \;=\; \frac{\sigma^2}{n},
+\end{equation}
+so the standard deviation of the estimator decays like $n^{-1/2}$.
+
+\subsection{Convergence rate and the central limit theorem}
+\label{sec:clt}
+
+The central limit theorem upgrades~\eqref{eq:mc-variance} to a
+distributional statement:
+\begin{equation}
+\label{eq:clt}
+\sqrt{n}\,(\hat{\alpha}_n - \alpha) \;\xrightarrow{\;d\;}\;
+N(0, \sigma^2) \qquad \text{as } n \to \infty.
+\end{equation}
+This is the analytical backbone of Monte Carlo. Three observations are
+in order.
+
+\paragraph{Order of convergence.} The error
+$|\hat{\alpha}_n - \alpha|$ is, in a probabilistic sense, of order
+$n^{-1/2}$. To halve the error one must \emph{quadruple} the sample
+size. This rate is slow when compared with classical quadrature in low
+dimensions, but it has a feature that classical quadrature lacks: it
+does not deteriorate with dimension.
+
+\paragraph{Dimension-independence.} If $Y = f(U)$ for some
+$U \in [0,1]^d$ and a sufficiently nice $f$, the rate
+in~\eqref{eq:clt} is $n^{-1/2}$ regardless of $d$. The constant
+$\sigma$ does typically depend on $d$, often unfavourably, but the
+\emph{order} does not. By contrast, a tensor-product trapezoidal rule
+on $[0,1]^d$ achieves error $O(n^{-2/d})$ for smooth integrands, which
+becomes useless even in modest dimensions. This is the structural
+reason Monte Carlo is the default tool for path-dependent and
+multi-asset pricing problems: an Asian option monitored at $252$ dates
+is a $252$-dimensional integral, and any product rule is hopeless.
+
+\paragraph{Failure modes.} The CLT requires $\Var(Y) < \infty$. There
+are realistic settings where this fails or where it holds but
+$\Var(Y)$ is so large that the CLT regime is reached only at sample
+sizes exceeding any plausible computational budget. Heavy-tailed payoffs
+(e.g.\ deep out-of-the-money digital options under fat-tailed dynamics)
+fall into the second category and motivate the importance sampling
+techniques of Block~2.
+
+\subsection{Confidence intervals from the sample variance}
+\label{sec:ci}
+
+In practice $\sigma$ is not known a priori. The natural plug-in is the
+sample standard deviation:
+\begin{equation}
+\label{eq:sample-variance}
+S_n^{\,2} \;\eqdef\; \frac{1}{n-1}\sum_{i=1}^{n}(Y_i - \hat{\alpha}_n)^2,
+\qquad
+S_n \eqdef \sqrt{S_n^{\,2}}.
+\end{equation}
+Since $S_n^{\,2} \to \sigma^2$ almost surely, an application of
+Slutsky's lemma to~\eqref{eq:clt} yields
+\begin{equation}
+\label{eq:studentised}
+\frac{\sqrt{n}\,(\hat{\alpha}_n - \alpha)}{S_n}
+\;\xrightarrow{\;d\;}\; N(0,1).
+\end{equation}
+For a confidence level $1-\beta$, denoting $z_{\beta/2}$ the upper
+$\beta/2$-quantile of the standard normal, the asymptotic
+$(1-\beta)$-confidence interval for $\alpha$ is
+\begin{equation}
+\label{eq:ci}
+\hat{\alpha}_n \;\pm\; z_{\beta/2}\,\frac{S_n}{\sqrt{n}}.
+\end{equation}
+The half-width
+\begin{equation}
+\label{eq:halfwidth}
+h_n \;\eqdef\; z_{\beta/2}\,\frac{S_n}{\sqrt{n}}
+\end{equation}
+is the standard reportable summary of estimator uncertainty in Monte
+Carlo. It is what every implementation in this phase will compute and
+return alongside the point estimate.
+
+\begin{remark}
+The use of $z_{\beta/2}$ rather than the corresponding $t$-quantile is
+purely asymptotic. For $n$ in the thousands, which is the regime of
+interest throughout the phase, the difference is negligible.
+\end{remark}
+
+\subsection{Bias and the mean square error}
+\label{sec:mse}
+
+The estimator~\eqref{eq:mc-estimator} is unbiased by construction, but
+this exactness will be lost as soon as we replace the exact dynamics of
+the model with a discretisation, or as soon as we estimate a function of
+an expectation rather than an expectation itself. Both situations arise
+in this phase: the former in Block~1 (Euler--Maruyama and Milstein
+schemes), the latter in Block~6 (the nested-expectation structure of
+American option pricing).
+
+For a generic estimator $\hat{\alpha}$ of a target $\alpha$, the
+mean square error decomposes as
+\begin{equation}
+\label{eq:mse}
+\operatorname{MSE}(\hat{\alpha})
+\;=\; \E[(\hat{\alpha} - \alpha)^2]
+\;=\; \big(\E[\hat{\alpha}] - \alpha\big)^2 + \Var(\hat{\alpha})
+\;=\; \operatorname{Bias}^2(\hat{\alpha}) + \Var(\hat{\alpha}).
+\end{equation}
+When discretisation enters, $\hat{\alpha}$ depends on a step size
+$\Delta t$, and a tradeoff appears: refining $\Delta t$ reduces bias
+but, for a fixed computational budget, also reduces the number of
+replications and hence increases variance. The MSE-optimal choice of
+$\Delta t$ balances the two contributions and will be derived
+explicitly in Block~1.
+
+\subsection{Computational efficiency of an estimator}
+\label{sec:efficiency}
+
+The remaining piece of conceptual scaffolding is the notion of
+\emph{efficiency}, which underpins the entire programme of variance
+reduction in Block~2.
+
+Suppose two unbiased estimators $\hat{\alpha}$ and $\hat{\alpha}'$ of
+the same quantity $\alpha$ are available, with per-replication
+variances $\sigma^2$ and $\sigma'^{\,2}$ and per-replication
+computational costs $\tau$ and $\tau'$ respectively. Naively, one
+prefers the estimator with smaller variance. This is incorrect: what
+matters is the total computational work required to reach a prescribed
+precision.
+
+\begin{proposition}[Efficiency comparison]
+\label{prop:efficiency}
+Let $\hat{\alpha}$ and $\hat{\alpha}'$ be unbiased estimators of
+$\alpha$ with per-replication variances $\sigma^2, \sigma'^{\,2}$ and
+costs $\tau, \tau'$. Fix a target half-width $\varepsilon$ for the
+asymptotic confidence interval~\eqref{eq:ci} at confidence level
+$1-\beta$. Then $\hat{\alpha}$ requires less total computational work
+than $\hat{\alpha}'$ to attain the prescribed half-width if and only if
+\begin{equation}
+\label{eq:eff-criterion}
+\sigma^2 \tau \;<\; \sigma'^{\,2}\, \tau'.
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+For an estimator with per-replication variance $\sigma^2$, attaining
+half-width $\varepsilon$ requires, asymptotically, $n_\varepsilon =
+(z_{\beta/2}\,\sigma / \varepsilon)^2$ replications by~\eqref{eq:ci}.
+The corresponding total cost is
+$n_\varepsilon \cdot \tau = (z_{\beta/2} / \varepsilon)^2 \sigma^2 \tau$.
+The factor $(z_{\beta/2}/\varepsilon)^2$ does not depend on the
+estimator, so the comparison reduces to that of the products
+$\sigma^2 \tau$ and $\sigma'^{\,2}\,\tau'$.
+\end{proof}
+
+\begin{definition}
+The \emph{computational efficiency} of an unbiased estimator with
+variance $\sigma^2$ and per-replication cost $\tau$ is
+$(\sigma^2 \tau)^{-1}$.
+\end{definition}
+
+\begin{remark}[Why this matters]
+Variance reduction techniques almost always increase the per-replication
+cost: an antithetic estimator generates one extra path per pair, a
+control variate evaluates an additional payoff, importance sampling
+involves an extra likelihood ratio, and so on. The relevant question is
+not whether the variance went down, but whether the product
+$\sigma^2 \tau$ went down. Throughout Block~2 every reported result will
+include both factors, and the criterion of success will be a reduction
+in the product, not in the variance alone.
+\end{remark}
+
+\begin{remark}[Biased estimators]
+Proposition~\ref{prop:efficiency} assumes both estimators are unbiased.
+For estimators carrying bias~$b$ controlled by some parameter (typically
+a discretisation step), the analogous comparison balances MSE against
+work, and the MSE-optimal allocation between bias and variance involves
+the asymptotic rates of $b$ and $\sigma$ as functions of the parameter.
+A representative analysis of this kind is carried out in Block~1 for
+the Euler scheme.
+\end{remark}
+
+\section{Generating Random Samples}
+\label{sec:sampling}
+
+The estimator~\eqref{eq:mc-estimator} requires independent copies of
+$Y$. The standard pipeline for producing them is two-stage. First, a
+\emph{pseudorandom number generator} produces a deterministic sequence
+$u_1, u_2, \dots \in [0,1)$ designed to be statistically
+indistinguishable, for the purposes of the simulation, from i.i.d.\
+samples of the uniform distribution on $[0,1]$. Second, a
+\emph{sampling transformation} maps these uniforms into samples from
+the distributions actually required by the model: standard normals for
+Brownian increments, exponentials for Poisson interarrivals, and so on.
+Both stages admit several constructions, and the choices interact in
+ways that matter beyond the present block.
+
+\subsection{Pseudorandom number generators}
+\label{sec:prng}
+
+A pseudorandom number generator (PRNG) is a deterministic algorithm
+that produces, from an initial \emph{seed}, a long sequence of values in
+$[0,1)$ which passes a battery of statistical tests for uniformity and
+independence. The output is reproducible: the same seed yields the same
+sequence. This determinism is a feature, not a defect: it is what makes
+debugging, regression testing, and exact reproduction of numerical
+results possible.
+
+The minimum properties demanded of a PRNG suitable for serious
+simulation are conventionally:
+\begin{enumerate}
+\item \textbf{Long period.} The eventual cycle length should exceed by
+several orders of magnitude the largest sample size that will be
+consumed.
+\item \textbf{High-dimensional equidistribution.} For applications that
+form $d$-tuples of consecutive outputs and treat them as points in
+$[0,1)^d$ (which is exactly what we shall do every time we sample a
+multivariate normal), the empirical distribution of these $d$-tuples
+should be uniform in $[0,1)^d$ for $d$ as large as is relevant.
+\item \textbf{Speed and small state.} Generation must be fast, and the
+internal state must be small enough to fit comfortably in cache.
+\item \textbf{Statistical quality.} The output must pass standard
+empirical test suites (TestU01's BigCrush is the contemporary
+benchmark).
+\end{enumerate}
+
+\paragraph{What not to use.} The classical \emph{linear congruential
+generator} (LCG) defined by $X_{n+1} = (a X_n + c) \bmod m$, normalised
+to $u_n = X_n/m$, is instructive as a cautionary example. Marsaglia
+showed in 1968 that all $d$-tuples of consecutive outputs of an LCG lie
+on at most $(d!\,m)^{1/d}$ parallel hyperplanes in $[0,1)^d$, an
+arrangement easily detected by any test sensitive to multidimensional
+structure. LCGs with poorly chosen parameters were standard in the
+1970s and 1980s and contaminated a great deal of simulation work; some
+remain bundled with libraries to this day. They have no place in
+financial Monte Carlo.
+
+\paragraph{Acceptable defaults.} Two families of generators are in
+widespread use and meet the criteria above:
+\begin{itemize}
+\item The \emph{Mersenne Twister} (MT19937) of Matsumoto and
+Nishimura~\cite{Matsumoto1998} has period $2^{19937}-1$ and is
+$623$-distributed to $32$-bit accuracy. It is the default in NumPy's
+legacy \texttt{RandomState} and in the C++ standard library
+(\texttt{std::mt19937} and \texttt{std::mt19937\_64}).
+
+\item The \emph{permuted congruential generator} family (PCG) of
+O'Neill~\cite{ONeill2014} couples an LCG with a non-linear output
+permutation, achieving statistical quality comparable to MT19937 with a
+much smaller state and faster generation. NumPy's modern
+\texttt{Generator} interface uses PCG64 by default.
+\end{itemize}
+For this project we adopt PCG64 in Python (the NumPy default) and
+\texttt{std::mt19937\_64} in C++. The choice is not critical at our
+sample sizes; either generator is comfortably above the quality
+threshold required.
+
+\paragraph{True randomness.} Hardware-based true random number
+generators exist and are appropriate for cryptography, but they are
+unsuitable for simulation precisely because their output cannot be
+reproduced. A simulation result that depends on a true random sequence
+is not falsifiable.
+
+\subsection{The inverse-transform method}
+\label{sec:inverse-transform}
+
+Given uniforms, we now turn to producing samples from arbitrary
+prescribed distributions. The most general and conceptually cleanest
+method is inversion.
+
+\begin{theorem}[Inverse-transform sampling]
+\label{thm:inverse-transform}
+Let $F: \R \to [0,1]$ be a cumulative distribution function, and define
+its generalised inverse
+\begin{equation}
+F^{-1}(u) \eqdef \inf\{ x \in \R : F(x) \geq u \},
+\qquad u \in (0,1).
+\end{equation}
+If $U \sim U(0,1)$, then $X \eqdef F^{-1}(U)$ has distribution function
+$F$.
+\end{theorem}
+
+\begin{proof}
+By construction, $F^{-1}(u) \leq x$ if and only if $u \leq F(x)$.
+Hence $\Prob(X \leq x) = \Prob(F^{-1}(U) \leq x) = \Prob(U \leq F(x))
+= F(x)$.
+\end{proof}
+
+When $F$ is continuous and strictly increasing, $F^{-1}$ is the
+ordinary inverse function. When $F$ has flats (corresponding to gaps in
+the support of the distribution) or jumps (corresponding to atoms), the
+generalised inverse handles both correctly, and the theorem applies
+without modification.
+
+The practical bottleneck of inversion is the evaluation of $F^{-1}$.
+For some distributions it is closed-form (the exponential:
+$F^{-1}(u) = -\lambda^{-1}\log(1-u)$); for the most important
+distribution in finance, the standard normal, it is not, and must be
+approximated. Section~\ref{sec:normal-sampling} addresses this.
+
+\paragraph{Why inversion is preferred over alternatives.} Two
+properties recommend inversion as the default method.
+
+First, inversion is \emph{coordinate-preserving}: it consumes one
+uniform and produces one sample of the target distribution. This means
+that if $(U_1, \dots, U_d)$ is a sample from a $d$-dimensional uniform
+construction, then $(F^{-1}(U_1), \dots, F^{-1}(U_d))$ is the
+corresponding sample of independent variables with distribution $F$,
+and the geometric structure of the $d$-dimensional construction is
+preserved. This property is essential for quasi-Monte Carlo, the
+subject of Block~3, where the points $(U_1, \dots, U_d)$ are drawn from
+a low-discrepancy sequence designed to fill $[0,1)^d$ uniformly. Methods
+that consume two uniforms per sample (such as Box--Muller, see below)
+mix two coordinates of the construction together and destroy this
+structure.
+
+Second, inversion is \emph{monotone} in $U$, which makes it compatible
+with stratification (Block~2) and with antithetic sampling: the
+antithetic of $X = F^{-1}(U)$ is $X' = F^{-1}(1-U)$, which is the
+correct antithetic in the sense of being perfectly negatively correlated
+with $X$ when $F$ is symmetric.
+
+\subsection{Sampling from the standard normal}
+\label{sec:normal-sampling}
+
+Brownian increments are by far the most common random ingredient of
+financial Monte Carlo, so the efficient and accurate generation of
+standard normal samples deserves dedicated attention.
+
+\subsubsection{Inversion: rational approximations of $\Phi^{-1}$}
+
+The standard normal inverse $\Phi^{-1}$ has no elementary closed form.
+What is available, and what every numerical library uses internally, is
+a rational approximation to $\Phi^{-1}$ of sufficiently high accuracy
+that the residual error is irrelevant compared with Monte Carlo
+sampling error. The classical approximation is
+Beasley--Springer~\cite{BeasleySpringer1977} as extended by
+Moro~\cite{Moro1995}; Wichura's algorithm AS~241~\cite{Wichura1988} is
+a widely used alternative; Acklam's approximation~\cite{Acklam2003}
+gives full double precision throughout the support and is what
+\texttt{scipy.stats.norm.ppf} effectively delivers.
+
+For the implementation work of Phase~2, we will not roll our own:
+\texttt{scipy.special.ndtri} (or, equivalently,
+\texttt{scipy.stats.norm.ppf}) in Python and
+\texttt{boost::math::quantile} on a normal distribution in C++ provide
+$\Phi^{-1}$ to machine precision. The conceptual point is that
+inversion-based normal sampling is a single call to a transcendental
+function: it is a few times slower than the alternative below, and that
+cost is the price paid for compatibility with quasi-Monte Carlo.
+
+\subsubsection{Box--Muller and Marsaglia polar}
+
+An elegant alternative converts pairs of uniforms directly into pairs
+of independent standard normals, without ever computing $\Phi^{-1}$.
+
+\begin{theorem}[Box--Muller transformation]
+\label{thm:box-muller}
+Let $U_1, U_2 \sim U(0,1)$ be independent. Define
+\begin{align}
+\label{eq:box-muller}
+X_1 &= \sqrt{-2 \log U_1}\,\cos(2\pi U_2), \\
+X_2 &= \sqrt{-2 \log U_1}\,\sin(2\pi U_2).
+\end{align}
+Then $X_1$ and $X_2$ are independent standard normal random variables.
+\end{theorem}
+
+\begin{proof}
+Writing $R = \sqrt{X_1^2 + X_2^2}$ and $\Theta = \arctan(X_2/X_1)$,
+the joint density of $(R, \Theta)$ that would arise from
+$(X_1, X_2) \sim N(0, I_2)$ in polar coordinates is
+\[
+f_{R,\Theta}(r, \theta) \;=\;
+\frac{1}{2\pi}\, r\, e^{-r^2/2},
+\qquad r \geq 0,\ \theta \in [0, 2\pi),
+\]
+which factors as the product of an exponential density on $r^2/2$ and a
+uniform density on $[0, 2\pi)$. Equivalently, with $V = R^2/2 \sim
+\mathrm{Exp}(1)$ and $\Theta \sim U[0, 2\pi)$ independent,
+$(X_1, X_2) = (\sqrt{2V}\cos\Theta, \sqrt{2V}\sin\Theta)$ is standard
+bivariate normal. Sampling $V = -\log U_1 \sim \mathrm{Exp}(1)$ by
+inversion of the exponential and $\Theta = 2\pi U_2$ by linear scaling
+of the uniform recovers~\eqref{eq:box-muller}.
+\end{proof}
+
+The Marsaglia polar method is a refinement that replaces the
+trigonometric calls with rejection sampling on the unit disc, and is
+marginally faster on architectures with slow $\sin$ and $\cos$. The
+distinction is irrelevant on modern hardware.
+
+\subsubsection{Trade-offs and the quasi-Monte Carlo consideration}
+
+Box--Muller and inversion produce statistically equivalent samples for
+the purposes of classical Monte Carlo. They differ in three respects:
+\begin{enumerate}
+\item \textbf{Speed.} Box--Muller (or Marsaglia polar) is moderately
+faster than inversion, since rational approximation of $\Phi^{-1}$ is
+costlier than $\sqrt{}, \log, \cos, \sin$.
+\item \textbf{Coordinate use.} Box--Muller consumes two uniforms to
+produce two normals. Inversion consumes one uniform to produce one
+normal.
+\item \textbf{Compatibility with low-discrepancy sequences.} A quasi-MC
+construction populates $[0,1)^d$ with deterministic points designed to
+have low discrepancy in each coordinate. If we transform these via
+inversion coordinatewise, the low-discrepancy property survives. If we
+transform them via Box--Muller, we mix coordinates~$1$ and~$2$
+nonlinearly through the trigonometric pair, and the equidistribution
+property is destroyed in those coordinates. Box--Muller is therefore
+incompatible with quasi-Monte Carlo.
+\end{enumerate}
+
+For this reason we adopt inversion as the universal sampling strategy
+for the entire project. The marginal speed advantage of Box--Muller is
+not worth the architectural inflexibility it imposes. Block~3 will
+exploit this decision directly.
+
+\subsection{Reproducibility: seeds and streams}
+\label{sec:seeds}
+
+Every Monte Carlo result reported in this project must be reproducible
+from a recorded seed. This is non-negotiable for two reasons. First,
+debugging a wrong result is impossible if the wrong result cannot be
+reproduced; an off-by-one error in an estimator has to be examined on a
+fixed sequence of paths. Second, regression testing requires that
+results not change unexpectedly between commits, which is impossible
+without seed control.
+
+In Python, this means consistently constructing generators via
+\texttt{rng = numpy.random.default\_rng(seed)} with an explicit integer
+\texttt{seed}, and passing \texttt{rng} as a parameter to every
+function that consumes randomness. The use of the deprecated
+module-level functions \texttt{numpy.random.normal} et al., which
+implicitly draw from a global mutable state, is forbidden in this
+codebase: it makes thread-safety unattainable and makes the order in
+which functions are called silently affect their outputs.
+
+In C++, the analogous discipline is to declare an
+\texttt{std::mt19937\_64 rng(seed)} as a local variable in the entry
+point of a simulation and pass \texttt{rng} by reference to every
+function that consumes randomness. Each function uses the appropriate
+\texttt{std::normal\_distribution} or \texttt{std::uniform\_real\_distribution}
+object (these are stateless modulo the engine), but the engine itself
+is owned by exactly one stack frame and threaded through.
+
+When variance reduction enters in Block~2, certain techniques (in
+particular common random numbers, used pervasively in greek estimation)
+require that two related estimators consume the \emph{same} sequence of
+uniforms. The seed-and-pass-by-reference discipline established now
+makes this trivial; an alternative discipline based on global state
+makes it impossible.
+
+\section{Roadmap for Phase~2}
+\label{sec:roadmap}
+
+The material assembled in this document threads through the remainder
+of the phase as follows.
+
+\paragraph{Block~1 (Vanilla Monte Carlo and SDE discretisation).}
+Section~\ref{sec:mc-as-integration} provides directly the framework for
+the European call MC pricer: an estimator of the
+form~\eqref{eq:mc-estimator} applied to discounted payoffs, with the
+half-width~\eqref{eq:halfwidth} as the precision report. The
+discretisation portion of the block introduces bias for the first time,
+and the bias--variance decomposition~\eqref{eq:mse} of
+Section~\ref{sec:mse} becomes the analytical tool for choosing time
+steps.
+
+\paragraph{Block~2 (Variance reduction).} Every method introduced in
+this block---antithetic variates, control variates, stratified
+sampling, importance sampling---is justified through the efficiency
+criterion of Proposition~\ref{prop:efficiency}: the variance reduction
+must dominate the additional per-replication cost. The monotonicity
+property of inversion (Section~\ref{sec:inverse-transform}) underlies
+the antithetic construction; the seed-control discipline of
+Section~\ref{sec:seeds} is required for control variates and for the
+common-random-numbers technique used in conjunction with greeks.
+
+\paragraph{Block~3 (Quasi-Monte Carlo).} The decision to adopt inversion
+as the universal sampling transformation
+(Section~\ref{sec:normal-sampling}) is taken for the express purpose of
+this block: low-discrepancy sequences cannot be processed through
+Box--Muller without losing their structure. The asymptotic regime
+of~\eqref{eq:clt} is replaced by a deterministic Koksma--Hlawka bound,
+which improves the order of convergence from $n^{-1/2}$ to nearly
+$n^{-1}$ at the cost of dimension dependence in the constant.
+
+\paragraph{Block~4 (Greeks).} Pathwise and likelihood-ratio estimators
+of price sensitivities are themselves Monte Carlo estimators, to which
+the apparatus of Section~\ref{sec:mc-as-integration} applies directly.
+Bumped finite-difference estimators introduce both bias (from the
+finite-difference truncation) and variance, and the optimal bump size
+balances them according to the same logic as the discretisation step
+in Block~1. Common random numbers across the bumped and unbumped
+simulations are essential for variance control.
+
+\paragraph{Block~5 (Path-dependent options).} Asian, barrier, and
+lookback payoffs are functionals of the entire simulated path. The
+machinery of estimator, variance, and confidence interval is unchanged;
+the per-replication cost increases, and the variance can be very large
+(barrier options especially), making variance reduction techniques from
+Block~2 not optional but essential.
+
+\paragraph{Block~6 (American options).} Least-squares Monte Carlo
+introduces a nested estimation structure---continuation values are
+themselves estimated within a Monte Carlo loop---which produces a bias
+that does not vanish as the outer sample size grows. The bias--variance
+framework of Section~\ref{sec:mse} is again the relevant analytical
+tool, now with a non-trivial bias contribution that must be controlled
+by basis selection rather than by sample size alone.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The principal reference throughout Phase~2 is
+Glasserman~\cite{Glasserman}; the material of this document corresponds
+to Sections~1.1 and Chapter~2 of that text, with a slight reordering
+to bring the efficiency criterion into the same section as the basic
+estimator analysis. Asmussen and Glynn~\cite{AsmussenGlynn} provide a
+more probabilistic and less finance-oriented treatment of the same
+material, with a substantially more detailed discussion of estimator
+asymptotics and of random number generation; their Chapter~3 is the
+recommended supplement for the contents of
+Section~\ref{sec:mc-as-integration}, and their Chapter~2 covers the
+RNG material of Section~\ref{sec:prng} in greater depth. For PRNGs
+specifically, L'Ecuyer~\cite{LEcuyer2012} is a thorough survey from one
+of the leading practitioners in the field; the original papers on the
+Mersenne Twister~\cite{Matsumoto1998} and the PCG
+family~\cite{ONeill2014} are short and readable.
+
+\begin{thebibliography}{99}
+
+\bibitem{Acklam2003}
+P.\ J.\ Acklam,
+\emph{An algorithm for computing the inverse normal cumulative
+distribution function},
+Available online (technical note), 2003.
+
+\bibitem{AsmussenGlynn}
+S.\ Asmussen and P.\ W.\ Glynn,
+\emph{Stochastic Simulation: Algorithms and Analysis},
+Springer, 2007.
+
+\bibitem{BeasleySpringer1977}
+J.\ D.\ Beasley and S.\ G.\ Springer,
+\emph{The percentage points of the normal distribution},
+Applied Statistics, 26(1):118--121, 1977.
+
+\bibitem{Etheridge}
+A.\ Etheridge,
+\emph{A Course in Financial Calculus},
+Cambridge University Press, 2002.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{LEcuyer2012}
+P.\ L'Ecuyer,
+\emph{Random Number Generation},
+in: J.\ E.\ Gentle, W.\ K.\ H\"ardle, Y.\ Mori (eds.),
+Handbook of Computational Statistics, Springer, 2012, pp.\ 35--71.
+
+\bibitem{Matsumoto1998}
+M.\ Matsumoto and T.\ Nishimura,
+\emph{Mersenne Twister: A 623-dimensionally equidistributed uniform
+pseudo-random number generator},
+ACM Transactions on Modeling and Computer Simulation, 8(1):3--30, 1998.
+
+\bibitem{Moro1995}
+B.\ Moro,
+\emph{The full Monte},
+Risk, 8(2):57--58, 1995.
+
+\bibitem{ONeill2014}
+M.\ E.\ O'Neill,
+\emph{PCG: A family of simple fast space-efficient statistically good
+algorithms for random number generation},
+Technical Report HMC-CS-2014-0905, Harvey Mudd College, 2014.
+
+\bibitem{Wichura1988}
+M.\ J.\ Wichura,
+\emph{Algorithm AS~241: The percentage points of the normal
+distribution},
+Applied Statistics, 37(3):477--484, 1988.
+
+\end{thebibliography}
+
+\end{document}
