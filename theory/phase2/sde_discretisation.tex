@@ -1,0 +1,891 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\Lop}{\mathcal{L}}
+
+% ---------- Document metadata ----------
+\title{SDE Discretisation:\\
+       It\^o-Taylor Expansions, Euler--Maruyama, and Milstein Schemes}
+\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 2 (theory)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The exact GBM sampler used in Block~1.1 exploited a closed-form
+solution of the underlying SDE. Beyond Black--Scholes, closed forms
+are essentially unavailable: pricing under local volatility, stochastic
+volatility, jump-diffusion, or path-dependent payoffs all require
+\emph{simulating} approximate trajectories of the underlying
+stochastic process by discretising the SDE in time. This document
+develops the foundations of that discretisation: the two notions of
+convergence relevant to SDEs (\emph{strong} and \emph{weak}), the
+It\^o-Taylor expansion that generates discretisation schemes
+systematically, and the two canonical schemes of order one in the
+relevant senses (Euler--Maruyama and Milstein). The emphasis is
+conceptual: the precise statements of convergence theorems are given
+without proof (Kloeden--Platen is the canonical reference), but the
+\emph{reason} behind each convergence order is developed in detail
+through the It\^o-Taylor expansion, and the practical consequences for
+finance applications are spelled out.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+Block~1.1 priced the European call by drawing $S_T$ from its exact
+distribution under geometric Brownian motion. The construction was
+trivial because the GBM SDE
+\begin{equation}
+\dd S_t \;=\; r S_t \dd t + \sigma S_t \dd W_t
+\end{equation}
+admits a closed-form solution, $S_T = S_0 \exp((r - \sigma^2/2)T +
+\sigma W_T)$, so a single normal draw suffices to generate one path's
+terminal value. The exactness was a luxury, not a method.
+
+Almost every model of practical interest beyond Black--Scholes lacks
+such a closed form. Local volatility, where $\sigma$ depends on $t$
+and $S_t$, has no closed form for $S_T$ even in simple parameterisations.
+Stochastic volatility models like Heston have a known characteristic
+function but no closed form for the joint $(S_T, V_T)$.
+Jump-diffusion models add a Poisson component that destroys the
+log-normal structure entirely. In all these cases, the only practical
+route to $\E[f(S_T)]$ is to simulate \emph{approximate} trajectories
+by discretising the SDE in time and then averaging.
+
+The discretisation introduces a new kind of error, qualitatively
+different from the statistical error of Block~1.1. The Monte Carlo
+estimator was unbiased: any deviation between $\hat C_n$ and
+$C_{\mathrm{BS}}$ was purely sampling error, controlled by $1/\sqrt{n}$.
+Once we replace the exact $S_T$ by a discretised $\hat S_T$, the
+estimator becomes \emph{biased}: even with $n = \infty$ paths, we
+estimate $\E[f(\hat S_T)]$, not $\E[f(S_T)]$. The size of the bias
+depends on the time step $h$ and on the scheme, and the central
+analytical question of this block is: at what rate does this bias
+vanish as $h \to 0$?
+
+The answer is not a single number. SDE solutions admit two distinct
+and largely independent notions of approximation, called \emph{strong}
+and \emph{weak} convergence. The strong notion measures pathwise
+proximity, the weak notion measures distributional proximity, and a
+discretisation scheme can be of different order in the two senses.
+The most consequential example is the Euler--Maruyama scheme, which
+has strong order $\tfrac{1}{2}$ but weak order $1$.
+
+The remainder of this document is structured as follows.
+Section~\ref{sec:setting} fixes the SDE setting and introduces the
+abstract notion of a discretisation scheme.
+Section~\ref{sec:convergence} develops the two notions of convergence
+in parallel, with examples and an explicit relation between them.
+Section~\ref{sec:ito-taylor} derives the It\^o-Taylor expansion at the
+level of detail required to read off discretisation schemes from it.
+Section~\ref{sec:euler} derives the Euler--Maruyama scheme as a
+first-order truncation and states its convergence orders.
+Section~\ref{sec:milstein} does the same for the Milstein scheme as a
+second-order truncation. Section~\ref{sec:practical} discusses which
+scheme is appropriate in which context. Section~\ref{sec:roadmap}
+sets up the implementation work of Blocks~1.2.1 and~1.2.2.
+
+\section{Setting and discretisation schemes}
+\label{sec:setting}
+
+\subsection{The scalar It\^o SDE}
+
+We work with a scalar It\^o SDE
+\begin{equation}
+\label{eq:sde}
+\dd X_t \;=\; a(X_t) \dd t \;+\; b(X_t) \dd W_t,
+\qquad X_0 = x_0,
+\qquad t \in [0, T],
+\end{equation}
+on a filtered probability space $(\Omega, \F, \{\F_t\}_{t \in [0,T]},
+\Prob)$ supporting a standard Brownian motion $W$. The coefficients
+$a, b: \R \to \R$ are taken sufficiently regular (Lipschitz, with
+linear growth) for a unique strong solution to exist; we will state
+the additional regularity required by each convergence theorem when
+needed.
+
+Geometric Brownian motion is the running example: $a(x) = r x$,
+$b(x) = \sigma x$. We will refer back to it both for sanity checks and
+because the closed-form solution of GBM provides the reference path
+against which the discretised paths of Blocks~1.2.1 and~1.2.2 will be
+validated empirically.
+
+\subsection{Discretisation schemes}
+
+Fix a partition
+\begin{equation}
+0 = t_0 < t_1 < \dots < t_N = T,
+\qquad t_n = n h,
+\qquad h = T / N,
+\end{equation}
+and the corresponding Brownian increments
+\begin{equation}
+\Delta W_n \;\eqdef\; W_{t_{n+1}} - W_{t_n}
+\;\sim\; \mathcal{N}(0, h),
+\qquad n = 0, 1, \dots, N-1.
+\end{equation}
+The increments $\Delta W_n$ are independent across $n$ by the
+independent-increments property of Brownian motion.
+
+A \emph{discretisation scheme} for~\eqref{eq:sde} is a deterministic
+recursion of the form
+\begin{equation}
+\label{eq:scheme-abstract}
+\hat X_{n+1} \;=\; \Psi\!\left(
+\hat X_n,\ h,\ \Delta W_n,\ \dots
+\right),
+\qquad \hat X_0 = x_0,
+\end{equation}
+where $\Psi$ is some function of the current state, the step size, the
+Brownian increment, and possibly higher-order random variables (we
+will see exactly which in the It\^o-Taylor section). The output is a
+sequence $\hat X_0, \hat X_1, \dots, \hat X_N$ that we interpret as
+approximations to $X_{t_0}, X_{t_1}, \dots, X_{t_N}$.
+
+Two clarifications. First, the partition is uniform throughout this
+document. Adaptive step sizes exist and have their place but are not
+needed here. Second, the scheme is deterministic given
+$\Delta W_0, \dots, \Delta W_{N-1}$: same Brownian path, same scheme,
+same output, no internal randomness in $\Psi$ beyond the increments.
+
+\section{Strong and weak convergence}
+\label{sec:convergence}
+
+The fundamental distinction of SDE numerical analysis, absent from
+the deterministic ODE setting, is that there is more than one natural
+sense in which $\hat X_N$ approximates $X_T$. We develop the two
+relevant notions and explore their relationship.
+
+\subsection{Pathwise vs distributional approximation}
+
+Suppose we run the scheme with the \emph{same} Brownian increments
+$\Delta W_n$ that were used to build the exact solution $X_T$ on a
+common probability space. Two natural questions about the quality of
+the approximation suggest themselves:
+
+\begin{enumerate}
+\item How close is $\hat X_N$ to $X_T$, \emph{path by path}? That is,
+on a typical realisation $\omega \in \Omega$, how large is
+$|X_T(\omega) - \hat X_N(\omega)|$?
+\item How close is the distribution of $\hat X_N$ to that of $X_T$?
+That is, for nice test functions $f$, how large is
+$|\E[f(\hat X_N)] - \E[f(X_T)]|$?
+\end{enumerate}
+
+These questions are formally distinct. The first requires that
+$X_T$ and $\hat X_N$ live on the same probability space, which we
+arrange by sharing the Brownian path. The second is about marginal
+distributions and does not require any coupling: even if $\hat X_N$
+were generated from an entirely separate Brownian motion, the
+expectation $\E[f(\hat X_N)]$ is well-defined and the comparison with
+$\E[f(X_T)]$ remains sensible.
+
+The first question is what \emph{strong} convergence formalises; the
+second, what \emph{weak} convergence formalises.
+
+\subsection{Strong convergence}
+
+\begin{definition}[Strong convergence]
+\label{def:strong}
+A discretisation scheme is said to converge \emph{strongly} to the
+solution of~\eqref{eq:sde} with order $\gamma > 0$ if there exist
+constants $C > 0$ and $h_0 > 0$ such that, when the scheme is run on
+the Brownian path of $X$,
+\begin{equation}
+\label{eq:strong-defn}
+\E\!\left[\, |X_T - \hat X_N| \,\right] \;\leq\; C\, h^\gamma
+\qquad \text{for all } h \in (0, h_0].
+\end{equation}
+\end{definition}
+
+The expectation is taken over the (shared) Brownian path. The
+definition uses $L^1$ norm, which is the most common choice; some
+references use $L^2$ instead, with a corresponding adjustment of the
+constant $C$ but the same order $\gamma$ for all the schemes we will
+consider.
+
+The strong error~\eqref{eq:strong-defn} measures average pathwise
+deviation. It is the relevant quantity whenever a single trajectory of
+the discretised process is meant to stand in for a single trajectory
+of the true process: in pathwise sensitivity analysis (greeks via the
+pathwise method, see Block~4), in optimal control problems where the
+control is adapted to the simulated path, and in any context where
+two related quantities must be evaluated on the \emph{same} simulated
+path.
+
+\subsection{Weak convergence}
+
+\begin{definition}[Weak convergence]
+\label{def:weak}
+A discretisation scheme is said to converge \emph{weakly} to the
+solution of~\eqref{eq:sde} with order $\beta > 0$ if for every test
+function $f$ in a specified class of smooth functions (typically
+polynomials of degree $\leq 2 \beta$ with bounded derivatives, or
+$C_b^{2\beta}$), there exist constants $C_f > 0$ and $h_0 > 0$ such
+that
+\begin{equation}
+\label{eq:weak-defn}
+\big| \E[f(X_T)] - \E[f(\hat X_N)] \big|
+\;\leq\; C_f\, h^\beta
+\qquad \text{for all } h \in (0, h_0].
+\end{equation}
+\end{definition}
+
+The weak error compares expectations of test functions, which are
+averages over all paths. No coupling between the discretised and the
+exact processes is required by the definition: $\E[f(\hat X_N)]$
+depends only on the distribution of $\hat X_N$, regardless of how
+$\hat X_N$ is constructed.
+
+The weak error~\eqref{eq:weak-defn} is the relevant quantity whenever
+the Monte Carlo estimator is used to compute an expectation: option
+pricing under risk-neutral measure, expected utility, the partition
+function in physics, and so on. In each of these settings, what is
+estimated by the simulation is an integral against the law of $X_T$,
+and only the marginal distribution matters.
+
+\subsection{Why the two are different}
+
+The two notions are formally different because they probe different
+features of the joint law of $(X_T, \hat X_N)$. Strong convergence
+sees the dependence structure between $X$ and $\hat X$; weak
+convergence sees only their marginal distributions. The following
+elementary example illustrates how dramatic the difference can be.
+
+\begin{example}[Independent Gaussians]
+\label{ex:indep-gauss}
+Let $X \sim \mathcal{N}(0, 1)$ and $\hat X \sim \mathcal{N}(0, 1)$ be
+independent. Then $X$ and $\hat X$ have \emph{identical} marginal
+distributions, so $\E[f(X)] = \E[f(\hat X)]$ for every $f$ and the
+``weak error'' is zero. But the pathwise distance is large:
+$\E[|X - \hat X|] = \E[|X|] + \E[|\hat X|]$ by independence of
+$X$ and $\hat X$ ... no, more carefully,
+$\E[|X - \hat X|] = \sqrt{2/\pi} \cdot \sqrt{2} = 2/\sqrt{\pi} \approx 1.13$,
+which is firmly bounded away from zero.
+\end{example}
+
+The example is a degenerate case (no time step, no SDE), but it
+captures the principle: the strong and weak notions can disagree
+arbitrarily on objects with identical marginals. For SDE schemes the
+difference is more subtle but operates in the same direction: weak
+convergence exploits cancellation across paths that strong
+convergence cannot see.
+
+A useful one-way relation between the two does hold, however. Suppose
+$X_T$ and $\hat X_N$ are coupled (run on the same Brownian path), and
+$f$ is Lipschitz with constant $L_f$. Then by Jensen's inequality,
+\begin{equation}
+\label{eq:weak-lip-strong}
+\big| \E[f(X_T)] - \E[f(\hat X_N)] \big|
+\;=\; \big| \E[f(X_T) - f(\hat X_N)] \big|
+\;\leq\; \E[|f(X_T) - f(\hat X_N)|]
+\;\leq\; L_f\, \E[|X_T - \hat X_N|].
+\end{equation}
+So strong order $\gamma$ implies weak order $\geq \gamma$ for
+Lipschitz test functions. The converse fails: weak order can strictly
+exceed strong order, and we will see this happen for Euler--Maruyama
+(strong $\tfrac{1}{2}$, weak $1$).
+
+\subsection{Which one matters in this project}
+
+For European option pricing under a risk-neutral measure, the quantity
+of interest is $\E[e^{-rT} \Phi(X_T)]$ for a payoff $\Phi$. This is
+weak: marginal distributions only. \emph{Strong convergence is
+irrelevant for the European pricing of Block~1.2.1 and~1.2.2.} What
+we require, and what we will measure empirically, is weak order.
+
+For path-dependent pricing in Block~5, the relevant question becomes
+the weak error on functionals of the entire path
+$\E[\Phi(X_{[0,T]})]$, not just on $\E[\Phi(X_T)]$. The marginals at
+the grid points are not enough; in particular, for barrier options the
+discretised supremum has its own bias of order $\sqrt{h}$ that adds to
+any scheme's marginal error, and a Brownian-bridge correction will be
+deployed. Strong convergence remains irrelevant to barrier pricing
+\emph{per se}.
+
+For pathwise sensitivity analysis in Block~4, by contrast, strong
+convergence becomes essential: the pathwise estimator differentiates
+the simulated path with respect to a parameter, and that
+differentiation requires the path to be a faithful pathwise
+approximation of the true process.
+
+We therefore care about both notions across the project, but in
+different blocks. For Block~1.2 specifically the operational
+conclusion is that we will measure both orders empirically (the strong
+order is interesting because it is the surprising one: $\tfrac{1}{2}$
+for Euler), but only the weak order is the metric that justifies
+using a given scheme for European pricing.
+
+\section{The It\^o-Taylor expansion}
+\label{sec:ito-taylor}
+
+This section develops the device by which discretisation schemes for
+SDEs are derived systematically. The mechanics generalise the
+deterministic Taylor expansion, with the role of the chain rule
+played by It\^o's formula. The treatment is detailed because the
+expansion is the principal source of conceptual novelty in this block.
+
+\subsection{Reminder: Taylor expansion for ODEs}
+
+Consider the deterministic ODE $\dot x = a(x)$. The Taylor expansion
+of $x(t + h)$ around $x(t)$ to second order reads
+\begin{equation}
+x(t + h) \;=\; x(t) + h\, \dot x(t) + \tfrac{1}{2} h^2 \ddot x(t) + O(h^3).
+\end{equation}
+Using the ODE itself, $\dot x = a(x)$ and $\ddot x = a'(x)\, \dot x =
+a'(x)\, a(x)$. Substituting,
+\begin{equation}
+\label{eq:ode-taylor}
+x(t + h) \;=\; x(t) + h\, a(x(t)) + \tfrac{1}{2} h^2 a'(x(t))\, a(x(t))
++ O(h^3).
+\end{equation}
+The explicit Euler scheme for ODEs is precisely the truncation of
+\eqref{eq:ode-taylor} after the first-order term:
+$x_{n+1} = x_n + h\, a(x_n)$. Higher-order schemes (improved Euler,
+Runge--Kutta) keep more terms.
+
+This logic extends to SDEs but with two complications: (i) the
+solution $X_t$ of~\eqref{eq:sde} is not differentiable in $t$, so we
+cannot literally Taylor-expand in time; (ii) the chain rule for
+$f(X_t)$ is It\^o's formula, which carries a quadratic-variation term
+absent in the ODE case. The first difficulty is overcome by working
+with the integral form of the SDE, the second by accepting It\^o's
+formula as the SDE chain rule.
+
+\subsection{It\^o's formula and the generator}
+\label{sec:ito-and-generator}
+
+Recall It\^o's formula for a $C^2$ function $f$:
+\begin{equation}
+\label{eq:itos-formula}
+\dd f(X_t) \;=\;
+\Lop f(X_t) \dd t \;+\; f'(X_t)\, b(X_t) \dd W_t,
+\end{equation}
+where the \emph{It\^o generator} $\Lop$ is the operator
+\begin{equation}
+\label{eq:generator}
+\Lop f(x) \;\eqdef\; a(x) f'(x) + \tfrac{1}{2} b^2(x) f''(x).
+\end{equation}
+Integrating~\eqref{eq:itos-formula} from $t$ to $t + h$,
+\begin{equation}
+\label{eq:itos-integral}
+f(X_{t+h}) \;=\; f(X_t) + \int_t^{t+h} \Lop f(X_s) \dd s
+\;+\; \int_t^{t+h} f'(X_s)\, b(X_s) \dd W_s.
+\end{equation}
+
+Two interpretations of $\Lop$ are useful. As a differential operator,
+$\Lop$ is the second-order operator that gives the drift of $f(X)$
+under~\eqref{eq:sde}; the second-derivative term comes from the
+quadratic variation of $W$. As an analogue of $a \cdot f'$ in the
+deterministic case, $\Lop$ plays the role of the ``time derivative''
+operator for SDEs: it is the Markov generator of the diffusion $X$,
+and $\Lop f(x) = \lim_{h \to 0} h^{-1}\, (\E[f(X_{t+h}) | X_t = x] -
+f(x))$.
+
+The integral identity~\eqref{eq:itos-integral} is the SDE analogue of
+the fundamental theorem of calculus. The It\^o-Taylor expansion is what
+results from \emph{iterating} this identity.
+
+\subsection{First iteration: the SDE in integral form}
+
+Apply~\eqref{eq:itos-integral} with $f(x) = x$. Since $f' = 1$ and
+$f'' = 0$, the generator gives $\Lop f = a$, and
+$f' \cdot b = b$. The result is
+\begin{equation}
+\label{eq:sde-integral}
+X_{t+h} \;=\; X_t + \int_t^{t+h} a(X_s) \dd s
+\;+\; \int_t^{t+h} b(X_s) \dd W_s.
+\end{equation}
+This is just the SDE~\eqref{eq:sde} in integral form, no surprise.
+What it gives us, however, is a starting point: $X_{t+h}$ is expressed
+in terms of $X_t$ plus two integrals over $[t, t+h]$ involving
+$a(X_s)$ and $b(X_s)$. If we could replace $a(X_s)$ and $b(X_s)$ by
+$a(X_t)$ and $b(X_t)$ at the cost of a small error, we would have
+\begin{equation}
+X_{t+h} \;\approx\; X_t + a(X_t) h + b(X_t) \Delta W,
+\end{equation}
+which is the Euler--Maruyama scheme. The question is what ``small
+error'' means and how to quantify it. We answer this by applying
+\eqref{eq:itos-integral} again, this time to $a$ and to $b$.
+
+\subsection{Second iteration: expanding the integrands}
+\label{sec:second-iteration}
+
+Apply~\eqref{eq:itos-integral} with $f = a$:
+\begin{equation}
+\label{eq:expand-a}
+a(X_s) \;=\; a(X_t) + \int_t^s \Lop a(X_u) \dd u
+\;+\; \int_t^s a'(X_u)\, b(X_u) \dd W_u
+\qquad \text{for } s \in [t, t+h],
+\end{equation}
+and similarly with $f = b$:
+\begin{equation}
+\label{eq:expand-b}
+b(X_s) \;=\; b(X_t) + \int_t^s \Lop b(X_u) \dd u
+\;+\; \int_t^s b'(X_u)\, b(X_u) \dd W_u.
+\end{equation}
+Substitute~\eqref{eq:expand-a} and~\eqref{eq:expand-b}
+into~\eqref{eq:sde-integral}. The first integral becomes
+\begin{equation}
+\int_t^{t+h} a(X_s) \dd s
+\;=\; a(X_t) \int_t^{t+h} \dd s
+\;+\; \int_t^{t+h}\!\!\int_t^s \Lop a(X_u) \dd u \dd s
+\;+\; \int_t^{t+h}\!\!\int_t^s a'(X_u) b(X_u) \dd W_u \dd s.
+\end{equation}
+The second integral becomes
+\begin{equation}
+\int_t^{t+h} b(X_s) \dd W_s
+\;=\; b(X_t) \int_t^{t+h} \dd W_s
+\;+\; \int_t^{t+h}\!\!\int_t^s \Lop b(X_u) \dd u \dd W_s
+\;+\; \int_t^{t+h}\!\!\int_t^s b'(X_u) b(X_u) \dd W_u \dd W_s.
+\end{equation}
+Combining,
+\begin{equation}
+\label{eq:two-iterations}
+X_{t+h} \;=\; X_t \;+\; a(X_t) h \;+\; b(X_t) \Delta W
+\;+\; b(X_t) b'(X_t)\, I_{(1,1)}
+\;+\; R,
+\end{equation}
+where:
+\begin{itemize}
+\item $\Delta W = W_{t+h} - W_t = \int_t^{t+h} \dd W_s$,
+\item $I_{(1,1)} \eqdef \int_t^{t+h}\!\!\int_t^s \dd W_u \dd W_s$ is
+the iterated It\^o integral over two Brownian increments,
+\item $R$ collects all remaining terms: the drift--drift double
+integral $\int\!\int \Lop a$, the drift--diffusion mixed
+$\int\!\int a' b$, and so on, plus the leftover integrand factors
+that we replaced by their values at $t$.
+\end{itemize}
+We have deliberately written~\eqref{eq:two-iterations} so that the
+$b\, b' \cdot I_{(1,1)}$ term is isolated, because it is the term
+that distinguishes Milstein from Euler.
+
+\subsection{Closed form for the iterated integral}
+\label{sec:iterated-integral}
+
+The iterated It\^o integral $I_{(1,1)}$ admits a closed form. Apply
+It\^o's formula to $f(W_t) = \tfrac{1}{2} W_t^2$:
+\begin{equation}
+\dd \!\left(\tfrac{1}{2} W_t^2\right) \;=\; W_t \dd W_t + \tfrac{1}{2} \dd t,
+\end{equation}
+which integrated from $t$ to $t+h$ gives
+\begin{equation}
+\tfrac{1}{2}(W_{t+h}^2 - W_t^2) \;=\; \int_t^{t+h} W_s \dd W_s
+\;+\; \tfrac{1}{2} h.
+\end{equation}
+Subtract $W_t \int_t^{t+h} \dd W_s = W_t \Delta W$ from both sides
+and use $W_s - W_t = \int_t^s \dd W_u$ for $s \in [t, t+h]$:
+\begin{equation}
+\int_t^{t+h} (W_s - W_t) \dd W_s
+\;=\; \tfrac{1}{2}((W_{t+h} - W_t)^2 - h)
+\;=\; \tfrac{1}{2}\big((\Delta W)^2 - h\big).
+\end{equation}
+The left-hand side is exactly $I_{(1,1)}$ (using
+$W_s - W_t = \int_t^s \dd W_u$ and Fubini for stochastic integrals,
+which holds in this It\^o setting). Therefore
+\begin{equation}
+\label{eq:I11}
+I_{(1,1)} \;=\; \tfrac{1}{2}\big( (\Delta W)^2 - h \big).
+\end{equation}
+
+This identity is the key technical ingredient of the Milstein scheme:
+it expresses the iterated integral, which is in principle a
+$\sigma$-algebra-rich object built from the Brownian increment plus
+its variance structure, in terms of the Brownian increment alone. We
+do not need to simulate $I_{(1,1)}$ separately; given $\Delta W \sim
+\mathcal{N}(0, h)$, we already know $I_{(1,1)}$ exactly.
+
+\begin{remark}[Multidimensional case]
+For SDEs driven by several independent Brownian motions $W^{(1)},
+\dots, W^{(d)}$, the analogue of~\eqref{eq:I11} for cross-iterated
+integrals such as $\int\!\int \dd W^{(i)} \dd W^{(j)}$ with $i \neq j$
+\emph{does not} have a closed form in terms of the increments.
+Simulating these cross-iterated integrals exactly requires extra work
+(or a Brownian bridge construction), and this is the reason the
+Milstein scheme in dimension $d \geq 2$ is significantly more
+demanding than in dimension $1$. Phase~2 stays in the scalar setting,
+so~\eqref{eq:I11} is sufficient.
+\end{remark}
+
+\subsection{The expansion to second order}
+
+Substituting~\eqref{eq:I11} into~\eqref{eq:two-iterations}:
+\begin{equation}
+\label{eq:taylor-order-two}
+X_{t+h} \;=\; X_t + a(X_t) h + b(X_t) \Delta W
+\;+\; \tfrac{1}{2} b(X_t) b'(X_t)\, \big[(\Delta W)^2 - h\big]
+\;+\; R.
+\end{equation}
+The remainder $R$ contains all the terms that have not been written
+explicitly: the double drift integral, the mixed integrals, and the
+contributions from the integrands $\Lop a, a' b, \Lop b, b' b$
+evaluated at points $X_u$ rather than $X_t$. Each of these terms is,
+on closer inspection, of higher order in $h$ than the explicit terms:
+the double drift integral is $O(h^2)$, the mixed drift--diffusion
+integrals are $O(h^{3/2})$ in $L^1$, and so on. The next subsection
+makes this precise informally.
+
+\subsection{Sizes of stochastic increments}
+\label{sec:sizes}
+
+A useful heuristic for predicting which terms matter at which order is
+the rule of thumb
+\begin{equation}
+\Delta W \;\sim\; \sqrt{h},
+\qquad h \;\sim\; h.
+\end{equation}
+That is, the random increment $\Delta W$ has standard deviation
+$\sqrt{h}$, so its ``typical size'' in any norm sensitive to it is
+$\sqrt{h}$, while a deterministic increment of size $h$ stays $h$.
+Combinations:
+\begin{itemize}
+\item $(\Delta W)^2 \sim h$ (since $\Var(\Delta W) = h$),
+\item $\Delta W \cdot h \sim h^{3/2}$,
+\item $(\Delta W)^3 \sim h^{3/2}$ (third moment of $\mathcal{N}(0, h)$
+is $0$, but typical magnitudes are $h^{3/2}$),
+\item double iterated integrals like
+$\int\!\int \dd W \dd W \sim h$ (this is precisely $I_{(1,1)}$ from
+\eqref{eq:I11}),
+\item double iterated integrals like $\int\!\int \dd s \dd s \sim h^2$.
+\end{itemize}
+
+This calculus is informal but accurate enough to predict the orders
+of all schemes we will encounter. With it, the structure of
+\eqref{eq:taylor-order-two} becomes:
+\begin{itemize}
+\item $a(X_t)\, h$: order $h$.
+\item $b(X_t)\, \Delta W$: order $h^{1/2}$.
+\item $\tfrac{1}{2} b\, b'\, [(\Delta W)^2 - h]$: order $h$.
+\item $R$ (terms not written): order $h^{3/2}$ and higher.
+\end{itemize}
+
+\section{The Euler--Maruyama scheme}
+\label{sec:euler}
+
+\subsection{Derivation as first-order truncation}
+
+The Euler--Maruyama scheme is obtained by truncating
+\eqref{eq:taylor-order-two} after the $\Delta W$ term: keep $h$ and
+$h^{1/2}$, drop $h$ from $I_{(1,1)}$ and everything beyond. The
+recursion is
+\begin{equation}
+\label{eq:euler}
+\hat X_{n+1} \;=\; \hat X_n
+\;+\; a(\hat X_n)\, h
+\;+\; b(\hat X_n)\, \Delta W_n,
+\qquad \hat X_0 = x_0.
+\end{equation}
+This is the natural extension to SDEs of the explicit Euler scheme
+for ODEs: replace $a$ by $b\, dW$ where appropriate and add the
+stochastic increment.
+
+The truncation drops, at each step, a quantity that
+\eqref{eq:taylor-order-two} reveals to be of size $h$ (the
+$I_{(1,1)}$-related term) plus higher-order remainders.
+
+\subsection{Convergence orders}
+
+\begin{theorem}[Convergence of Euler--Maruyama]
+\label{thm:euler-conv}
+Suppose $a, b \in C^2(\R)$ with $a, b, a', b'$ Lipschitz and bounded.
+The Euler--Maruyama scheme~\eqref{eq:euler} converges to the solution
+of~\eqref{eq:sde} with strong order $\gamma = \tfrac{1}{2}$ and weak
+order $\beta = 1$.
+\end{theorem}
+
+The proof is technical and is given in Kloeden--Platen,
+\S\,10.2 (strong) and \S\,14.5 (weak). We do not reproduce it. What
+we do is explain, at the level of intuition, why the orders are
+$\tfrac{1}{2}$ and $1$ respectively.
+
+\paragraph{Why strong order $\tfrac{1}{2}$.} The local truncation
+error of one Euler step is the dropped term
+$\tfrac{1}{2} b b' [(\Delta W)^2 - h] + O(h^{3/2})$.
+In $L^1$, $|(\Delta W)^2 - h|$ has expectation
+$\E[|(\Delta W)^2 - h|] \sim h$ (this is a moment of a centred chi-square), so the local
+strong error is $O(h)$. There are $N = T/h$ steps and the errors
+combine in $L^1$ via a Gronwall-type argument that is essentially a
+square-root law (the variance accumulates linearly, not the standard
+deviation). The global strong error is thus $\sqrt{N \cdot h^2} =
+\sqrt{T h}$, that is, $O(h^{1/2})$.
+
+\paragraph{Why weak order $1$.} The local truncation error has
+expectation $\tfrac{1}{2} \E[b b' \cdot ((\Delta W)^2 - h)]$, which
+\emph{vanishes} because $\E[(\Delta W)^2 - h] = 0$. The leading
+contribution to the weak error therefore comes from the next term in
+the expansion, which is $O(h^{3/2})$ but again has zero mean to
+leading order; what survives are second-moment terms of size $O(h^2)$
+locally, accumulating to $O(h)$ globally. Hence weak order $1$.
+
+The asymmetry $\gamma = \tfrac{1}{2}, \beta = 1$ is therefore not an
+accident: it reflects the fact that the dominant ``missing'' term
+$\tfrac{1}{2} b b' [(\Delta W)^2 - h]$ is path-dependent (so seen by
+$L^1$) but mean-zero (so invisible to $\E[\cdot]$).
+
+\subsection{What the order means in practice}
+
+Suppose we want to halve the strong error: we must \emph{quarter} the
+step size $h$ (since strong error $\sim h^{1/2}$). The number of steps
+$N = T/h$ quadruples and so does the simulation cost (per path). To
+halve the weak error: we must halve the step size; cost only doubles.
+
+For European pricing, where weak order is what matters, Euler is
+respectable. For pathwise applications, the strong order
+$\tfrac{1}{2}$ becomes a real bottleneck and is the motivation for
+moving to Milstein.
+
+\subsection{Application to GBM}
+
+For geometric Brownian motion, $a(x) = r x$ and $b(x) = \sigma x$, so
+\eqref{eq:euler} becomes
+\begin{equation}
+\label{eq:euler-gbm}
+\hat S_{n+1} \;=\; \hat S_n + r\, \hat S_n\, h
+\;+\; \sigma\, \hat S_n\, \Delta W_n
+\;=\; \hat S_n \big(1 + r h + \sigma \Delta W_n\big).
+\end{equation}
+The recursion is multiplicative, which is convenient. A nuisance,
+specific to GBM under Euler: there is no a priori guarantee that
+$\hat S_n$ remains positive: if a $\Delta W_n$ is negative enough that
+$1 + r h + \sigma \Delta W_n < 0$, the simulated price becomes
+negative or zero, which is unphysical. The probability of this for
+realistic parameters and reasonable $h$ is small but nonzero, and the
+log-Euler scheme (apply Euler in $\log S$, then exponentiate)
+sidesteps the issue. We will mention this in the implementation but
+not adopt it: the standard Euler is the canonical scheme and exhibits
+the canonical convergence behaviour we want to validate.
+
+\section{The Milstein scheme}
+\label{sec:milstein}
+
+\subsection{Derivation as second-order truncation}
+
+The Milstein scheme is obtained by keeping the $I_{(1,1)}$ term in
+\eqref{eq:taylor-order-two}, that is, truncating after order $h$:
+\begin{equation}
+\label{eq:milstein}
+\hat X_{n+1} \;=\; \hat X_n
+\;+\; a(\hat X_n)\, h
+\;+\; b(\hat X_n)\, \Delta W_n
+\;+\; \tfrac{1}{2} b(\hat X_n)\, b'(\hat X_n)\,
+\big[(\Delta W_n)^2 - h\big],
+\qquad \hat X_0 = x_0.
+\end{equation}
+The new term, called the Milstein correction, is the iterated It\^o
+integral $I_{(1,1)}$ multiplied by $b\, b'$ evaluated at the current
+state. By~\eqref{eq:I11} this term is computable directly from
+$\Delta W_n$ and $h$, with no extra random variables. The cost of
+Milstein over Euler is the evaluation of $b'(\hat X_n)$ and a few
+extra arithmetic operations.
+
+\subsection{Convergence orders}
+
+\begin{theorem}[Convergence of Milstein]
+\label{thm:milstein-conv}
+Suppose $a, b \in C^2(\R)$ with $a, b, a', b', a'', b''$ Lipschitz
+and bounded. The Milstein scheme~\eqref{eq:milstein} converges to the
+solution of~\eqref{eq:sde} with strong order $\gamma = 1$ and weak
+order $\beta = 1$.
+\end{theorem}
+
+\paragraph{Why strong order $1$.} By including the
+$I_{(1,1)}$ term, Milstein eliminates the $O(h)$ local strong error
+of Euler. The next remainder is $O(h^{3/2})$, which accumulates over
+$N = T/h$ steps to $O(h)$ globally. Hence strong order $1$.
+
+\paragraph{Why weak order remains $1$.} Adding a mean-zero correction
+to Euler does not improve the weak error: the leading non-zero
+expectation term is unchanged. To get weak order $> 1$, one needs to
+correct further moments of the increment; this requires schemes like
+the order-$2$ weak scheme of Platen, which is genuinely more involved
+and beyond the scope of this block.
+
+\subsection{Application to GBM}
+
+For GBM, $b(x) = \sigma x$, so $b'(x) = \sigma$ and
+$b(x) b'(x) = \sigma^2 x$. The recursion becomes
+\begin{equation}
+\label{eq:milstein-gbm}
+\hat S_{n+1} \;=\; \hat S_n + r \hat S_n h + \sigma \hat S_n \Delta W_n
++ \tfrac{1}{2} \sigma^2 \hat S_n \big[(\Delta W_n)^2 - h\big].
+\end{equation}
+Again multiplicative, again with a positivity issue (although the
+correction term raises the lower bound: the squared term
+$(\Delta W_n)^2$ is always nonnegative, so the correction is bounded
+below by $-\tfrac{1}{2} \sigma^2 \hat S_n h$, and the worst-case loss
+per step is mitigated). We will report empirically what fraction of
+paths, if any, develop nonpositive prices in our test parameters.
+
+\section{Practical considerations and which scheme to use}
+\label{sec:practical}
+
+The textbook recommendation can be misleading and deserves an
+explicit unpacking. Phrases like ``Milstein is more accurate than
+Euler'' are true in the strong sense and \emph{false} in the weak
+sense, where the two schemes are tied at order $1$.
+
+\subsection{For European option pricing}
+
+We compute $\E[e^{-rT} \Phi(S_T)]$. This is a marginal expectation,
+the weak setting. Both Euler and Milstein have weak order $1$.
+Milstein costs more per step (one extra multiplication and one
+derivative evaluation; the latter can be analytically symbolic and
+hence ``free'' if the model coefficients are simple). The only
+benefit of Milstein over Euler in this setting is a smaller constant
+in front of the $h$ asymptote, not an improved order.
+
+In practice for pricing under GBM (and for many local volatility
+models), the constant improvement is too small to justify the extra
+machinery: Euler with a slightly smaller $h$ achieves the same weak
+error at lower or comparable cost. Block~1.2.1 will demonstrate
+empirically that for European pricing under GBM, Euler at
+$h = T/200$ and Milstein at $h = T/100$ (matched cost) deliver
+comparable accuracy.
+
+\subsection{For pathwise sensitivity (Block~4)}
+
+The pathwise method estimates greeks by differentiating the simulated
+path with respect to a parameter, then averaging. For the
+differentiation to be meaningful, the simulated path must be a
+faithful pathwise approximation, which is the strong setting.
+Milstein's strong order $1$ versus Euler's $\tfrac{1}{2}$ becomes a
+genuine advantage: Milstein needs $\sqrt{h}$ as many steps as Euler
+to attain the same strong error, an asymptotic factor that grows
+without bound as $h \to 0$.
+
+\subsection{For path-dependent payoffs (Block~5)}
+
+The expectation is now over the path, $\E[\Phi(S_{[0,T]})]$. Two
+sources of error: the marginal scheme error (weak, both schemes
+$O(h)$) and the discretisation of the payoff functional itself
+(barriers, suprema). The latter dominates for barrier options at
+$O(\sqrt{h})$, regardless of scheme. So Euler is sufficient here,
+and the relevant improvement is in the payoff treatment (Brownian
+bridge correction), not in the scheme.
+
+\subsection{Summary}
+
+The verdict is unambiguous: \emph{for the European pricing of
+Block~1.2, Euler--Maruyama is the right choice and Milstein is
+implemented for completeness and as a comparison baseline rather than
+because it offers any operational advantage}. Block~1.2.1 will
+implement Euler as the working pricer; Block~1.2.2 will implement
+Milstein as a side-by-side benchmark. The empirical convergence
+study at the heart of validation will measure both strong and weak
+orders for both schemes, confirming the predictions of
+Theorems~\ref{thm:euler-conv} and~\ref{thm:milstein-conv}.
+
+\section{Roadmap for Blocks 1.2.1 and 1.2.2}
+\label{sec:roadmap}
+
+Block~1.2.1 will implement Euler--Maruyama for GBM and validate it
+empirically. The validation has three components:
+\begin{enumerate}
+\item \textbf{Strong-order verification}: simulate $\hat S_T$ on the
+\emph{same} Brownian path as the exact $S_T$ (the latter computed by
+the closed-form formula evaluated at $W_T = \sum_n \Delta W_n$),
+measure $\E[|S_T - \hat S_T|]$ across many paths, plot in log-log
+against $h$, fit a line, expect slope $\tfrac{1}{2}$.
+\item \textbf{Weak-order verification}: with $\Phi(s) = (s - K)^+
+e^{-rT}$, measure $|\E[\Phi(S_T)] - \E[\Phi(\hat S_T)]|$ across many
+paths and many $h$, plot in log-log, expect slope $1$.
+\item \textbf{Sanity checks}: containment of the BS price by the MC
+CI for moderate $h$, monotonicities, reduction to Block~1.1's exact
+sampler in the limit $h \to 0$ at fixed $n$.
+\end{enumerate}
+The first two are direct empirical confirmations of the convergence
+theorems; the third anchors the implementation in the existing
+infrastructure.
+
+Block~1.2.2 will implement Milstein under the same protocol. The
+strong order should change from $\tfrac{1}{2}$ to $1$; the weak order
+should remain $1$, matching Euler. This is the canonical demonstration
+of the asymmetry between the two notions of convergence.
+
+Architecturally, both schemes will be added to the existing
+\texttt{quantlib.monte\_carlo} (Python) and \texttt{quant/monte\_carlo}
+(C++) modules, alongside the exact GBM sampler from Block~1.1. The
+\texttt{mc\_estimator} reducer is unchanged. The pricer wrappers
+(\texttt{mc\_european\_call\_euler}, \texttt{mc\_european\_call\_milstein})
+will be thin orchestrators on top of new path samplers.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The canonical reference for the numerical analysis of SDEs is
+Kloeden \& Platen~\cite{KloedenPlaten}, especially Chapters~5
+(stochastic Taylor expansions), 9--10 (Euler--Maruyama and strong
+convergence), and 14--15 (weak convergence and Milstein-type
+schemes). The treatment is comprehensive and self-contained but
+demanding; the relevant theorems are stated with multiple regularity
+hypotheses that we have stylised in Theorems~\ref{thm:euler-conv}
+and~\ref{thm:milstein-conv}. For a reader-friendlier introduction,
+Higham~\cite{Higham2001} is a classic survey article that develops
+exactly the empirical convergence demonstration we will reproduce in
+the implementation. Glasserman~\cite[Chapter~6]{Glasserman} treats
+the topic from the financial Monte Carlo angle and includes
+discussion of the practical relevance of weak versus strong
+convergence in the contexts we will encounter in subsequent blocks.
+
+\begin{thebibliography}{99}
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Higham2001}
+D.\ J.\ Higham,
+\emph{An algorithmic introduction to numerical simulation of
+stochastic differential equations},
+SIAM Review, 43(3):525--546, 2001.
+
+\bibitem{KloedenPlaten}
+P.\ E.\ Kloeden and E.\ Platen,
+\emph{Numerical Solution of Stochastic Differential Equations},
+Springer, 1992.
+
+\bibitem{Etheridge}
+A.\ Etheridge,
+\emph{A Course in Financial Calculus},
+Cambridge University Press, 2002.
+
+\end{thebibliography}
+
+\end{document}

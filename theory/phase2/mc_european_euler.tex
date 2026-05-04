@@ -1,0 +1,496 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Pricing of a European Call:\\
+       Euler--Maruyama Discretisation under Geometric Brownian Motion}
+\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 2}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We specialise the Euler--Maruyama scheme of the previous theoretical
+writeup to geometric Brownian motion, derive the resulting recursion,
+and apply it to Monte Carlo pricing of the European call. The
+algorithm is biased: unlike the exact sampler of Block~1.1, the
+estimator converges to $\mathbb{E}[\Phi(\hat S_T)]$, not to
+$\mathbb{E}[\Phi(S_T)]$, and the gap is the discretisation bias of
+order $h$ predicted by the weak convergence theorem. The principal
+contribution of this writeup is the design of the empirical
+convergence study that validates the predicted strong order
+$\tfrac{1}{2}$ and weak order $1$ on a controlled benchmark, anchored
+on the closed-form GBM solution that allows pathwise comparison
+between the discretised and the exact dynamics.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+The previous writeup (\texttt{sde\_discretisation.tex}) developed the
+abstract theory of strong and weak convergence for SDE discretisation
+schemes, derived the Euler--Maruyama scheme as a first-order
+truncation of the It\^o-Taylor expansion, and stated its convergence
+orders: strong $\tfrac{1}{2}$ and weak $1$. The present document
+specialises that theory to the simplest non-trivial setting in
+finance: pricing a European call under geometric Brownian motion,
+where the underlying SDE admits a closed-form solution and a direct
+comparison between discretised and exact paths is therefore possible.
+
+The setting is degenerate in the sense that no one would actually use
+Euler to price a European call under GBM: the Block~1.1 algorithm,
+which samples $S_T$ exactly with one normal draw per path, is both
+faster (no inner time loop) and exact (no discretisation bias). The
+value of the present algorithm is twofold. First, it is the simplest
+laboratory in which to verify empirically that the convergence orders
+predicted by Theorem~5.1 of the previous writeup are real and
+quantitatively correct, on a problem where the exact solution is
+known and pathwise comparison is feasible. Second, the Euler scheme
+implemented here is the foundation on which all SDE-driven Monte
+Carlo work in subsequent blocks rests: when local volatility
+(Block~5), or jump-diffusion, or stochastic volatility models are
+added, the structure of the pipeline (sample increments, recurse the
+state, evaluate payoff at terminal value, average) is unchanged; only
+the recursion changes.
+
+The remainder of this document is organised as follows.
+Section~\ref{sec:setting} restates the SDE setting and specialises
+Euler--Maruyama to GBM. Section~\ref{sec:estimator} defines the
+biased Monte Carlo estimator and decomposes its mean square error
+into bias and variance contributions.
+Section~\ref{sec:validation} designs the empirical convergence study.
+Section~\ref{sec:algorithm} states the algorithm formally.
+Section~\ref{sec:practical} addresses the practical question of
+choosing $h$ at fixed computational budget.
+
+\section{Euler--Maruyama for geometric Brownian motion}
+\label{sec:setting}
+
+\subsection{The recursion}
+
+Recall the GBM SDE under the risk-neutral measure $\Q$:
+\begin{equation}
+\label{eq:sde-gbm}
+\dd S_t \;=\; r S_t \dd t + \sigma S_t \dd W_t,
+\qquad S_0 > 0.
+\end{equation}
+With $a(s) = r s$, $b(s) = \sigma s$, the Euler--Maruyama
+recursion~(\ref{eq:euler}) of the previous writeup specialises to
+\begin{equation}
+\label{eq:euler-gbm}
+\hat S_{n+1} \;=\; \hat S_n \;+\; r\, \hat S_n\, h
+\;+\; \sigma\, \hat S_n\, \Delta W_n
+\;=\; \hat S_n\,\big(\, 1 + r h + \sigma\, \Delta W_n \,\big),
+\qquad \hat S_0 = S_0,
+\end{equation}
+with the Brownian increments $\Delta W_n =
+W_{(n+1) h} - W_{n h} \sim \mathcal{N}(0, h)$ independent across
+$n = 0, 1, \ldots, N - 1$, and $h = T / N$.
+
+The recursion is multiplicative: $\hat S_{n+1}$ is $\hat S_n$
+multiplied by the random factor $(1 + r h + \sigma \Delta W_n)$. As a
+consequence,
+\begin{equation}
+\hat S_T \;=\; \hat S_N \;=\;
+S_0 \prod_{n=0}^{N-1} \big(\, 1 + r h + \sigma \Delta W_n \,\big).
+\end{equation}
+This is a discrete-time, geometric-multiplicative process.
+
+\subsection{Failure of positivity}
+
+The exact GBM solution is positive almost surely: $S_t = S_0
+\exp((\mu - \tfrac{1}{2}\sigma^2) t + \sigma W_t) > 0$. The Euler
+recursion does not preserve this property. Whenever
+$1 + r h + \sigma \Delta W_n < 0$, we have $\hat S_{n+1}$ of the
+\emph{opposite sign} from $\hat S_n$. This requires
+\begin{equation}
+\Delta W_n \;<\; -\frac{1 + r h}{\sigma},
+\end{equation}
+an event that, since $\Delta W_n \sim \mathcal{N}(0, h)$, has
+probability
+\begin{equation}
+\Phi\!\left(-\frac{1 + r h}{\sigma \sqrt{h}}\right).
+\end{equation}
+For $r = 0.05$, $\sigma = 0.20$, and $h = 1/100$, this probability is
+approximately $\Phi(-50.25) \approx 10^{-553}$: astronomically small,
+operationally zero. For $h = 1/10$ and the same parameters, the
+threshold is $\Phi(-15.96) \approx 10^{-58}$: still operationally
+zero. For very large $\sigma$ or very small $N$ the threshold relaxes
+but remains far in the tail.
+
+We will not implement any defence against this event in the algorithm
+itself: the empirical probability is small enough that no run we will
+perform is expected to encounter it. If the simulation grids are
+extended to include very coarse $h$ or very high volatility, a
+positivity check can be added at little cost. A numerically prudent
+alternative is the \emph{log-Euler} scheme, which applies Euler in
+$\log S$ and then exponentiates; for GBM this turns out to coincide
+with the exact sampler of Block~1.1, so it is not informative as a
+test of the Euler convergence rate.
+
+\subsection{Convergence orders}
+
+By Theorem~5.1 of the previous writeup, applied to the GBM
+coefficients which satisfy the regularity assumptions, the Euler
+recursion~\eqref{eq:euler-gbm} converges to the exact $S_T$ with
+\begin{equation}
+\label{eq:euler-orders}
+\E\big[\,|S_T - \hat S_T|\,\big] \;=\; O(h^{1/2}),
+\qquad
+|\E[f(S_T)] - \E[f(\hat S_T)]| \;=\; O(h)
+\quad \text{for } f \text{ smooth enough.}
+\end{equation}
+The first is strong order $\tfrac{1}{2}$, the second is weak order
+$1$. Both will be verified empirically in
+Section~\ref{sec:validation}.
+
+\section{The biased Monte Carlo estimator}
+\label{sec:estimator}
+
+\subsection{Definition}
+
+Let $\hat S_T^{(i)}$ for $i = 1, \ldots, M$ denote independent
+realisations of the Euler-discretised terminal price, each generated
+by the recursion~\eqref{eq:euler-gbm} with its own sequence of
+Brownian increments. The Monte Carlo Euler estimator of the
+European call price is
+\begin{equation}
+\label{eq:estimator}
+\hat C_{M, h}^{\mathrm{Euler}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^{M}
+e^{-rT}\, \big(\hat S_T^{(i)} - K\big)^+ .
+\end{equation}
+Two sources of error contribute to $\hat C_{M, h}^{\mathrm{Euler}}
+- C_{\mathrm{BS}}$: a discretisation bias from replacing $S_T$ with
+$\hat S_T$, and a sampling error from finite $M$.
+
+\subsection{Bias--variance decomposition}
+
+Define
+\begin{equation}
+C_{\mathrm{Euler}}(h) \;\eqdef\; \E\big[\,e^{-rT}\,(\hat S_T - K)^+\,\big],
+\end{equation}
+the population mean of the discretised payoff at step size $h$. The
+estimator decomposes as
+\begin{equation}
+\hat C_{M, h}^{\mathrm{Euler}} - C_{\mathrm{BS}}
+\;=\; \big(\hat C_{M, h}^{\mathrm{Euler}} - C_{\mathrm{Euler}}(h)\big)
+\;+\; \big(C_{\mathrm{Euler}}(h) - C_{\mathrm{BS}}\big).
+\end{equation}
+The first term has zero mean and standard deviation
+$\sqrt{\Var(\hat S_T \cdot \text{payoff}) / M}$, by the same central
+limit theorem argument as in Block~1.1: it is the statistical noise
+controlled by sample size $M$. The second term is deterministic and
+does not vanish as $M \to \infty$: it is the discretisation bias
+controlled by step size $h$, and by~\eqref{eq:euler-orders} it is
+$O(h)$.
+
+The mean square error of the estimator is therefore
+\begin{equation}
+\label{eq:mse-decomp}
+\E\big[\,(\hat C_{M, h}^{\mathrm{Euler}} - C_{\mathrm{BS}})^2\,\big]
+\;=\; \frac{\sigma_{\mathrm{Euler}}^{\,2}(h)}{M} \;+\;
+\big(C_{\mathrm{Euler}}(h) - C_{\mathrm{BS}}\big)^{\!2}
+\;\sim\; \frac{C_1}{M} + C_2\, h^{\,2},
+\end{equation}
+where $\sigma_{\mathrm{Euler}}^{\,2}(h)$ is the variance of the
+Euler-discretised discounted payoff (which converges to the exact
+$\Var(Y)$ of Block~1.1 as $h \to 0$, hence the constant approximation
+$C_1$), and the second term reflects the squared bias.
+
+This decomposition is the conceptual novelty of Block~1.2 with
+respect to Block~1.1, where the bias was identically zero. Choosing
+the simulation parameters now requires balancing two effects rather
+than one. We address the practical implications in
+Section~\ref{sec:practical}.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+This section is the heart of the document. We design four tests that
+together verify both the theoretical predictions of
+Theorem~5.1 of the previous writeup and the implementation
+correctness. Two of the tests measure convergence orders directly
+(strong and weak); the third anchors the implementation in the
+existing exact pricer; the fourth checks a basic invariance.
+
+\subsection{Test 1: empirical strong order}
+
+The strong order is the rate of decay of $\E[|S_T - \hat S_T|]$ in
+$h$. To estimate this expectation, we need to evaluate $S_T$ and
+$\hat S_T$ \emph{on the same Brownian path}. The trick that makes this
+feasible is the closed-form GBM solution: given the simulated
+Brownian increments $\Delta W_0, \ldots, \Delta W_{N-1}$ used by the
+Euler scheme, the corresponding exact terminal value is
+\begin{equation}
+\label{eq:exact-from-W}
+S_T^{\mathrm{exact}} \;=\; S_0 \exp\!\left(
+\big(r - \tfrac{1}{2}\sigma^2\big) T + \sigma\, W_T
+\right),
+\qquad
+W_T = \sum_{n=0}^{N-1} \Delta W_n.
+\end{equation}
+This $S_T^{\mathrm{exact}}$ is the value of the true SDE solution at
+$T$ for the very same realisation of Brownian motion that drove the
+Euler simulation. The pathwise difference $|S_T^{\mathrm{exact}} -
+\hat S_T|$ is therefore a sample of the strong error.
+
+The protocol is:
+\begin{enumerate}
+\item Choose a logarithmic grid of step counts $N_1 < N_2 < \ldots <
+N_K$, equivalently $h_k = T/N_k$.
+\item For each $N_k$, generate $M$ independent Euler paths, each with
+its own sequence of $N_k$ Brownian increments.
+\item For each path $i$, compute $S_T^{\mathrm{exact}, (i)}$
+from~\eqref{eq:exact-from-W} and $\hat S_T^{(i)}$ from the Euler
+recursion.
+\item Estimate $\mathrm{strong}(h_k) \approx M^{-1} \sum_{i=1}^{M}
+|S_T^{\mathrm{exact}, (i)} - \hat S_T^{(i)}|$.
+\item Plot $\log(\mathrm{strong}(h_k))$ against $\log(h_k)$.
+\end{enumerate}
+The expected behaviour is a straight line of slope close to
+$\tfrac{1}{2}$. Substantial deviation from this slope indicates
+either a bug in the Euler implementation, in the exact comparison, or
+a regime where the asymptotic order has not yet been reached (very
+small $N$).
+
+\subsection{Test 2: empirical weak order}
+
+The weak order is the rate of decay of $|\E[f(S_T)] - \E[f(\hat S_T)]|$
+in $h$, for the call payoff $f(s) = e^{-rT}(s - K)^+$ in our setting.
+
+\begin{enumerate}
+\item Choose the same grid of step counts $N_k$.
+\item For each $N_k$, generate $M$ Euler paths and form
+$\hat C_{M, h_k}^{\mathrm{Euler}}$ from~\eqref{eq:estimator}.
+\item Estimate $\mathrm{weak}(h_k) \approx |\hat C_{M, h_k}^{\mathrm{Euler}}
+- C_{\mathrm{BS}}|$.
+\item Plot $\log(\mathrm{weak}(h_k))$ against $\log(h_k)$, fit a
+straight line.
+\end{enumerate}
+The expected slope is close to $1$. The two convergence studies
+together verify the asymmetry of the SDE convergence orders, the
+single most important conceptual takeaway of Block~1.2.
+
+\subsection{Calibration of $M$ for the convergence studies}
+
+Tests~1 and~2 are subtle: they estimate quantities that are
+themselves expectations, so the Monte Carlo noise $O(M^{-1/2})$ acts
+as a floor on what slopes can be measured.
+
+For the strong test, the empirical strong error
+$\mathrm{strong}(h)$ has standard error of order
+$\sqrt{\Var(|S_T^{\mathrm{exact}} - \hat S_T|) / M}$. As long as this
+standard error is small compared with the strong error itself, the
+slope is well-defined. For $h \in [10^{-4}, 10^{-1}]$ and our GBM
+parameters, $|S_T^{\mathrm{exact}} - \hat S_T|$ has typical scale
+$10^{-1}$ to $10^{-2}$ and standard deviation comparable; setting
+$M = 10^4$ gives a relative standard error of $10^{-2}$, sufficient
+to resolve the $\tfrac{1}{2}$ slope across two orders of magnitude in
+$h$.
+
+For the weak test, the empirical weak error
+$\mathrm{weak}(h)$ has standard error of order $\sigma_Y / \sqrt{M}$
+where $\sigma_Y$ is the standard deviation of the discounted payoff.
+For our GBM parameters $\sigma_Y \approx 14$ and the weak error is
+$O(h)$ which can be as small as $10^{-3}$. To resolve the slope $1$
+we need
+$\sigma_Y / \sqrt{M} \ll 10^{-3}$, i.e.\ $M \gg 2 \times 10^8$.
+This is impractical. The standard remedy is \emph{common random
+numbers between the simulated and the reference computations}: instead
+of comparing $\hat C_{M, h}^{\mathrm{Euler}}$ with the closed-form
+$C_{\mathrm{BS}}$, we compute both estimators (Euler and exact) on
+the same Brownian paths and look at their difference, which has much
+smaller variance than either estimator individually.
+
+Specifically, with the same $M$ Brownian paths, evaluate
+\begin{equation}
+\hat D_{M, h} \;\eqdef\;
+\frac{1}{M} \sum_{i=1}^{M} e^{-rT}
+\left[ (\hat S_T^{(i)} - K)^+ - (S_T^{\mathrm{exact}, (i)} - K)^+ \right].
+\end{equation}
+Then $\E[\hat D_{M, h}] = C_{\mathrm{Euler}}(h) - C_{\mathrm{BS}}$,
+which is exactly the weak error, and
+$\Var(\hat D_{M, h}) = M^{-1} \Var(\Phi(\hat S_T) - \Phi(S_T))$,
+which is much smaller than $M^{-1} \Var(\Phi(\hat S_T))$ because the
+two payoffs are highly correlated under common Brownian. With $M =
+10^5$ this is sufficient to resolve the slope.
+
+\subsection{Test 3: coherence with the exact pricer}
+
+This test is operational rather than theoretical: it confirms that as
+$h \to 0$ at fixed $M$, the Euler pricer's estimate approaches the
+Block~1.1 exact pricer's estimate (modulo the irreducible $O(M^{-1/2})$
+sampling noise). A failure here would signal a bug, not a violation
+of the theory.
+
+The cleanest way to run this test under common random numbers is:
+generate one batch of $M$ Brownian paths at $N$ steps each, run the
+Euler scheme on them, and compare the resulting estimator against the
+exact estimator built from $W_T = \sum_n \Delta W_n$ on the same
+paths. The two estimators share noise; their difference is at most
+the discretisation bias.
+
+\subsection{Test 4: input validation and basic invariances}
+
+A separate, mechanical battery of tests checks that the implementation
+rejects bad inputs (negative $S$, $K$, $\sigma$, $T$, non-positive
+$N$ or $M$), that the result is monotone in the parameters in the
+expected directions (modulo noise), and that the asymptotic limits
+$S_0 \to \infty$ and $S_0 \to 0$ are respected, mirroring Test~4 of
+Block~1.1.
+
+\section{Algorithmic specification}
+\label{sec:algorithm}
+
+The algorithm is summarised below. The pseudocode is parametric in
+the random source, following the seed-control discipline established
+in Block~0.
+
+\begin{algorithm}[H]
+\caption{Euler--Maruyama Monte Carlo for the European call (GBM)}
+\label{alg:mc-euler}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, strike $K$, maturity $T$, rate $r$, volatility
+$\sigma$, step count $N$, sample size $M$, confidence level
+$1 - \beta$, random generator \texttt{rng} initialised with a recorded
+seed.
+\Ensure Estimate $\hat C$, half-width $h_M$, sample variance $S_M^2$.
+\State $h \gets T / N$,
+$\quad s \gets \sigma \sqrt{h}$,
+$\quad D \gets e^{-rT}$
+\For{$i = 1, \ldots, M$}
+\State $S^{(i)} \gets S_0$
+\For{$n = 0, 1, \ldots, N-1$}
+\State Draw $\Delta W \sim \mathcal{N}(0, h)$ using \texttt{rng}
+\State $S^{(i)} \gets S^{(i)}\,(1 + r h + \sigma\, \Delta W)$
+\EndFor
+\State $Y_i \gets D \cdot \max(S^{(i)} - K,\, 0)$
+\EndFor
+\State $\hat C \gets M^{-1} \sum_i Y_i$
+\State $S_M^2 \gets (M-1)^{-1} \sum_i (Y_i - \hat C)^2$
+\State $h_M \gets z_{\beta/2}\, \sqrt{S_M^{\,2}/M}$
+\State \Return $(\hat C,\, h_M,\, S_M^{\,2})$
+\end{algorithmic}
+\end{algorithm}
+
+The implementation will collapse the inner loop into a single
+vectorised pass over all $M$ paths simultaneously, advancing the
+state $\hat S_n$ as a length-$M$ array. The pseudocode is written
+elementwise for clarity only.
+
+\section{Practical considerations: choosing $h$ and $M$}
+\label{sec:practical}
+
+By the MSE decomposition~\eqref{eq:mse-decomp},
+\begin{equation}
+\E\big[\,(\hat C_{M, h}^{\mathrm{Euler}} - C_{\mathrm{BS}})^2\,\big]
+\;\sim\; \frac{C_1}{M} + C_2\, h^2.
+\end{equation}
+The total computational cost per path is proportional to $N = T/h$
+(the inner time loop), so the overall cost of the simulation is
+proportional to $M \cdot N = M T / h$. To minimise MSE at a fixed
+budget $W = M / h$ (proportional to total cost), set $L(h) = C_1 h /
+W \cdot \text{(rearrangement)} + C_2 h^2$, take the derivative with
+respect to $h$, and equate to zero. The optimal allocation balances
+$\frac{C_1}{M} \sim C_2 h^2$, i.e.\ $M \sim h^{-2}$, equivalent to
+\begin{equation}
+\label{eq:optimal-allocation}
+M^{\,*}(h) \;\propto\; h^{-2},
+\quad \text{or equivalently,} \quad
+h^{\,*}(M) \;\propto\; M^{-1/2}.
+\end{equation}
+At the optimum, both terms in the MSE are of the same order, and
+the achieved error scales as $W^{-1/3}$ in computational budget $W$,
+markedly slower than the unbiased $W^{-1/2}$ rate of Block~1.1.
+
+This degradation is the price of using Euler. The fact is well-known
+and is, again, the reason no one would actually use Euler for
+European pricing under GBM: the unbiased exact sampler of Block~1.1
+delivers $W^{-1/2}$, an order of magnitude better at large budgets.
+The Euler scheme is operationally relevant when no closed-form
+solution exists (local volatility, stochastic volatility,
+jump-diffusion), in which case the comparison is not between Euler
+and exact but between Euler and other discretisation schemes.
+
+This analysis is also the foundation for the multilevel Monte Carlo
+techniques of Giles (2008), which combine simulations at multiple step
+sizes in a way that recovers $W^{-1/2}$ even with biased samplers.
+Multilevel MC is beyond the scope of Phase~2 but appears prominently
+in the path-dependent literature; we may revisit it in a future
+phase.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The empirical convergence study reproduced in this writeup is the
+classical demonstration of Higham~\cite{Higham2001}, with adapted
+parameters. Glasserman~\cite[Chapter~6]{Glasserman} treats Euler
+specifically for finance applications and includes the bias--variance
+analysis of Section~\ref{sec:practical}. Kloeden and
+Platen~\cite{KloedenPlaten} provide the formal proofs of the
+convergence orders cited from the previous theoretical writeup.
+
+\begin{thebibliography}{99}
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Higham2001}
+D.\ J.\ Higham,
+\emph{An algorithmic introduction to numerical simulation of
+stochastic differential equations},
+SIAM Review, 43(3):525--546, 2001.
+
+\bibitem{KloedenPlaten}
+P.\ E.\ Kloeden and E.\ Platen,
+\emph{Numerical Solution of Stochastic Differential Equations},
+Springer, 1992.
+
+\bibitem{Etheridge}
+A.\ Etheridge,
+\emph{A Course in Financial Calculus},
+Cambridge University Press, 2002.
+
+\end{thebibliography}
+
+\end{document}
