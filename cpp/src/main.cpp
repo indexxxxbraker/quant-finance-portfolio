@@ -1,8 +1,9 @@
 // main.cpp
 //
 // Smoke test: prints prices, Greeks, implied volatility recovery at the
-// Hull example point, plus a Hull example for IV, plus a Monte Carlo
-// vanilla European call estimate.
+// Hull example point, plus a Hull example for IV, plus the Monte Carlo
+// pricers (exact sampler from Block 1.1 and Euler-Maruyama from Block
+// 1.2.1).
 
 #include "black_scholes.hpp"
 #include "implied_volatility.hpp"
@@ -40,18 +41,29 @@ int main() {
     const double iv_hull = quant::implied_volatility(1.875, 21.0, 20.0, 0.10, 0.25);
     std::cout << "Hull Example 19.6: iv=" << iv_hull << "  (Hull: ~0.235)\n\n";
 
-    // Monte Carlo vanilla European call (ATM, 1 year, sigma=0.20).
-    // Closed-form BS price for these parameters: ~10.4506.
+    // Monte Carlo benchmarks (ATM, 1y, sigma=0.20). BS price ~10.4506.
+    std::cout << std::fixed << std::setprecision(6);
     {
         std::mt19937_64 rng(42);
-        const auto mc = quant::mc_european_call_exact(
+        const auto mc_exact = quant::mc_european_call_exact(
             100.0, 100.0, 0.05, 0.20, 1.0, 100'000, rng);
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Monte Carlo European call (ATM, 1y, n=100000):\n"
-                  << "  Estimate    : " << mc.estimate << "  (BS: 10.4506)\n"
-                  << "  Half-width  : " << mc.half_width << "\n"
-                  << "  Sample var  : " << mc.sample_variance << "\n"
-                  << "  N paths     : " << mc.n_paths << "\n";
+        std::cout << "Exact MC pricer (Block 1.1, n_paths=100000):\n"
+                  << "  Estimate    : " << mc_exact.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << mc_exact.half_width << "\n"
+                  << "  Sample var  : " << mc_exact.sample_variance << "\n"
+                  << "  N paths     : " << mc_exact.n_paths << "\n\n";
+    }
+    {
+        std::mt19937_64 rng(42);
+        const auto mc_euler = quant::mc_european_call_euler(
+            100.0, 100.0, 0.05, 0.20, 1.0, 100, 100'000, rng);
+        std::cout << "Euler MC pricer (Block 1.2.1, n_steps=100, n_paths=100000):\n"
+                  << "  Estimate    : " << mc_euler.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << mc_euler.half_width << "\n"
+                  << "  Sample var  : " << mc_euler.sample_variance << "\n"
+                  << "  N paths     : " << mc_euler.n_paths << "\n";
     }
 
     return 0;

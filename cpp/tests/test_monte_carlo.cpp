@@ -1,10 +1,25 @@
-// test_monte_carlo.cpp — Catch2 tests for the MC vanilla European
-// call pricer with exact GBM simulation.
+// test_monte_carlo.cpp — Catch2 tests for the Monte Carlo module.
 //
-// Mirrors the four triangulation tests of the Phase 2 Block 1.1
-// writeup (Section 6), plus a set of input-validation tests. The
-// validation tests are virtually free; the statistical tests run for
-// a few seconds in Release mode.
+// Covers Block 1.1 (exact GBM sampler, vanilla European call) and
+// Block 1.2.1 (Euler-Maruyama scheme).
+//
+// The Block 1.1 tests mirror the four triangulation tests of the
+// Block 1.1 writeup (Section 6) plus input-validation cases.
+//
+// The Block 1.2.1 tests verify:
+//   - Input validation of the new pricers and samplers.
+//   - simulate_path_euler returns the correct shape and starts at S0.
+//   - simulate_terminal_euler agrees with simulate_path_euler's
+//     terminal column when both consume the same RNG state.
+//   - The Euler pricer at large n_steps produces an estimate
+//     consistent with the BS price within a few half-widths.
+//   - Negative-r is admissible.
+//
+// Empirical convergence-order verification (slope -1/2 strong, slope
+// -1 weak) lives in the Python validation script
+// `validate_mc_european_euler.py`. Reproducing those tests in C++
+// would duplicate work without adding signal: the Python tests
+// already exercise the exact same algorithm.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -21,7 +36,7 @@ using Catch::Matchers::WithinAbs;
 
 
 // =====================================================================
-// Input validation
+// Block 1.1: input validation (exact pricer)
 // =====================================================================
 
 TEST_CASE("MC vanilla: input validation", "[mc][validation]") {
@@ -76,7 +91,7 @@ TEST_CASE("MC vanilla: input validation", "[mc][validation]") {
 
 
 // =====================================================================
-// Test 1: Containment frequency of the BS price by the MC CI
+// Block 1.1: containment frequency
 // =====================================================================
 
 TEST_CASE("MC vanilla: containment frequency of BS price",
@@ -120,7 +135,7 @@ TEST_CASE("MC vanilla: containment frequency of BS price",
 
 
 // =====================================================================
-// Test 2: Empirical convergence rate (slope -1/2 in log-log)
+// Block 1.1: empirical convergence rate
 // =====================================================================
 
 TEST_CASE("MC vanilla: empirical convergence rate",
@@ -139,7 +154,6 @@ TEST_CASE("MC vanilla: empirical convergence rate",
     for (const auto n : n_values) {
         double sum_sq = 0.0;
         for (int k = 0; k < n_seeds_per_n; ++k) {
-            // Distinct seeds per (n, k) so no two runs share noise.
             const uint64_t seed =
                 static_cast<uint64_t>(1'000'000ULL) * n
                 + static_cast<uint64_t>(k);
@@ -154,8 +168,6 @@ TEST_CASE("MC vanilla: empirical convergence rate",
         log_rmse.push_back(std::log(rmse));
     }
 
-    // Ordinary-least-squares linear fit:
-    //   log_rmse_i ~ slope * log_n_i + intercept
     const std::size_t K_pts = log_n.size();
     double sum_x = 0, sum_y = 0, sum_xy = 0, sum_xx = 0;
     for (std::size_t i = 0; i < K_pts; ++i) {
@@ -174,7 +186,7 @@ TEST_CASE("MC vanilla: empirical convergence rate",
 
 
 // =====================================================================
-// Test 3: Sample variance vs closed-form variance
+// Block 1.1: variance agreement with closed form
 // =====================================================================
 
 TEST_CASE("MC vanilla: sample variance matches closed form",
@@ -209,7 +221,7 @@ TEST_CASE("MC vanilla: sample variance matches closed form",
 
 
 // =====================================================================
-// Test 4: Monotonicities (CRN) and asymptotic limits
+// Block 1.1: monotonicities and asymptotic limits
 // =====================================================================
 
 TEST_CASE("MC vanilla: monotonicities and asymptotic limits",
@@ -254,10 +266,6 @@ TEST_CASE("MC vanilla: monotonicities and asymptotic limits",
     }
 
     SECTION("S -> infty implies C / S -> 1") {
-        // Tolerance of 1e-2 covers the deterministic finite-S
-        // component (~1e-3) and the MC noise on C/S (~4e-3).
-        // Same calibration as the Python validation, see comment
-        // in validate_mc_european_exact.py.
         std::mt19937_64 rng(seed);
         constexpr double huge_S = 100'000.0;
         const auto result = quant::mc_european_call_exact(
@@ -277,15 +285,11 @@ TEST_CASE("MC vanilla: monotonicities and asymptotic limits",
 
 
 // =====================================================================
-// Cross-check: call_payoff_variance against MC estimate at very large n
+// Block 1.1: closed-form variance cross-check
 // =====================================================================
 
 TEST_CASE("BS: call_payoff_variance matches MC at large n",
           "[bs][variance]") {
-    // This test cross-checks the closed-form variance against an
-    // independent MC estimate at very large n, confirming that the
-    // formula in Phase 2 Block 1.1 writeup, Proposition 5.1, is
-    // implemented correctly.
     struct Case { const char* label; double S, K, r, sigma, T; };
     const std::vector<Case> grid = {
         {"ATM",     100.0, 100.0, 0.05, 0.20, 1.0},
@@ -304,8 +308,142 @@ TEST_CASE("BS: call_payoff_variance matches MC at large n",
         INFO("Case [" << c.label
              << "] var_closed = " << var_closed
              << "  var_mc = " << result.sample_variance);
-        // 3% relative tolerance at n = 2e6 is generous.
         REQUIRE_THAT(result.sample_variance / var_closed,
                      WithinAbs(1.0, 0.03));
     }
+}
+
+
+// =====================================================================
+// Block 1.2.1: input validation (Euler pricer)
+// =====================================================================
+
+TEST_CASE("MC Euler: input validation", "[mc][euler][validation]") {
+    std::mt19937_64 rng(42);
+
+    SECTION("S must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                -1.0, 100.0, 0.05, 0.20, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("K must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                100.0, 0.0, 0.05, 0.20, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("sigma must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                100.0, 100.0, 0.05, -0.10, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("T must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                100.0, 100.0, 0.05, 0.20, 0.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_steps must be at least 1") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                100.0, 100.0, 0.05, 0.20, 1.0, 0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_paths must be at least 2") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_euler(
+                100.0, 100.0, 0.05, 0.20, 1.0, 50, 1, rng),
+            std::invalid_argument);
+    }
+    SECTION("r is unconstrained (negative rates admissible)") {
+        REQUIRE_NOTHROW(
+            quant::mc_european_call_euler(
+                100.0, 100.0, -0.02, 0.20, 1.0, 50, 1000, rng));
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.1: simulate_path_euler shape and initial value
+// =====================================================================
+
+TEST_CASE("Euler path: shape and initial column",
+          "[mc][euler][path]") {
+    constexpr double S0 = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_steps = 50;
+    constexpr std::size_t n_paths = 100;
+
+    std::mt19937_64 rng(123);
+    const auto paths = quant::simulate_path_euler(
+        S0, r, sigma, T, n_steps, n_paths, rng);
+
+    REQUIRE(paths.size() == n_paths);
+    for (const auto& path : paths) {
+        REQUIRE(path.size() == n_steps + 1);
+        // Column 0 must equal S0 on every path.
+        REQUIRE(path.front() == S0);
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.1: terminal sampler agrees with path sampler under same seed
+// =====================================================================
+
+TEST_CASE("Euler: terminal sampler agrees with path's last column",
+          "[mc][euler][equivalence]") {
+    constexpr double S0 = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_steps = 30;
+    constexpr std::size_t n_paths = 50;
+    constexpr uint64_t seed = 7;
+
+    // Both samplers consume the rng in the same order: per path, then
+    // per step. So with two engines initialised from the same seed,
+    // their terminal values must coincide bit-for-bit.
+    std::mt19937_64 rng_path(seed), rng_terminal(seed);
+
+    const auto paths = quant::simulate_path_euler(
+        S0, r, sigma, T, n_steps, n_paths, rng_path);
+    const auto terminal = quant::simulate_terminal_euler(
+        S0, r, sigma, T, n_steps, n_paths, rng_terminal);
+
+    REQUIRE(terminal.size() == n_paths);
+    for (std::size_t i = 0; i < n_paths; ++i) {
+        // Bit-exact equality is acceptable here because the two
+        // implementations execute the same sequence of arithmetic on
+        // the same uniforms, in the same order.
+        REQUIRE(terminal[i] == paths[i].back());
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.1: sanity check vs BS at large n_steps
+// =====================================================================
+
+TEST_CASE("Euler pricer: consistent with BS at large n_steps",
+          "[mc][euler][bs]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    const double bs_price = quant::call_price(S, K, r, sigma, T);
+
+    constexpr std::size_t n_steps = 200;
+    constexpr std::size_t n_paths = 50'000;
+
+    std::mt19937_64 rng(42);
+    const auto result = quant::mc_european_call_euler(
+        S, K, r, sigma, T, n_steps, n_paths, rng);
+
+    INFO("Euler estimate = " << result.estimate
+         << ", BS = " << bs_price
+         << ", half-width = " << result.half_width);
+
+    // The estimate should be within 3 half-widths of the BS price.
+    // The bias at n_steps=200 is on the order of T/n_steps ~ 5e-3,
+    // negligible compared to the half-width of ~0.1 at n_paths=50k,
+    // so the test is essentially a confidence-interval containment
+    // check.
+    REQUIRE(std::abs(result.estimate - bs_price)
+            <= 3.0 * result.half_width);
 }

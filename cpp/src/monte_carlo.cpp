@@ -85,6 +85,26 @@ double standard_normal_quantile(double confidence_level) {
 }
 
 
+// Draw a standard normal from rng by inversion.
+//
+// Uses a local std::uniform_real_distribution with the half-open
+// range [0, 1), then maps via Acklam. The probability of drawing
+// exactly 0 (which would crash inverse_normal_cdf) is below 2^{-53}
+// per draw and is ignored; if it occurs the exception propagates
+// out of the simulation.
+//
+// The distribution is constructed on each call to preserve byte-exact
+// behaviour with the inline implementation used in the Block 1.1
+// version of simulate_terminal_gbm: a per-call local distribution is
+// guaranteed to be in its initial state, whereas a thread_local one
+// could in principle carry residual state.
+double standard_normal(std::mt19937_64& rng) {
+    std::uniform_real_distribution<double> uniform(0.0, 1.0);
+    const double u = uniform(rng);
+    return inverse_normal_cdf(u);
+}
+
+
 // =====================================================================
 // Input validation
 // =====================================================================
@@ -112,6 +132,12 @@ void validate_n_paths(std::size_t n_paths) {
         throw std::invalid_argument(
             "n_paths must be at least 2 (for sample variance with "
             "Bessel's correction)");
+    }
+}
+
+void validate_n_steps(std::size_t n_steps) {
+    if (n_steps < 1) {
+        throw std::invalid_argument("n_steps must be at least 1");
     }
 }
 
@@ -163,7 +189,7 @@ MCResult mc_estimator(const std::vector<double>& Y,
 
 
 // =====================================================================
-// simulate_terminal_gbm
+// simulate_terminal_gbm  (Block 1.1)
 // =====================================================================
 
 std::vector<double>
@@ -176,17 +202,9 @@ simulate_terminal_gbm(double S0, double r, double sigma, double T,
     const double drift     = (r - 0.5 * sigma * sigma) * T;
     const double diffusion = sigma * std::sqrt(T);
 
-    // std::uniform_real_distribution returns [0, 1). The probability of
-    // drawing exactly 0 (which would make inverse_normal_cdf throw) is
-    // below 2^{-53} per draw; for the sample sizes used here it is
-    // astronomically small and we ignore it. If it ever happens, the
-    // exception propagates out and aborts the simulation cleanly.
-    std::uniform_real_distribution<double> uniform(0.0, 1.0);
-
     std::vector<double> S_T(n_paths);
     for (std::size_t i = 0; i < n_paths; ++i) {
-        const double u = uniform(rng);
-        const double z = inverse_normal_cdf(u);
+        const double z = standard_normal(rng);
         S_T[i] = S0 * std::exp(drift + diffusion * z);
     }
     return S_T;
@@ -194,7 +212,7 @@ simulate_terminal_gbm(double S0, double r, double sigma, double T,
 
 
 // =====================================================================
-// mc_european_call_exact
+// mc_european_call_exact  (Block 1.1)
 // =====================================================================
 
 MCResult
@@ -209,6 +227,97 @@ mc_european_call_exact(double S, double K, double r, double sigma, double T,
 
     const std::vector<double> S_T =
         simulate_terminal_gbm(S, r, sigma, T, n_paths, rng);
+
+    const double discount = std::exp(-r * T);
+    std::vector<double> Y(n_paths);
+    for (std::size_t i = 0; i < n_paths; ++i) {
+        Y[i] = discount * std::max(S_T[i] - K, 0.0);
+    }
+
+    return mc_estimator(Y, confidence_level);
+}
+
+
+// =====================================================================
+// simulate_path_euler  (Block 1.2.1)
+// =====================================================================
+
+std::vector<std::vector<double>>
+simulate_path_euler(double S0, double r, double sigma, double T,
+                    std::size_t n_steps, std::size_t n_paths,
+                    std::mt19937_64& rng) {
+    validate_model_params(S0, sigma, T);
+    validate_n_steps(n_steps);
+    validate_n_paths(n_paths);
+
+    const double h       = T / static_cast<double>(n_steps);
+    const double sqrt_h  = std::sqrt(h);
+    const double rh      = r * h;
+
+    // Allocate the (n_paths x (n_steps + 1)) matrix.
+    std::vector<std::vector<double>> paths(
+        n_paths, std::vector<double>(n_steps + 1));
+
+    for (std::size_t i = 0; i < n_paths; ++i) {
+        paths[i][0] = S0;
+        for (std::size_t k = 0; k < n_steps; ++k) {
+            // dW ~ N(0, h), generated as sqrt(h) * Z with Z ~ N(0, 1).
+            const double z  = standard_normal(rng);
+            const double dW = sqrt_h * z;
+            paths[i][k + 1] = paths[i][k] * (1.0 + rh + sigma * dW);
+        }
+    }
+    return paths;
+}
+
+
+// =====================================================================
+// simulate_terminal_euler  (Block 1.2.1)
+// =====================================================================
+
+std::vector<double>
+simulate_terminal_euler(double S0, double r, double sigma, double T,
+                        std::size_t n_steps, std::size_t n_paths,
+                        std::mt19937_64& rng) {
+    validate_model_params(S0, sigma, T);
+    validate_n_steps(n_steps);
+    validate_n_paths(n_paths);
+
+    const double h       = T / static_cast<double>(n_steps);
+    const double sqrt_h  = std::sqrt(h);
+    const double rh      = r * h;
+
+    // O(n_paths) memory: the only state kept across steps is the
+    // current price vector.
+    std::vector<double> S(n_paths, S0);
+    for (std::size_t i = 0; i < n_paths; ++i) {
+        for (std::size_t k = 0; k < n_steps; ++k) {
+            const double z  = standard_normal(rng);
+            const double dW = sqrt_h * z;
+            S[i] *= (1.0 + rh + sigma * dW);
+        }
+    }
+    return S;
+}
+
+
+// =====================================================================
+// mc_european_call_euler  (Block 1.2.1)
+// =====================================================================
+
+MCResult
+mc_european_call_euler(double S, double K, double r, double sigma, double T,
+                       std::size_t n_steps, std::size_t n_paths,
+                       std::mt19937_64& rng,
+                       double confidence_level) {
+    validate_model_params(S, sigma, T);
+    validate_strike(K);
+    validate_n_steps(n_steps);
+    validate_n_paths(n_paths);
+    validate_confidence_level(confidence_level);
+
+    const std::vector<double> S_T =
+        simulate_terminal_euler(S, r, sigma, T, n_steps, n_paths, rng);
 
     const double discount = std::exp(-r * T);
     std::vector<double> Y(n_paths);
