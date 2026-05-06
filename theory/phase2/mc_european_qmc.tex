@@ -1,0 +1,303 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Quasi-Monte Carlo for the European Call:\\
+       Halton, Sobol, and RQMC}
+\author{Quant Finance Portfolio --- Phase 2, Block 3.1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Building on the foundations established in Block~3.0, we apply
+quasi-Monte Carlo to the European call pricer. To make QMC
+non-trivially multi-dimensional we use the multi-step Euler
+discretisation of Block~1.2.1 with $N = 20$ time steps, giving an
+integration problem of dimension $d = 20$. We compare four
+estimators: IID Monte Carlo (baseline from Block~1.2.1), QMC with
+Halton, QMC with Sobol, and randomized QMC (RQMC) with Sobol plus
+digital shifting. The empirical convergence rates measured on a
+log-log slope plot are expected to confirm the theoretical
+predictions: slope $\approx -0.5$ for IID, slope close to $-1$ for
+Sobol RQMC at this dimension. The validation script also confirms
+that RQMC delivers a usable half-width via $R$-replication averaging.
+\end{abstract}
+
+\tableofcontents
+
+\section{The integration problem}
+\label{sec:integration-problem}
+
+The Euler-discretised European call price is
+\begin{equation}
+\E^\Q\bigl[e^{-rT} \max(S_T^{(N)} - K, 0)\bigr],
+\end{equation}
+where $S_T^{(N)} = S_0 \prod_{k=1}^N (1 + r h + \sigma \sqrt h \, Z_k)$
+with $h = T/N$ and $Z_1, \ldots, Z_N$ i.i.d.\ standard normals. With
+$N = 20$ this is a $20$-dimensional integral against a Gaussian
+measure. Equivalently, it is a $20$-dimensional integral against
+the uniform measure on $[0, 1)^{20}$ via the change of variables
+$Z_k = \Phi^{-1}(u_k)$:
+\begin{equation}
+C^{\mathrm{Euler}} \;=\; \int_{[0, 1)^{20}}
+e^{-rT} \max\bigl(S_T^{(N)}(\Phi^{-1}(u_1), \ldots, \Phi^{-1}(u_{20}))
+                  - K,\; 0\bigr) \dd u.
+\end{equation}
+This is the integral that QMC will attack.
+
+\paragraph{Why $N = 20$ rather than $N = 1$?} The exact GBM sampler
+of Block~1.1 needs only one normal per path, so the European call
+under exact GBM is a $1$-dimensional integral. QMC at $d = 1$ is
+trivial (van der Corput) and not pedagogically rich. Choosing the
+Euler discretisation of Block~1.2.1 with $N = 20$ gives a
+genuine $20$-dimensional problem where QMC's advantage matters.
+
+The difference between exact and Euler is the $O(h)$ weak bias
+documented in Block~1.2.1; for $N = 20$ this bias is approximately
+$0.05$ in absolute terms, large enough to be visible against MC
+error at $n \sim 10^4$ but small enough not to obscure the
+convergence-rate analysis. We accept this bias as a fixed offset
+and study the rate at which the Monte Carlo / QMC error around
+$C^{\mathrm{Euler}}$ vanishes as $n$ grows.
+
+\section{The four estimators}
+\label{sec:estimators}
+
+We construct four estimators of $C^{\mathrm{Euler}}$, all sharing
+the same $\Phi^{-1}$ inversion step but differing in how the
+underlying $u_i \in [0, 1)^{20}$ points are produced.
+
+\paragraph{IID-MC.} Standard Monte Carlo. The points $u_i$ are
+pseudo-random uniform draws from a Mersenne-Twister generator. This
+is the Block~1.2.1 baseline.
+
+\paragraph{QMC-Halton.} The points $u_i$ are the first $n$ entries
+of the $20$-dimensional Halton sequence with primes $p_1 = 2,
+p_2 = 3, \ldots, p_{20} = 71$. The estimator returns a single number
+without a half-width.
+
+\paragraph{QMC-Sobol.} The points $u_i$ are the first $n$ entries
+of the $20$-dimensional Sobol sequence with Joe-Kuo direction
+numbers. As with Halton, the deterministic estimator has no
+half-width.
+
+\paragraph{RQMC-Sobol.} The points are the Sobol sequence
+randomised by digital shifting with $R$ independent shifts (we use
+$R = 20$). Each replication produces an estimate of dimension
+$d = 20$ from $n$ Sobol points; the $R$ replication estimates are
+i.i.d.\ and a half-width is constructed from their sample variance.
+
+\subsection{The fixed and varying axes}
+
+To compare convergence rates, we vary the per-replication path
+count $n$ across a logarithmic grid. The rest of the configuration
+is fixed:
+\begin{itemize}
+\item Euler steps: $N = 20$.
+\item Total dimensionality: $d = 20$.
+\item RQMC replications: $R = 20$.
+\item Random seed for IID and for RQMC's shifts: fixed for
+reproducibility.
+\item Target: the same canonical parameters $S_0 = K = 100$, $r =
+0.05$, $\sigma = 0.20$, $T = 1$.
+\end{itemize}
+The reference value against which we measure error is the
+closed-form Black-Scholes price $C^{\mathrm{BS}} = 10.4506$. The
+Euler scheme's $O(h)$ bias creates a systematic offset of
+approximately $0.05$ from $C^{\mathrm{BS}}$; this offset is the
+\emph{same for all four estimators} (they all share the same
+discretised payoff structure), so when we plot ``error vs $n$'' on
+a log-log scale, the bias contributes a horizontal asymptote that
+all four lines share. The slopes at moderate $n$, before the
+asymptote dominates, are what we are after.
+
+\section{Convergence rates: predictions}
+\label{sec:rates}
+
+The theoretical asymptotic rates from Block~3.0:
+\begin{itemize}
+\item IID-MC: error $= O(n^{-1/2})$. Log-log slope $-0.5$.
+\item QMC-Halton: error $= O((\log n)^{20} / n)$. The $(\log n)^{20}$
+factor at $n = 10^4$ is $(9.2)^{20} \approx 10^{19}$, so the constant
+in the big-O is huge and Halton may not yet be in its asymptotic
+regime at the budgets we test. Empirically, we expect a slope between
+$-0.7$ and $-0.9$ rather than the asymptotic $-1$.
+\item QMC-Sobol (deterministic): same asymptotic rate as Halton,
+but with substantially better constants thanks to the $\mathbb{F}_2$
+construction. Empirically, we expect a slope close to $-1$ at
+moderate $n$.
+\item RQMC-Sobol: same expected slope as deterministic Sobol; the
+randomisation provides the half-width without affecting the rate.
+\end{itemize}
+
+\subsection{The dimension-effect caveat}
+
+A naive reading of $(\log n)^d / n$ at $d = 20$ would predict QMC
+to require astronomical $n$ to outperform MC. The empirical
+behaviour is much friendlier, for two reasons:
+
+\paragraph{Effective dimension.} The European call payoff, expressed
+in terms of $u \in [0, 1)^{20}$, depends primarily on a small
+number of ``effective dimensions'': the few coordinates whose
+variation drives most of the variance of $S_T^{(N)}$. For the Euler
+discretisation, all $20$ steps contribute roughly equally to
+$\log S_T^{(N)}$, so the effective dimension is closer to $20$ than
+to $1$, but the integrand's smoothness ($\max(\cdot, 0)$ has a
+single kink in $\R^{20}$) helps QMC's convergence in practice. The
+``intrinsic'' difficulty is lower than the nominal $d = 20$ would
+suggest.
+
+\paragraph{Brownian bridge construction.} A standard QMC
+optimisation in finance is to construct the path of $W_t$ in the
+\emph{Brownian bridge} order rather than the natural left-to-right
+order: assign the first dimension of $u$ to $W_T$ (the most
+``important'' coordinate), the second to $W_{T/2}$, the third and
+fourth to $W_{T/4}$ and $W_{3T/4}$, and so on. This concentrates the
+``effective dimension'' in the first few QMC coordinates, where
+QMC's discrepancy advantage is strongest. \emph{We do not apply
+the Brownian bridge construction in this writeup}: the natural
+left-to-right Euler discretisation already gives observable QMC
+advantage and the bridge optimisation can be added in a future
+block (it is most relevant for path-dependent options where the
+effective dimension can be much larger).
+
+\subsection{The convergence rate test}
+
+The validation script computes the absolute error
+\begin{equation}
+\mathrm{err}(n) \;=\; \bigl|\hat C_n - C^{\mathrm{Euler}}\bigr|
+\end{equation}
+on a logarithmic grid $n \in \{10^3, 10^{3.5}, 10^4, 10^{4.5}, 10^5\}$
+(five points), fits a linear regression of $\log \mathrm{err}$ on
+$\log n$, and reports the slope. We use the bias-corrected target
+$C^{\mathrm{Euler}}$ (estimated from a high-precision IID-MC run)
+rather than $C^{\mathrm{BS}}$ to avoid contaminating the rate
+measurement with the Euler bias.
+
+\section{Implementation overview}
+\label{sec:impl}
+
+The Python implementation introduces a new module \texttt{quantlib.qmc}:
+
+\begin{itemize}
+\item \texttt{halton(n, d)}: returns the first $n$ entries of the
+$d$-dimensional Halton sequence as an $(n, d)$ NumPy array.
+Implemented from scratch using the radical inverse function.
+\item \texttt{sobol(n, d, scramble=False, seed=None)}: returns the
+first $n$ Sobol points. Wraps \texttt{scipy.stats.qmc.Sobol}, which
+uses Joe-Kuo direction numbers internally.
+\item \texttt{mc\_european\_call\_euler\_qmc}: deterministic QMC
+pricer that returns a single estimate (no half-width). Accepts a
+parameter \texttt{sequence} $\in$ \{\texttt{'halton'},
+\texttt{'sobol'}\}.
+\item \texttt{mc\_european\_call\_euler\_rqmc}: randomized QMC
+pricer with $R$ digital shifts. Returns a full \texttt{MCResult}
+with the half-width estimated from the $R$ replications.
+\end{itemize}
+
+The pricers reuse the Euler step from \texttt{quantlib.gbm}: only
+the source of normals changes (from
+\texttt{rng.standard\_normal(...)} to $\Phi^{-1}$ applied to a QMC
+sequence). This is exactly the modular separation foreseen in
+Block~0 when we adopted inversion-based normal sampling.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The validation script \texttt{python/validate\_mc\_european\_qmc.py}
+runs four tests.
+
+\paragraph{Test 1: convergence rate slopes.} Compute the absolute
+error of each estimator (IID, Halton, Sobol-det, Sobol-RQMC) at
+$n \in \{10^3, 10^{3.5}, 10^4, 10^{4.5}, 10^5\}$. Linear-regress
+$\log \mathrm{err}$ on $\log n$. Predicted slopes:
+\begin{itemize}
+\item IID: $\approx -0.5$.
+\item Halton: $\approx -0.7$ to $-0.9$.
+\item Sobol-det: $\approx -1.0$ (or slightly less).
+\item Sobol-RQMC: $\approx -1.0$ (same as deterministic Sobol; the
+randomisation only adds a small constant overhead).
+\end{itemize}
+
+\paragraph{Test 2: BS-coherence of RQMC-Sobol.} The RQMC pricer at
+$n = 10^4$ paths and $R = 20$ replications agrees with $C^{\mathrm{BS}}$
+modulo the Euler bias, within a few half-widths.
+
+\paragraph{Test 3: half-width below MC at equal budget.} RQMC-Sobol
+at $n_{\text{paths}} \times R = 100\,000$ payoffs has half-width
+significantly below the IID-MC half-width at the same total budget.
+
+\paragraph{Test 4: input validation.} Mechanical: the QMC and RQMC
+pricers reject bad inputs.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The application of QMC to financial option pricing is reviewed in
+Glasserman~\cite[Chapter~5]{Glasserman}. The Brownian bridge
+construction in QMC is due to Caflisch, Morokoff and Owen
+\cite{CaflischMorokoffOwen}; we do not implement it here. The
+analysis of effective dimension in finance is in Wang and Sloan
+\cite{WangSloan}.
+
+\begin{thebibliography}{99}
+
+\bibitem{CaflischMorokoffOwen}
+R.\ E.\ Caflisch, W.\ Morokoff, A.\ B.\ Owen,
+\emph{Valuation of mortgage-backed securities using Brownian
+bridges to reduce effective dimension},
+Journal of Computational Finance, 1(1):27--46, 1997.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{WangSloan}
+X.\ Wang and I.\ H.\ Sloan,
+\emph{Why are high-dimensional finance problems often of low
+effective dimension?},
+SIAM Journal on Scientific Computing, 27(1):159--183, 2005.
+
+\end{thebibliography}
+
+\end{document}
