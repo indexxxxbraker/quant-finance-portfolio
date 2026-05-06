@@ -155,3 +155,229 @@ TEST_CASE("AV pricer: identical estimate from rng-equivalent seeds",
     REQUIRE(a.sample_variance == b.sample_variance);
     REQUIRE(a.n_paths == b.n_paths);
 }
+
+
+// =====================================================================
+// Block 2.2: input validation for both CV pricers
+// =====================================================================
+
+TEST_CASE("MC CV (underlying): input validation",
+          "[mc][cv][validation]") {
+    std::mt19937_64 rng(42);
+
+    SECTION("S must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_underlying(
+                -1.0, 100.0, 0.05, 0.20, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("K must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_underlying(
+                100.0, 0.0, 0.05, 0.20, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("sigma must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_underlying(
+                100.0, 100.0, 0.05, -0.10, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("T must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_underlying(
+                100.0, 100.0, 0.05, 0.20, 0.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_paths must be at least 2") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_underlying(
+                100.0, 100.0, 0.05, 0.20, 1.0, 1, rng),
+            std::invalid_argument);
+    }
+    SECTION("r is unconstrained") {
+        REQUIRE_NOTHROW(
+            quant::mc_european_call_exact_cv_underlying(
+                100.0, 100.0, -0.02, 0.20, 1.0, 1000, rng));
+    }
+}
+
+
+TEST_CASE("MC CV (AON): input validation",
+          "[mc][cv][validation]") {
+    std::mt19937_64 rng(42);
+
+    SECTION("S must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_aon(
+                -1.0, 100.0, 0.05, 0.20, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("K must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_aon(
+                100.0, 0.0, 0.05, 0.20, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("sigma must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_aon(
+                100.0, 100.0, 0.05, -0.10, 1.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("T must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_aon(
+                100.0, 100.0, 0.05, 0.20, 0.0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_paths must be at least 2") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_exact_cv_aon(
+                100.0, 100.0, 0.05, 0.20, 1.0, 1, rng),
+            std::invalid_argument);
+    }
+    SECTION("r is unconstrained") {
+        REQUIRE_NOTHROW(
+            quant::mc_european_call_exact_cv_aon(
+                100.0, 100.0, -0.02, 0.20, 1.0, 1000, rng));
+    }
+}
+
+
+// =====================================================================
+// Block 2.2: BS coherence for both CV pricers
+// =====================================================================
+
+TEST_CASE("CV-underlying pricer: consistent with BS",
+          "[mc][cv][bs]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    const double bs_price = quant::call_price(S, K, r, sigma, T);
+
+    constexpr std::size_t n_paths = 50'000;
+
+    std::mt19937_64 rng(42);
+    const auto result = quant::mc_european_call_exact_cv_underlying(
+        S, K, r, sigma, T, n_paths, rng);
+
+    INFO("CV-underlying estimate = " << result.estimate
+         << ", BS = " << bs_price
+         << ", half-width = " << result.half_width);
+
+    REQUIRE(std::abs(result.estimate - bs_price)
+            <= 3.0 * result.half_width);
+}
+
+
+TEST_CASE("CV-AON pricer: consistent with BS",
+          "[mc][cv][bs]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    const double bs_price = quant::call_price(S, K, r, sigma, T);
+
+    constexpr std::size_t n_paths = 50'000;
+
+    std::mt19937_64 rng(42);
+    const auto result = quant::mc_european_call_exact_cv_aon(
+        S, K, r, sigma, T, n_paths, rng);
+
+    INFO("CV-AON estimate = " << result.estimate
+         << ", BS = " << bs_price
+         << ", half-width = " << result.half_width);
+
+    REQUIRE(std::abs(result.estimate - bs_price)
+            <= 3.0 * result.half_width);
+}
+
+
+// =====================================================================
+// Block 2.2: half-width below IID at equal payoff budget (both CVs)
+// =====================================================================
+
+TEST_CASE("CV-underlying pricer: half-width below IID at equal budget",
+          "[mc][cv][vrf]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_paths = 100'000;
+
+    std::mt19937_64 rng_cv(11);
+    std::mt19937_64 rng_iid(11);
+
+    const auto result_cv  = quant::mc_european_call_exact_cv_underlying(
+        S, K, r, sigma, T, n_paths, rng_cv);
+    const auto result_iid = quant::mc_european_call_exact(
+        S, K, r, sigma, T, n_paths, rng_iid);
+
+    // VRF predicted ~ 6.9; require half-width ratio > 2.0 (i.e. VRF > 4)
+    // for safety against MC noise. Predicted ratio is sqrt(6.9) ~ 2.6.
+    const double ratio = result_iid.half_width / result_cv.half_width;
+
+    INFO("CV-underlying hw = " << result_cv.half_width
+         << ", IID hw = " << result_iid.half_width
+         << ", ratio = " << ratio);
+
+    REQUIRE(ratio > 2.0);
+}
+
+
+TEST_CASE("CV-AON pricer: half-width below IID at equal budget",
+          "[mc][cv][vrf]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_paths = 100'000;
+
+    std::mt19937_64 rng_cv(11);
+    std::mt19937_64 rng_iid(11);
+
+    const auto result_cv  = quant::mc_european_call_exact_cv_aon(
+        S, K, r, sigma, T, n_paths, rng_cv);
+    const auto result_iid = quant::mc_european_call_exact(
+        S, K, r, sigma, T, n_paths, rng_iid);
+
+    // VRF predicted ~ 2.5; require half-width ratio > 1.3 (i.e. VRF > 1.69)
+    // for safety against MC noise. Predicted ratio is sqrt(2.5) ~ 1.58.
+    const double ratio = result_iid.half_width / result_cv.half_width;
+
+    INFO("CV-AON hw = " << result_cv.half_width
+         << ", IID hw = " << result_iid.half_width
+         << ", ratio = " << ratio);
+
+    REQUIRE(ratio > 1.3);
+}
+
+
+// =====================================================================
+// Block 2.2: determinism under seed for both CV pricers
+// =====================================================================
+
+TEST_CASE("CV pricers: identical estimate from rng-equivalent seeds",
+          "[mc][cv][symmetry]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_paths = 1000;
+    constexpr uint64_t seed = 13;
+
+    SECTION("CV-underlying") {
+        std::mt19937_64 rng_a(seed);
+        std::mt19937_64 rng_b(seed);
+
+        const auto a = quant::mc_european_call_exact_cv_underlying(
+            S, K, r, sigma, T, n_paths, rng_a);
+        const auto b = quant::mc_european_call_exact_cv_underlying(
+            S, K, r, sigma, T, n_paths, rng_b);
+
+        REQUIRE(a.estimate == b.estimate);
+        REQUIRE(a.half_width == b.half_width);
+        REQUIRE(a.sample_variance == b.sample_variance);
+    }
+
+    SECTION("CV-AON") {
+        std::mt19937_64 rng_a(seed);
+        std::mt19937_64 rng_b(seed);
+
+        const auto a = quant::mc_european_call_exact_cv_aon(
+            S, K, r, sigma, T, n_paths, rng_a);
+        const auto b = quant::mc_european_call_exact_cv_aon(
+            S, K, r, sigma, T, n_paths, rng_b);
+
+        REQUIRE(a.estimate == b.estimate);
+        REQUIRE(a.half_width == b.half_width);
+        REQUIRE(a.sample_variance == b.sample_variance);
+    }
+}

@@ -1,10 +1,10 @@
 // main.cpp
 //
 // Smoke test: prints prices, Greeks, implied volatility recovery at
-// the Hull example point, plus a Hull example for IV, plus the four
+// the Hull example point, plus a Hull example for IV, plus the five
 // Monte Carlo pricers (exact sampler from Block 1.1, Euler-Maruyama
 // from Block 1.2.1, Milstein from Block 1.2.2, antithetic variates
-// from Block 2.1).
+// from Block 2.1, control variates -- both controls -- from Block 2.2).
 
 #include "black_scholes.hpp"
 #include "implied_volatility.hpp"
@@ -87,7 +87,29 @@ int main() {
                   << "  (BS: 10.4506)\n"
                   << "  Half-width  : " << mc_av.half_width << "\n"
                   << "  Sample var  : " << mc_av.sample_variance << "\n"
-                  << "  N pairs     : " << mc_av.n_paths << "\n";
+                  << "  N pairs     : " << mc_av.n_paths << "\n\n";
+    }
+    {
+        std::mt19937_64 rng(42);
+        const auto mc_cv1 = quant::mc_european_call_exact_cv_underlying(
+            100.0, 100.0, 0.05, 0.20, 1.0, 100'000, rng);
+        std::cout << "CV MC pricer (Block 2.2, control=underlying, n_paths=100000):\n"
+                  << "  Estimate    : " << mc_cv1.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << mc_cv1.half_width << "\n"
+                  << "  Sample var  : " << mc_cv1.sample_variance << "\n"
+                  << "  N paths     : " << mc_cv1.n_paths << "\n\n";
+    }
+    {
+        std::mt19937_64 rng(42);
+        const auto mc_cv2 = quant::mc_european_call_exact_cv_aon(
+            100.0, 100.0, 0.05, 0.20, 1.0, 100'000, rng);
+        std::cout << "CV MC pricer (Block 2.2, control=AON, n_paths=100000):\n"
+                  << "  Estimate    : " << mc_cv2.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << mc_cv2.half_width << "\n"
+                  << "  Sample var  : " << mc_cv2.sample_variance << "\n"
+                  << "  N paths     : " << mc_cv2.n_paths << "\n";
     }
 
     return 0;
