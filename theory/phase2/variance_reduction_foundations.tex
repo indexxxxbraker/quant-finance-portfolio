@@ -1,0 +1,503 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Variance Reduction in Monte Carlo:\\
+       Theoretical Foundations}
+\author{Quant Finance Portfolio --- Phase 2, Block 2.0}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We develop the two foundational variance reduction techniques used
+throughout the rest of Phase~2: antithetic variates and control
+variates. For each we derive the conditions under which it is
+guaranteed to reduce variance, the resulting variance formula, and
+the practical algorithm that implements it. The treatment is honest
+about the cost-benefit trade-off: a method that halves the variance
+but doubles the per-path cost is no improvement, and we make the
+\emph{variance times time} (VxT) criterion explicit at the outset to
+guard against this confusion. We also derive the empirical
+control-variate coefficient and analyse the small bias it introduces,
+and we close with a brief catalogue of techniques we do not cover in
+the present block (stratified sampling, importance sampling,
+multilevel MC) together with the reasons.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+Every Monte Carlo estimator we have built so far has had the same
+asymptotic structure: $\hat I_M = M^{-1} \sum_{i=1}^M Y_i$ for some
+i.i.d.\ payoff $Y$, with variance $\Var(\hat I_M) = \sigma^2_Y / M$
+where $\sigma^2_Y = \Var(Y)$. The half-width of a fixed-confidence
+interval scales as $\sigma_Y / \sqrt{M}$.
+
+For a typical at-the-money European call (parameters $S_0 = K = 100$,
+$r = 0.05$, $\sigma = 0.20$, $T = 1$) the payoff variance is
+$\sigma^2_Y \approx 217$. A half-width of $0.01$ at $95\%$ confidence
+requires $M \approx 4 \cdot 1.96^2 \cdot 217 / 0.01^2 \approx 8.3
+\cdot 10^6$ paths. Each ten-fold reduction in the half-width costs a
+hundred-fold increase in the sample size.
+
+Variance reduction techniques attack this rate by constructing
+\emph{alternative} estimators of the same quantity $I = \E[Y]$, with
+the same sample size $M$, but with variance smaller than $\sigma^2_Y
+/ M$. The reduction comes from exploiting structure of the problem
+(monotonicity, correlation with a tractable quantity) that the basic
+estimator ignores.
+
+The general framework is: replace $Y$ with another random variable
+$\tilde Y$ such that $\E[\tilde Y] = \E[Y]$ but $\Var(\tilde Y) <
+\Var(Y)$, and run the Monte Carlo with $\tilde Y$ in place of $Y$.
+The estimator $\hat I_M^{\tilde Y} = M^{-1} \sum_i \tilde Y_i$ has
+variance $\Var(\tilde Y) / M$. If $\Var(\tilde Y) = \sigma^2_Y / k$,
+the variance is reduced by a factor of $k$, which is equivalent to
+multiplying the effective sample size by $k$.
+
+The catch, almost always, is that producing one sample of $\tilde Y$
+costs more than producing one sample of $Y$. The honest way of
+comparing is the \emph{variance times time} criterion of
+Section~\ref{sec:vxt}.
+
+\section{The variance-times-time (VxT) criterion}
+\label{sec:vxt}
+
+Suppose two estimators of the same quantity $I$ are available:
+\begin{itemize}
+\item Estimator $A$: each sample has variance $\sigma_A^2$ and takes
+time $\tau_A$ to compute.
+\item Estimator $B$: each sample has variance $\sigma_B^2$ and takes
+time $\tau_B$ to compute.
+\end{itemize}
+Given a total computational budget $T_{\text{total}}$, estimator $A$
+can produce $M_A = T_{\text{total}} / \tau_A$ samples, leading to
+estimator variance $\sigma_A^2 / M_A = \sigma_A^2 \tau_A /
+T_{\text{total}}$. Similarly, $B$ produces estimator variance
+$\sigma_B^2 \tau_B / T_{\text{total}}$.
+
+The estimator with smaller \emph{product} $\sigma^2 \tau$ wins, and
+the relative VxT,
+\begin{equation}
+\frac{\sigma_A^2 \tau_A}{\sigma_B^2 \tau_B},
+\end{equation}
+quantifies how many times faster $B$ converges to the truth at fixed
+budget. A variance reduction technique that halves the variance but
+doubles the per-sample cost is a wash: VxT unchanged, no actual
+improvement.
+
+This criterion will reappear in every validation script of Phase~2
+Block~2. Variance ratios alone are misleading; only the VxT ratio
+captures the practical comparison.
+
+\begin{remark}
+The VxT criterion assumes the per-sample cost is the same for every
+sample, which is true for the simple estimators considered here. For
+adaptive estimators (where the cost varies with the realisation), a
+more careful analysis is needed; see Glasserman~\cite{Glasserman},
+Section~4.1.3.
+\end{remark}
+
+\section{Antithetic variates}
+\label{sec:av}
+
+\subsection{Setup and theorem}
+
+Suppose $Y$ depends on a vector of standard normals $\mathbf{Z}$:
+$Y = f(\mathbf{Z})$ with $\mathbf{Z} \sim \mathcal{N}(0, I)$. By
+symmetry of the normal distribution, $-\mathbf{Z}$ is also
+$\mathcal{N}(0, I)$, so $f(-\mathbf{Z})$ has the same distribution
+(and the same expectation) as $f(\mathbf{Z})$.
+
+The antithetic variates estimator pairs the two:
+\begin{equation}
+\label{eq:av-Yi}
+Y_i^{\mathrm{AV}} \;\eqdef\; \tfrac{1}{2}\bigl(\,f(\mathbf{Z}_i) + f(-\mathbf{Z}_i)\,\bigr),
+\qquad i = 1, \ldots, M,
+\end{equation}
+with $\mathbf{Z}_i$ i.i.d.\ standard normals across $i$. The estimator
+of $I = \E[f(\mathbf{Z})]$ is
+\begin{equation}
+\hat I_M^{\mathrm{AV}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^M Y_i^{\mathrm{AV}}.
+\end{equation}
+
+\begin{theorem}[Variance of the antithetic estimator]
+\label{thm:av}
+The estimator $\hat I_M^{\mathrm{AV}}$ is unbiased for $I$, and its
+variance equals
+\begin{equation}
+\label{eq:av-variance}
+\Var\bigl(\hat I_M^{\mathrm{AV}}\bigr)
+\;=\; \frac{1}{2M} \bigl(\,\Var(f(\mathbf{Z})) + \Cov(f(\mathbf{Z}),\, f(-\mathbf{Z}))\,\bigr).
+\end{equation}
+In particular, $\Var(\hat I_M^{\mathrm{AV}}) < \Var(\hat I_M^{\mathrm{IID}})$
+if and only if $\Cov(f(\mathbf{Z}), f(-\mathbf{Z})) <
+\Var(f(\mathbf{Z}))$, equivalently $\Corr(f(\mathbf{Z}), f(-\mathbf{Z}))
+< 1$, which is the generic case.
+\end{theorem}
+
+\begin{proof}
+Unbiasedness is immediate: $\E[Y_i^{\mathrm{AV}}] = \tfrac{1}{2}(\E[f(\mathbf{Z})]
++ \E[f(-\mathbf{Z})]) = \E[f(\mathbf{Z})] = I$. For the variance,
+$\Var(Y_i^{\mathrm{AV}}) = \tfrac{1}{4}(\Var(f(\mathbf{Z})) +
+\Var(f(-\mathbf{Z})) + 2 \Cov(f(\mathbf{Z}), f(-\mathbf{Z})))$, and
+$\Var(f(-\mathbf{Z})) = \Var(f(\mathbf{Z}))$ by distributional
+equality, so $\Var(Y_i^{\mathrm{AV}}) = \tfrac{1}{2}(\Var(f(\mathbf{Z}))
++ \Cov(f(\mathbf{Z}), f(-\mathbf{Z})))$. The estimator's variance is
+this divided by $M$.
+\end{proof}
+
+The strict comparison with the IID estimator is more informative when
+made at \emph{equal computational cost}, since each $Y_i^{\mathrm{AV}}$
+requires two evaluations of $f$ rather than one. The honest
+comparison is between $\hat I_M^{\mathrm{AV}}$ and $\hat I_{2M}^{\mathrm{IID}}$,
+both using $2M$ payoff evaluations:
+\begin{equation}
+\Var\bigl(\hat I_{2M}^{\mathrm{IID}}\bigr)
+\;=\; \frac{\Var(f(\mathbf{Z}))}{2M}.
+\end{equation}
+The AV estimator wins if and only if $\Cov(f(\mathbf{Z}), f(-\mathbf{Z}))
+< 0$. This brings us to the key sufficient condition.
+
+\subsection{The monotonicity condition}
+
+\begin{theorem}[Sufficient condition for AV to reduce variance]
+\label{thm:av-monotone}
+If $f : \R^d \to \R$ is monotone in each coordinate of $\mathbf{Z}$
+(in the same direction, i.e.\ either monotone increasing in all or
+monotone decreasing in all), then
+\begin{equation}
+\Cov(f(\mathbf{Z}),\, f(-\mathbf{Z})) \leq 0,
+\end{equation}
+with strict inequality unless $f$ is essentially constant.
+\end{theorem}
+
+This is a special case of a general result on monotone functions of
+random vectors and antithetic transformations; see
+Glasserman~\cite[Section~4.2]{Glasserman}. We do not reproduce the
+proof; the intuition is that if $f$ is monotone, large values of
+$f(\mathbf{Z})$ correspond to favourable directions of $\mathbf{Z}$,
+and reflecting $\mathbf{Z}$ to $-\mathbf{Z}$ flips these to
+unfavourable directions, producing small values of $f(-\mathbf{Z})$.
+The pair $(f(\mathbf{Z}), f(-\mathbf{Z}))$ is therefore negatively
+correlated.
+
+For the European call under GBM, $S_T = S_0 \exp((r - \sigma^2/2) T
++ \sigma \sqrt{T} Z)$ is strictly increasing in $Z$, and the call
+payoff $(S_T - K)^+$ is monotone increasing in $S_T$, hence in $Z$.
+So the monotonicity condition holds and AV is guaranteed to reduce
+variance for the European call. By how much depends on how strong the
+negative correlation is, which we measure empirically in Block~2.1.
+
+\section{Control variates}
+\label{sec:cv}
+
+\subsection{Setup and theorem}
+
+Suppose, in addition to the target $Y$, we have access to a second
+random variable $X$ defined on the same paths, with the property that
+$\E[X]$ is \emph{known in closed form}. The variable $X$ is called a
+\emph{control variate}.
+
+For any constant $c \in \R$, the centred quantity $X - \E[X]$ has
+mean zero, so the random variable
+\begin{equation}
+\label{eq:cv-Yi}
+\tilde Y(c) \;\eqdef\; Y - c\,(X - \E[X])
+\end{equation}
+satisfies $\E[\tilde Y(c)] = \E[Y] - c \cdot 0 = \E[Y] = I$. The
+estimator built from $\tilde Y(c)$ is unbiased for $I$ regardless of
+$c$. The freedom to choose $c$ lets us reduce variance.
+
+\begin{theorem}[Optimal control coefficient]
+\label{thm:cv-optimal}
+The variance of $\tilde Y(c)$ is
+\begin{equation}
+\Var(\tilde Y(c)) \;=\; \Var(Y) - 2c\,\Cov(Y, X) + c^2\,\Var(X),
+\end{equation}
+minimised at
+\begin{equation}
+\label{eq:cv-c-star}
+c^* \;\eqdef\; \frac{\Cov(Y, X)}{\Var(X)},
+\end{equation}
+with minimum value
+\begin{equation}
+\label{eq:cv-min-var}
+\Var(\tilde Y(c^*)) \;=\; \Var(Y)\,(1 - \rho^2),
+\qquad \rho \;\eqdef\; \Corr(Y, X).
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+The variance formula is a straightforward expansion of $\tilde
+Y(c)$. Setting the derivative with respect to $c$ to zero yields
+$c^* = \Cov(Y, X) / \Var(X)$. Substituting back,
+$\Var(\tilde Y(c^*)) = \Var(Y) - \Cov(Y, X)^2 / \Var(X) = \Var(Y)(1
+- \rho^2)$ since $\rho^2 = \Cov(Y, X)^2 / (\Var(Y) \Var(X))$.
+\end{proof}
+
+The variance reduction factor $1 / (1 - \rho^2)$ depends only on the
+correlation $\rho$ between $Y$ and the control $X$. A control with
+$|\rho| = 0.9$ reduces variance by a factor $1/(1-0.81) \approx
+5.3$; with $|\rho| = 0.99$, by $\approx 50$. Finding a good control
+is a creative problem: it must (a) have known expectation in closed
+form and (b) be highly correlated with $Y$.
+
+\subsection{Connection with OLS regression}
+
+The optimal coefficient $c^*$ has a direct interpretation in terms
+of ordinary least squares. Consider regressing $Y$ on $X$ with an
+intercept:
+\begin{equation}
+Y \;=\; \alpha + \beta X + \varepsilon,
+\end{equation}
+with $\E[\varepsilon] = 0$ and $\Cov(\varepsilon, X) = 0$. The OLS
+slope estimator (in the population) is exactly
+\begin{equation}
+\beta^{\text{OLS}} \;=\; \frac{\Cov(Y, X)}{\Var(X)} \;=\; c^*.
+\end{equation}
+The control variate adjustment $\tilde Y(c^*) = Y - c^*(X - \E[X])$
+is the \emph{residual} of the OLS regression, shifted by the
+intercept $\alpha = \E[Y] - c^* \E[X]$ to recover the original mean.
+The variance of the residual is exactly $\Var(Y)(1 - R^2)$ with
+$R^2 = \rho^2$, recovering~\eqref{eq:cv-min-var}.
+
+This is more than a calculation curiosity: it tells us that
+\emph{control variate variance reduction is just OLS regression
+applied to Monte Carlo}. Multiple control variates correspond to
+multiple regression, and the same intuition (more controls help if
+they bring genuine new information beyond the existing controls,
+i.e.\ they are not collinear with them) applies. We do not pursue
+multiple controls in this block, but the framework extends
+mechanically.
+
+\subsection{The empirical \texorpdfstring{$c^*$}{c-star} and its bias}
+\label{subsec:empirical-c}
+
+In practice $\Cov(Y, X)$ and $\Var(X)$ are unknown. We estimate them
+from the same $M$ paths used for the Monte Carlo:
+\begin{equation}
+\hat c \;\eqdef\;
+\frac{\hat\Cov(Y, X)}{\hat\Var(X)}
+\;=\; \frac{\sum_{i=1}^M (Y_i - \bar Y)(X_i - \bar X)}
+            {\sum_{i=1}^M (X_i - \bar X)^2},
+\end{equation}
+which is exactly the OLS slope estimate from the sample. The
+estimator becomes
+\begin{equation}
+\hat I_M^{\mathrm{CV}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^M
+\bigl(Y_i - \hat c\,(X_i - \E[X])\bigr).
+\end{equation}
+
+This estimator is no longer strictly unbiased for $I$. Because
+$\hat c$ is itself a function of $\{(Y_i, X_i)\}_{i=1}^M$, its
+correlation with the $Y_i - \hat c\,(X_i - \E[X])$ terms induces a
+small bias.
+
+\begin{proposition}[Bias of the empirical CV estimator]
+\label{prop:cv-bias}
+Under standard moment conditions, the bias of $\hat I_M^{\mathrm{CV}}$
+is $O(1/M)$, while its variance is $\Var(Y)(1-\rho^2)/M + O(1/M^2)$.
+\end{proposition}
+
+The proof is a perturbation analysis: $\hat c = c^* + O_p(M^{-1/2})$,
+and the bias contribution at this order vanishes by orthogonality.
+See Glasserman~\cite[Section~4.1.3]{Glasserman} for details.
+
+The practical consequence: the bias decays at the same rate as the
+square root of the standard error decays, so for any $M$ at which
+the standard error is acceptably small, the bias is also negligibly
+small (in fact, asymptotically negligible compared to the standard
+error itself, since bias is $O(1/M)$ while standard error is
+$O(1/\sqrt M)$). For $M \geq 10^3$ in our typical setting, the bias
+is below $10^{-4}$, well within rounding tolerance for option
+pricing.
+
+The alternative is a \emph{pilot run} of $M_0$ paths to estimate $c^*$
+followed by a production run of $M$ paths with $\hat c$ frozen, which
+gives an exactly unbiased estimator. We do not adopt this in our
+implementation: the empirical $\hat c$ approach is simpler, the bias
+is negligible at our sample sizes, and the OLS interpretation is
+more transparent.
+
+\subsection{The two controls we use}
+
+For the European call under GBM, two natural controls present
+themselves:
+
+\paragraph{Control 1 -- the underlying:} $X_1 \eqdef e^{-rT} S_T$, the
+discounted terminal price. Its expectation is $\E[X_1] = e^{-rT} \E[S_T]
+= e^{-rT} \cdot S_0 e^{rT} = S_0$, by the risk-neutral martingale
+property. This control is correlated with the call payoff $(S_T -
+K)^+$ but only modestly: the correlation breaks down where the
+payoff is zero (in the OTM region), so the linear relationship is
+weak. We expect $\rho \approx 0.5$--$0.7$ at the ATM point, giving
+a variance reduction factor of $\approx 1.4$--$2.0$.
+
+\paragraph{Control 2 -- the asset-or-nothing:} $X_2 \eqdef e^{-rT}\,
+S_T \indic_{\{S_T > K\}}$, the discounted asset-or-nothing payoff.
+Its expectation has a closed Black-Scholes form
+\begin{equation}
+\E[X_2] \;=\; S_0\, \Phi(d_1),
+\end{equation}
+with $d_1 = (\log(S_0/K) + (r + \sigma^2/2)T) / (\sigma \sqrt T)$ as
+in the standard Black-Scholes formula. (This is the value of the
+asset-or-nothing call, which is a building block of the
+Black-Scholes derivation.) Its key property: \emph{it activates on
+exactly the same paths as the call}, so its correlation with $(S_T -
+K)^+$ is much higher --- typically $|\rho| > 0.95$. We expect a
+variance reduction factor of $\geq 10$.
+
+The disparity between the two controls illustrates a general
+principle: \emph{a good control variate matches the ``shape'' of the
+target}. The call payoff is zero on $\{S_T < K\}$ and linear in
+$S_T$ on $\{S_T \geq K\}$. The discounted asset matches the linear
+part but is nonzero everywhere. The asset-or-nothing matches both
+the zero region and the linear region.
+
+\section{When to use which technique}
+\label{sec:when}
+
+The two techniques apply in different circumstances and are not
+mutually exclusive. A pragmatic decision tree:
+
+\begin{itemize}
+\item \emph{Is the payoff a monotone function of the underlying
+randomness?} If yes, antithetic variates are essentially free
+insurance: they cost one extra payoff evaluation per pair (so per-VxT
+cost factor 2) but always reduce variance for monotone payoffs.
+
+\item \emph{Is there a tractable control variate with high
+correlation?} If yes, control variates can deliver order-of-magnitude
+reductions, far beyond what AV achieves. The challenge is finding
+the control: it requires knowing the closed-form expectation of
+something correlated with the target.
+
+\item \emph{Both?} The two can be combined: first apply antithetic
+variates to construct $Y^{\mathrm{AV}}$, then use a control variate
+on $Y^{\mathrm{AV}}$. The combination is implemented in production
+quant systems but adds complexity; we do not pursue it in this
+portfolio.
+\end{itemize}
+
+For the European call under GBM, which is our running example, the
+asset-or-nothing control is so effective that AV is a marginal
+addition on top. We implement and validate both separately to
+illustrate the principles, then leave the combination as an
+exercise.
+
+\section{What we do not cover}
+\label{sec:not-covered}
+
+For completeness, three other variance reduction techniques exist
+and are well-developed in the literature:
+
+\paragraph{Stratified sampling.} Partition the support of an input
+random variable into strata, sample a fixed (proportional) number
+from each stratum, and combine the strata estimators. Reduces the
+``between-strata'' component of variance but not the ``within-strata''
+component. Particularly powerful in low dimensions and for inputs
+where good strata can be designed (such as sampling from a single
+normal: stratifying its quantile space delivers near-deterministic
+convergence). See Glasserman~\cite[Chapter~4]{Glasserman}.
+
+\paragraph{Importance sampling.} Change the probability measure to
+oversample from regions where the payoff is large, then reweight to
+recover an unbiased estimator. Mathematically a Radon--Nikodym
+change of measure. Most effective when the payoff has a localised
+``important'' region (deep out-of-the-money options, rare events).
+See Glasserman~\cite[Chapter~4]{Glasserman}, Asmussen \&
+Glynn~\cite{AsmussenGlynn}.
+
+\paragraph{Multilevel Monte Carlo (MLMC).} Combine simulations at
+multiple discretisation grids, exploiting that fine-grid simulations
+are expensive but coarse-grid simulations are noisy. Reduces the
+total cost to achieve a target accuracy for SDE-based MC. See
+Giles~\cite{Giles2008}.
+
+We do not cover these in the portfolio for reasons of scope: the
+asset-or-nothing control variate alone delivers more variance
+reduction than this entire course needs, and the techniques above
+become valuable in regimes (deep OTM, very long-dated, exotic
+path-dependent) that we do not target here.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The textbook reference for variance reduction in financial Monte
+Carlo is Glasserman~\cite{Glasserman}, Chapter~4. The OLS connection
+of control variates is standard, well-treated in any book on
+simulation theory, e.g.\ Asmussen \& Glynn~\cite{AsmussenGlynn},
+Chapter~V. The asset-or-nothing as a Black-Scholes building block is
+in Hull~\cite{Hull}, Chapter~26. The general framework of
+variance-times-time as the right comparison criterion is
+folklore in the simulation community and stated explicitly in
+Glasserman~\cite[Section~1.1.3]{Glasserman}.
+
+\begin{thebibliography}{99}
+
+\bibitem{AsmussenGlynn}
+S.\ Asmussen and P.\ W.\ Glynn,
+\emph{Stochastic Simulation: Algorithms and Analysis},
+Springer, 2007.
+
+\bibitem{Giles2008}
+M.\ B.\ Giles,
+\emph{Multilevel Monte Carlo path simulation},
+Operations Research, 56(3):607--617, 2008.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Hull}
+J.\ C.\ Hull,
+\emph{Options, Futures, and Other Derivatives},
+10th edition, Pearson, 2018.
+
+\end{thebibliography}
+
+\end{document}

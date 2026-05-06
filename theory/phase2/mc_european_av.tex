@@ -1,0 +1,327 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Pricing of a European Call:\\
+       Antithetic Variates}
+\author{Quant Finance Portfolio --- Phase 2, Block 2, Algorithm 1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We apply the antithetic variates technique of the Block~2.0 writeup
+to the Monte Carlo pricer of the European call under the exact GBM
+sampler of Block~1.1. The monotonicity condition holds trivially, so
+the AV estimator is guaranteed to reduce variance over the IID
+estimator at equal sample size, and to reduce VxT over the IID
+estimator at equal computational budget. We predict the variance
+reduction factor analytically as a function of moneyness ($S_0/K$)
+and design the empirical validation that measures the factor and the
+VxT ratio.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+Block~1.1 produced our baseline European-call pricer:
+\begin{equation}
+\hat C_M^{\mathrm{IID}} \;=\; \frac{1}{M} \sum_{i=1}^M
+e^{-rT} (S_T^{(i)} - K)^+,
+\quad
+S_T^{(i)} = S_0 \exp\!\bigl((r - \tfrac{1}{2}\sigma^2)T + \sigma \sqrt T\, Z_i\bigr),
+\end{equation}
+with $Z_i \sim \mathcal{N}(0, 1)$ i.i.d. The empirical variance at
+canonical parameters ($S_0 = K = 100$, $r = 0.05$, $\sigma = 0.20$,
+$T = 1$) is $\sigma^2_Y \approx 217$, giving a half-width of about
+$0.09$ at $M = 10^5$.
+
+In this block we replace this estimator with its antithetic-variates
+counterpart, derive the resulting variance under GBM, predict the
+reduction factor as a function of moneyness, and validate empirically.
+
+\section{The antithetic estimator for the European call}
+\label{sec:av-call}
+
+\subsection{Construction}
+
+Let $f(z) \eqdef e^{-rT} (S(z) - K)^+$ where
+\begin{equation}
+S(z) \;\eqdef\; S_0 \exp\!\bigl((r - \tfrac{1}{2}\sigma^2)T + \sigma \sqrt T \, z\bigr),
+\qquad z \in \R.
+\end{equation}
+The antithetic-pair payoff is
+\begin{equation}
+\label{eq:av-payoff}
+Y_i^{\mathrm{AV}} \;\eqdef\; \tfrac{1}{2}\bigl(\, f(Z_i) + f(-Z_i) \,\bigr),
+\end{equation}
+with $Z_i \sim \mathcal{N}(0,1)$ i.i.d. The estimator is
+\begin{equation}
+\hat C_M^{\mathrm{AV}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^M Y_i^{\mathrm{AV}}.
+\end{equation}
+Each $Y_i^{\mathrm{AV}}$ requires \emph{two} payoff evaluations (one
+at $Z_i$, one at $-Z_i$), so the per-pair computational cost is
+roughly twice that of an IID payoff. Per the VxT criterion of Block~2.0,
+the relevant comparison is between $\hat C_M^{\mathrm{AV}}$ (using $2M$
+payoff evaluations) and $\hat C_{2M}^{\mathrm{IID}}$ (also using $2M$
+payoff evaluations).
+
+\subsection{Verification of monotonicity}
+
+The function $z \mapsto S(z)$ is strictly increasing in $z$ (it is
+$S_0$ times a strictly increasing exponential). The function $s \mapsto
+e^{-rT}(s - K)^+$ is monotone non-decreasing in $s$, strictly
+increasing on $\{s > K\}$. The composition $z \mapsto f(z)$ is
+therefore monotone non-decreasing, strictly increasing on $\{z : S(z)
+> K\}$.
+
+By Theorem~3.2 of the Block~2.0 writeup, $\Cov(f(Z), f(-Z)) \leq 0$
+with strict inequality (since $f$ is not essentially constant: the
+ITM and OTM regions both have positive probability under the standard
+normal). The antithetic estimator is therefore strictly superior to
+the IID estimator at equal sample size.
+
+\subsection{Variance and reduction factor}
+
+By Theorem~3.1 of the Block~2.0 writeup,
+\begin{equation}
+\label{eq:av-variance-call}
+\Var(\hat C_M^{\mathrm{AV}}) \;=\; \frac{1}{2M}\bigl(\, \sigma^2_f + \Cov(f(Z), f(-Z)) \,\bigr),
+\qquad \sigma^2_f \;\eqdef\; \Var(f(Z)).
+\end{equation}
+At equal computational budget,
+\begin{equation}
+\Var(\hat C_{2M}^{\mathrm{IID}}) \;=\; \frac{\sigma^2_f}{2M},
+\end{equation}
+so the variance reduction factor relative to IID-at-equal-cost is
+\begin{equation}
+\label{eq:vrf}
+\mathrm{VRF} \;\eqdef\;
+\frac{\Var(\hat C_{2M}^{\mathrm{IID}})}{\Var(\hat C_M^{\mathrm{AV}})}
+\;=\; \frac{\sigma^2_f}{\sigma^2_f + \Cov(f(Z), f(-Z))}
+\;=\; \frac{1}{1 + \Corr(f(Z), f(-Z))}.
+\end{equation}
+The $\mathrm{VRF}$ is exactly $1$ if $f(Z)$ and $f(-Z)$ are
+uncorrelated (no benefit), goes to $\infty$ as the correlation
+approaches $-1$ (perfect negative correlation, infinite reduction),
+and equals $1/2$ if the correlation approaches $+1$ (AV is twice as
+bad as IID --- but this cannot happen here, by the monotonicity
+result).
+
+In particular, $\mathrm{VRF} > 1$ if and only if
+$\Corr(f(Z), f(-Z)) < 0$, which is exactly what monotonicity
+guarantees.
+
+\section{Predicting the VRF as a function of moneyness}
+\label{sec:vrf-prediction}
+
+How large is the correlation $\Corr(f(Z), f(-Z))$ for the European
+call under GBM? The answer depends on moneyness, and the dependence
+is informative.
+
+\subsection{Two limiting regimes}
+
+\paragraph{Deep ITM ($K \to 0$):} the call payoff approaches the
+forward, $f(z) \to e^{-rT} S(z) - e^{-rT} K \cdot e^{rT} = e^{-rT}
+S(z) - K e^{-rT}$. (For ATM and ITM cases below the strike $K$
+appears as a constant after discounting.) The dominant variation is
+in $S(z)$, which is monotone in $z$ in a strict, smooth way. The
+function is essentially $z \mapsto a \cdot e^{bz}$ for constants
+$a, b$. We expect $f(Z)$ and $f(-Z)$ to have strong negative
+correlation (near $-1$), giving very high VRF.
+
+\paragraph{Deep OTM ($K \to \infty$):} the call payoff is zero on
+$\{S(z) < K\}$, which is the overwhelming majority of paths. Both
+$f(Z)$ and $f(-Z)$ are zero with high probability, and one is
+nonzero only when the other is zero (in opposite directions of $z$).
+The correlation is small in absolute terms (close to zero) because
+both samples are zero most of the time, giving VRF close to~$1$.
+
+\paragraph{ATM ($K = S_0$):} the regime of practical interest. The
+call activates roughly half the time, with the corresponding negative
+correlation under reflection. We expect a moderate negative
+correlation, around $-0.5$ to $-0.7$.
+
+\subsection{The kink and the loss of correlation}
+
+The reason the call payoff has \emph{less than perfect} antithetic
+correlation, even though it is monotone, is the kink at $S = K$. On
+the ITM side ($z$ large positive), $f(z) = e^{-rT}(S(z) - K)$
+varies smoothly and approximately linearly in $S(z)$. On the OTM
+side ($z$ large negative), $f(z) = 0$, identically. The reflection
+$z \mapsto -z$ maps the ITM side to the OTM side and vice versa, but
+the OTM side carries no information (zero), so the negative
+correlation cannot be perfect.
+
+In contrast, an option whose payoff is smooth and strictly monotone
+everywhere (such as a plain forward, $f(z) = S(z) - F$) achieves
+$\Corr(f(Z), f(-Z))$ very close to $-1$. The kink in the call payoff
+caps the achievable correlation strictly above $-1$.
+
+For our running ATM example we predict VRF in the range
+$\mathrm{VRF} \approx 1.5$--$3.0$, which corresponds to negative
+correlations in the range $-0.7$ to $-0.3$. The exact number will
+emerge from the validation experiment of Section~\ref{sec:validation}.
+
+\section{Algorithmic specification}
+\label{sec:algorithm}
+
+\begin{algorithm}[H]
+\caption{Antithetic-variates Monte Carlo for the European call (exact GBM)}
+\label{alg:mc-av}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, strike $K$, maturity $T$, rate $r$, volatility
+$\sigma$, sample size $M$, confidence level $1 - \beta$, random
+generator \texttt{rng}.
+\Ensure Estimate $\hat C^{\mathrm{AV}}$, half-width $h_M^{\mathrm{AV}}$,
+sample variance $S_M^{2,\mathrm{AV}}$.
+\State $D \gets e^{-rT}$,
+$\quad \mu \gets (r - \tfrac{1}{2} \sigma^2) T$,
+$\quad \nu \gets \sigma \sqrt T$
+\For{$i = 1, \ldots, M$}
+\State Draw $Z_i \sim \mathcal{N}(0, 1)$ using \texttt{rng}
+\State $S_+^{(i)} \gets S_0 \exp(\mu + \nu Z_i)$
+\State $S_-^{(i)} \gets S_0 \exp(\mu - \nu Z_i)$
+\State $Y_i^{\mathrm{AV}} \gets \tfrac{1}{2}\,D\,
+\bigl(\max(S_+^{(i)} - K, 0) + \max(S_-^{(i)} - K, 0)\bigr)$
+\EndFor
+\State $\hat C^{\mathrm{AV}} \gets M^{-1} \sum_i Y_i^{\mathrm{AV}}$
+\State $S_M^{2,\mathrm{AV}} \gets (M-1)^{-1} \sum_i (Y_i^{\mathrm{AV}}
+- \hat C^{\mathrm{AV}})^2$
+\State $h_M^{\mathrm{AV}} \gets z_{\beta/2}\,
+\sqrt{S_M^{2,\mathrm{AV}}/M}$
+\State \Return $(\hat C^{\mathrm{AV}},\, h_M^{\mathrm{AV}},\, S_M^{2,\mathrm{AV}})$
+\end{algorithmic}
+\end{algorithm}
+
+The algorithm uses the same standard normal $Z_i$ to drive both
+elements of the antithetic pair, exploiting that $S(\nu Z) = S_0
+e^{\mu + \nu Z}$ and $S(-\nu Z) = S_0 e^{\mu - \nu Z}$ require only
+the sign flip in the exponent. No additional random draws are
+needed beyond the $M$ standard normals already used by the IID
+estimator.
+
+The variance and half-width are computed from the \emph{paired
+payoffs} $Y_i^{\mathrm{AV}}$, not from the individual $f(Z_i)$ and
+$f(-Z_i)$. This is essential: the $Y_i^{\mathrm{AV}}$ are i.i.d.\ in
+$i$ (each pair is independent of the rest), and $\mathtt{mc\_estimator}$
+applied to them returns the correct variance and half-width
+automatically. Treating the $2M$ individual payoff evaluations as
+i.i.d.\ would be wrong: $f(Z_i)$ and $f(-Z_i)$ are highly correlated,
+and the independence assumption would inflate the apparent half-width.
+
+This is structurally important: \emph{the variance-reducing
+correlation lives inside each pair, not across the dataset}, which
+is what makes the AV estimator both correct and efficient.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The validation script for the AV pricer comprises four tests.
+
+\paragraph{Test 1: variance reduction factor.} Estimate the empirical
+correlation $\hat\rho \eqdef \widehat{\Corr}(f(Z), f(-Z))$ from a
+large sample of $M$ standard normals, and compute the VRF
+\begin{equation}
+\widehat{\mathrm{VRF}} \;=\; \frac{1}{1 + \hat\rho}.
+\end{equation}
+For our canonical ATM call, the prediction is $\hat\rho \in [-0.7,
+-0.3]$, $\widehat{\mathrm{VRF}} \in [1.4, 3.3]$. The test passes if
+the empirical correlation is negative and the VRF is meaningfully
+above $1$.
+
+\paragraph{Test 2: consistency with the IID estimator.} The AV
+estimator and the IID estimator should agree on the same path data
+(when computed from the same RNG state, which they will in our
+design). Concretely: at $M = 10^4$ pairs, run AV pricer and IID
+pricer with $M_{\text{IID}} = 2M$ paths from the same seed, and
+verify that both estimates fall within a few half-widths of the
+closed-form Black-Scholes price. (We do not require pathwise
+equality of the two estimates because the path constructions
+differ: the AV pricer uses each $Z_i$ for both elements of the
+pair, while the IID pricer would treat them as $2M$ independent
+draws.)
+
+\paragraph{Test 3: VxT comparison at fixed budget.} Run both
+estimators with the same number of payoff evaluations ($2M$ each)
+and report:
+\begin{itemize}
+\item Empirical sample variance of $Y^{\mathrm{AV}}$ vs sample
+variance of $Y^{\mathrm{IID}}$ at the same accumulated number of
+payoffs.
+\item Half-widths of the two estimators.
+\item Ratio (which should equal $\widehat{\mathrm{VRF}}$ from Test~1
+up to noise).
+\end{itemize}
+Wall-clock measurements are not necessary for the test to pass; the
+per-pair compute is dominated by two payoff evaluations and one
+shared random draw, with negligible overhead, so the VxT ratio
+equals the variance ratio to within rounding.
+
+\paragraph{Test 4: input validation.} Mechanical: the AV pricer
+rejects bad inputs and accepts negative interest rates.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The textbook reference is Glasserman~\cite[Section~4.2]{Glasserman}.
+The general theorem on antithetic variates and monotone functions
+goes back to Hammersley \& Morton; the application to financial Monte
+Carlo is in Boyle, Broadie \& Glasserman~\cite{BBG1997}.
+
+\begin{thebibliography}{99}
+
+\bibitem{BBG1997}
+P.\ Boyle, M.\ Broadie, and P.\ Glasserman,
+\emph{Monte Carlo methods for security pricing},
+Journal of Economic Dynamics and Control, 21(8--9):1267--1321, 1997.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\end{thebibliography}
+
+\end{document}
