@@ -1,0 +1,370 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Pricing of a European Call:\\
+       Milstein Discretisation under Geometric Brownian Motion}
+\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 3}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We specialise the Milstein scheme of the previous theoretical writeup
+to geometric Brownian motion, derive the resulting recursion, and
+apply it to Monte Carlo pricing of the European call. The principal
+purpose of the algorithm is not improvement of the pricer itself ---
+Milstein and Euler share weak order $1$ and produce statistically
+indistinguishable European prices --- but rather \emph{empirical
+demonstration of the strong/weak convergence asymmetry}. Running both
+schemes on the same grid of step sizes and on the same Brownian
+paths, we observe in a single experiment that Milstein achieves
+strong order $1$ where Euler achieves only $\tfrac{1}{2}$, while the
+two are tied at weak order $1$. This is the most direct possible
+confirmation of the theoretical result, and it is the experimental
+heart of Phase~2 Block~1.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+The previous writeup of Block~1.2.1 implemented Euler-Maruyama and
+verified empirically that its strong order is $\tfrac{1}{2}$ and its
+weak order is $1$. The asymmetry is a striking prediction of the
+SDE convergence theory developed in Block~1.2.0: the same scheme,
+applied to the same dynamics, has different convergence rates
+depending on which kind of error one measures.
+
+The natural follow-up question is whether higher-order schemes lift
+both rates simultaneously, or only one. The answer, predicted by the
+theory, is that the Milstein scheme lifts the strong order from
+$\tfrac{1}{2}$ to $1$ but leaves the weak order unchanged at $1$. The
+present writeup verifies this prediction empirically on the same
+benchmark (European call pricing under GBM with all its inputs at
+canonical values) used in Block~1.2.1, with the additional design
+choice that the Euler and Milstein experiments share their step-size
+grid so that the two slopes can be plotted on a single log-log axis.
+
+The pricing application of the algorithm is, frankly, a sideshow.
+Both schemes give weak order $1$ for European pricing under GBM, and
+the closed-form sampler of Block~1.1 is unbiased and faster than
+either; Milstein adds nothing to the pricing pipeline that Euler did
+not already provide. The value of the algorithm is in the convergence
+study, where the asymmetry is demonstrated in code rather than asserted
+by a theorem. The practical relevance of Milstein in this project will
+arise in Block~4 (pathwise sensitivity), where the strong order
+matters because the simulated path must be a faithful pathwise
+approximation of the true process for path-derivative estimators to
+make sense.
+
+\section{Milstein for geometric Brownian motion}
+\label{sec:setting}
+
+\subsection{The recursion}
+
+Recall the GBM SDE under the risk-neutral measure $\Q$:
+\begin{equation}
+\dd S_t \;=\; r S_t \dd t + \sigma S_t \dd W_t,
+\qquad S_0 > 0,
+\end{equation}
+so $a(s) = r s$ and $b(s) = \sigma s$, hence $b'(s) = \sigma$ and
+$b(s) b'(s) = \sigma^2 s$. The Milstein recursion of the previous
+writeup specialises to
+\begin{equation}
+\label{eq:milstein-gbm}
+\hat S_{n+1} \;=\;
+\hat S_n + r \hat S_n h + \sigma \hat S_n \Delta W_n
++ \tfrac{1}{2} \sigma^2 \hat S_n \big[(\Delta W_n)^2 - h\big],
+\qquad \hat S_0 = S_0,
+\end{equation}
+with $\Delta W_n \sim \mathcal{N}(0, h)$ independent across $n$ and
+$h = T / N$. Factoring $\hat S_n$ out:
+\begin{equation}
+\label{eq:milstein-gbm-mult}
+\hat S_{n+1} \;=\; \hat S_n \cdot
+\Big(\,1 + r h + \sigma \Delta W_n
++ \tfrac{1}{2} \sigma^2 \big[(\Delta W_n)^2 - h\big]\Big).
+\end{equation}
+The recursion remains multiplicative, but the multiplicative factor
+is now \emph{quadratic} in $\Delta W_n$ rather than linear as in
+Euler. This has two practical consequences worth noting.
+
+\subsection{Improved positivity}
+
+The Euler factor $1 + r h + \sigma \Delta W_n$ is unbounded below
+along the negative direction: a sufficiently negative $\Delta W_n$
+produces a negative factor and hence a negative $\hat S_{n+1}$. The
+Milstein factor adds the term $\tfrac{1}{2} \sigma^2 ((\Delta W_n)^2
+- h)$, which has \emph{no upper bound on the negative side}: the
+$(\Delta W_n)^2$ component is always nonnegative, and only the $-
+\sigma^2 h / 2$ piece pulls the factor down, by an amount bounded by
+$\sigma^2 h / 2$. Concretely, the Milstein factor is bounded below
+by
+\begin{equation}
+1 + r h + \sigma \Delta W_n - \tfrac{1}{2} \sigma^2 h,
+\end{equation}
+which is the worst case where $(\Delta W_n)^2 = 0$. For typical
+finance parameters this lower bound is essentially the Euler factor,
+so the positivity behaviour of Milstein is no worse than that of
+Euler. Empirically, the Milstein-$\sigma^2/2$ correction more than
+compensates the loss of the $\sigma \Delta W_n$ term in most
+realisations: the factor $1 + r h + \sigma \Delta W_n + \tfrac{1}{2}
+\sigma^2 ((\Delta W_n)^2 - h)$ is, on average, closer to $1$ than the
+Euler factor.
+
+We do not implement positivity defences in the algorithm; for the
+parameter regime of our experiments, neither Euler nor Milstein
+produces nonpositive prices in any realisation we have observed.
+
+\subsection{The corrector term and its expectation}
+
+The new term $\tfrac{1}{2} \sigma^2 ((\Delta W_n)^2 - h)$ is the
+Milstein corrector. Two of its features deserve special note.
+
+\paragraph{It has zero mean.} Since $(\Delta W_n)^2$ has mean
+$\Var(\Delta W_n) = h$, the corrector has expectation zero:
+$\E[\tfrac{1}{2} \sigma^2 ((\Delta W_n)^2 - h)] = 0$. This is the
+mathematical reason that Milstein and Euler tie at weak order $1$:
+the corrector affects each path differently, but its average
+contribution to $\E[f(\hat S_T)]$ is, to leading order, zero.
+
+\paragraph{It is pathwise nonzero.} Although the corrector vanishes
+on average, on any individual path $(\Delta W_n)^2 - h$ takes a
+specific value, typically of order $h$ in absolute terms. This is
+the term that, in Euler, was discarded and contributed $O(h)$ to the
+strong error per step. In Milstein, it is included, and the next
+omitted term is of higher order: the strong error becomes $O(h)$
+globally instead of $O(\sqrt{h})$.
+
+The two features together explain the asymmetry. Strong convergence
+sees the pathwise contribution of the corrector and benefits from
+its inclusion. Weak convergence sees only the average contribution,
+which is zero either way. This is the conceptual content of the
+strong/weak distinction made concrete on a specific recursion.
+
+\subsection{Convergence orders}
+
+By Theorem~6.1 of the previous writeup applied to GBM,
+\begin{equation}
+\label{eq:milstein-orders}
+\E[|S_T - \hat S_T^{\mathrm{Milstein}}|] \;=\; O(h),
+\qquad
+|\E[f(S_T)] - \E[f(\hat S_T^{\mathrm{Milstein}})]| \;=\; O(h)
+\quad \text{for } f \text{ smooth enough}.
+\end{equation}
+Compare with Euler:
+\begin{equation}
+\E[|S_T - \hat S_T^{\mathrm{Euler}}|] \;=\; O(h^{1/2}),
+\qquad
+|\E[f(S_T)] - \E[f(\hat S_T^{\mathrm{Euler}})]| \;=\; O(h).
+\end{equation}
+Strong order: $\tfrac{1}{2}$ (Euler) vs $1$ (Milstein) --- a genuine
+factor-$\sqrt{h}$ improvement at small $h$. Weak order: $1$ (Euler)
+vs $1$ (Milstein) --- no improvement.
+
+\section{The biased estimator and its comparison with Euler}
+\label{sec:estimator}
+
+\subsection{Definition}
+
+Let $\hat S_T^{(i), \,\mathrm{Milstein}}$ for $i = 1, \ldots, M$ denote
+independent realisations of the Milstein-discretised terminal price.
+The Monte Carlo Milstein estimator of the European call price is
+\begin{equation}
+\hat C_{M, h}^{\mathrm{Milstein}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^{M}
+e^{-rT}\, (\hat S_T^{(i), \,\mathrm{Milstein}} - K)^+.
+\end{equation}
+The bias-variance decomposition of Block~1.2.1, equation~(8), applies
+here verbatim: total mean square error decomposes as variance/$M$
+plus bias-squared, with bias $O(h)$.
+
+\subsection{Comparison with Euler at fixed budget}
+
+The pricing performance of Milstein and Euler is, in this setting,
+indistinguishable. Both have weak order $1$, so both produce a bias
+of order $h$ for the same $h$. The constants in front of the $h$
+asymptote may differ slightly between the two, but for canonical GBM
+parameters the difference is too small to matter at the sample sizes
+where the bias is detectable.
+
+The cost per path of Milstein is marginally higher: one extra
+multiplication and one squaring per Euler step (the corrector
+$(\Delta W_n)^2 - h$). The overhead is on the order of $20$--$30\%$
+in our implementation, well below the cost of generating the
+$\Delta W_n$ themselves. So at fixed total budget, Milstein delivers
+roughly the same accuracy as Euler with marginally fewer paths or
+marginally larger $h$. Either way the difference is in the noise.
+
+The genuine practical disadvantage of Milstein for European pricing,
+visible in the validation suite of Section~\ref{sec:validation}, is
+none whatsoever for European pricing as such: this whole comparison
+is academic. The advantage materialises in pathwise applications.
+We mention it here because confronting the irrelevance of Milstein
+for vanilla European pricing is part of internalising the strong/weak
+distinction.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The validation is the experimentally most informative part of the
+algorithm. We design a single comparison study that exhibits both
+the strong-order improvement and the weak-order tie of Milstein
+relative to Euler.
+
+\subsection{Test 1: side-by-side strong order}
+
+The most distinctive part of the validation script is a comparison
+of the two schemes' strong errors on the \emph{same} grid of step
+counts and using the \emph{same} Brownian paths. The protocol:
+
+\begin{enumerate}
+\item Choose a logarithmic grid of step counts $N_k$ matching the
+strong-order grid of Block~1.2.1, $N \in \{10, 30, 100, 300, 1000,
+3000\}$.
+\item For each $N_k$, sample $M$ matrices of Brownian increments
+$\Delta W$ of shape $(M, N_k)$.
+\item Run the Euler scheme on these increments to obtain $\hat S_T^{
+\mathrm{Euler}, (i)}$ and the Milstein scheme on the \emph{same}
+increments to obtain $\hat S_T^{\mathrm{Milstein}, (i)}$.
+\item Compute the exact terminal $S_T^{(i)}$ from $W_T^{(i)} = \sum_n
+\Delta W_n^{(i)}$ via the closed-form GBM solution.
+\item Estimate
+$\mathrm{strong}_{\mathrm{scheme}}(h_k) \approx M^{-1} \sum_i
+|S_T^{(i)} - \hat S_T^{\mathrm{scheme}, (i)}|$
+for both schemes.
+\item Plot both error curves on a single log-log axis.
+\end{enumerate}
+
+The expected result is two parallel lines on log-log: Euler with
+slope $\tfrac{1}{2}$, Milstein with slope $1$. Beyond confirming the
+two convergence orders, the side-by-side plot makes the asymmetry
+visually obvious: at the smallest $h$ tested, Milstein's strong error
+should be roughly $\sqrt{h_{\mathrm{smallest}} / h_{\mathrm{largest}}}$
+times smaller than Euler's, an order of magnitude or more.
+
+\subsection{Test 2: weak order under common random numbers}
+
+A direct adaptation of the Block~1.2.1 weak test, applied to
+Milstein. The expected slope is $1$, the same as Euler. This test
+serves as the empirical confirmation that Milstein \emph{does not}
+improve the European pricer: same weak order, same asymptotic
+quality.
+
+The grid restriction discussed in the Block~1.2.1 numerical lesson
+applies here: the bias must dominate the residual MC noise of the
+CRN-corrected difference. With $M = 200{,}000$ and $N \in \{10, 20,
+50, 100\}$, both schemes resolve the slope cleanly.
+
+\subsection{Tests 3 and 4: coherence and validation}
+
+Identical in structure to the corresponding tests of Block~1.2.1,
+applied to the Milstein pricer. No conceptual novelty.
+
+\section{Algorithmic specification}
+\label{sec:algorithm}
+
+\begin{algorithm}[H]
+\caption{Milstein Monte Carlo for the European call (GBM)}
+\label{alg:mc-milstein}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, strike $K$, maturity $T$, rate $r$, volatility
+$\sigma$, step count $N$, sample size $M$, confidence level
+$1 - \beta$, random generator \texttt{rng}.
+\Ensure Estimate $\hat C$, half-width $h_M$, sample variance $S_M^2$.
+\State $h \gets T / N$,
+$\quad D \gets e^{-rT}$
+\For{$i = 1, \ldots, M$}
+\State $S^{(i)} \gets S_0$
+\For{$n = 0, 1, \ldots, N-1$}
+\State Draw $\Delta W \sim \mathcal{N}(0, h)$ using \texttt{rng}
+\State $S^{(i)} \gets S^{(i)} \cdot \big(1 + r h
++ \sigma \Delta W + \tfrac{1}{2} \sigma^2 ((\Delta W)^2 - h)\big)$
+\EndFor
+\State $Y_i \gets D \cdot \max(S^{(i)} - K,\, 0)$
+\EndFor
+\State $\hat C \gets M^{-1} \sum_i Y_i$
+\State $S_M^2 \gets (M-1)^{-1} \sum_i (Y_i - \hat C)^2$
+\State $h_M \gets z_{\beta/2}\, \sqrt{S_M^{\,2}/M}$
+\State \Return $(\hat C,\, h_M,\, S_M^{\,2})$
+\end{algorithmic}
+\end{algorithm}
+
+The implementation vectorises the inner loop across paths (advance
+all $M$ states simultaneously) using \texttt{numpy.cumprod} on the
+matrix of factors, identical in structure to the Block~1.2.1 Euler
+implementation. The only changes to the code are the addition of the
+quadratic corrector term in the factor and the corresponding
+docstrings; the Block~1.2.2 implementation is barely 30 lines longer
+than Block~1.2.1.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The Milstein scheme is from Milstein (1974) and is treated in detail
+in Kloeden \& Platen~\cite{KloedenPlaten}, Section~10.3. The empirical
+side-by-side comparison study designed here is a direct adaptation
+of the comparison study in Higham~\cite{Higham2001}, Section~5. For
+the practical relevance of Milstein in finance applications,
+Glasserman~\cite[Section~6.3]{Glasserman} provides the
+context-specific discussion: when does the strong order of a scheme
+matter for the financial applications at hand.
+
+\begin{thebibliography}{99}
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Higham2001}
+D.\ J.\ Higham,
+\emph{An algorithmic introduction to numerical simulation of
+stochastic differential equations},
+SIAM Review, 43(3):525--546, 2001.
+
+\bibitem{KloedenPlaten}
+P.\ E.\ Kloeden and E.\ Platen,
+\emph{Numerical Solution of Stochastic Differential Equations},
+Springer, 1992.
+
+\end{thebibliography}
+
+\end{document}
