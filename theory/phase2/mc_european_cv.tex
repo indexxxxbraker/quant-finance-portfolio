@@ -1,0 +1,465 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Monte Carlo Pricing of a European Call:\\
+       Control Variates}
+\author{Quant Finance Portfolio --- Phase 2, Block 2, Algorithm 2}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We apply the control variates technique of the Block~2.0 writeup to
+the Monte Carlo pricer of the European call under the exact GBM
+sampler of Block~1.1. Two controls are introduced: the discounted
+underlying $X_1 = e^{-rT} S_T$ and the discounted asset-or-nothing
+payoff $X_2 = e^{-rT} S_T \indic_{\{S_T > K\}}$. Both have closed-form
+expectations under GBM. \emph{A naive shape-matching argument suggests
+$X_2$ should outperform $X_1$ because it matches the call's payoff
+structurally on both the ITM and OTM regions; this prediction is
+empirically wrong}. The correct analysis, carried out in detail below,
+reveals that $X_2$ carries excess variance unrelated to the target
+and ends up with lower Pearson correlation than $X_1$ (typical
+values: $\rho_1 \approx 0.92$, $\rho_2 \approx 0.77$). The underlying
+control delivers VRF~$\approx 6.9$ at the ATM point; the AON control
+delivers only VRF~$\approx 2.5$. The lesson generalises beyond this
+example: structural similarity does not imply linear correlation.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:intro}
+
+Block~2.0 derived the control-variate framework: given a target $Y$
+with unknown $\E[Y]$ and a control $X$ with known $\E[X]$ correlated
+with $Y$, the adjusted estimator
+\begin{equation}
+\tilde Y(c) \;=\; Y - c\,(X - \E[X])
+\end{equation}
+is unbiased for $\E[Y]$ for any choice of $c$, with variance
+\begin{equation}
+\Var(\tilde Y(c^*)) \;=\; \Var(Y)(1 - \rho^2),
+\quad
+c^* \;=\; \frac{\Cov(Y, X)}{\Var(X)},
+\quad
+\rho \;=\; \Corr(Y, X).
+\end{equation}
+The variance reduction factor is $\mathrm{VRF} = 1/(1 - \rho^2)$,
+which can be very large when $|\rho|$ is close to $1$.
+
+The challenge in applying CV is finding a control. It must satisfy
+two conditions: (a) its expectation must be known in closed form, (b)
+it must be highly correlated with the target. The first is
+restrictive; the second is what distinguishes a good control from a
+mediocre one.
+
+For the European call under GBM, two controls present themselves
+naturally: the discounted underlying $X_1 = e^{-rT} S_T$ and the
+discounted asset-or-nothing payoff $X_2 = e^{-rT} S_T
+\indic_{\{S_T>K\}}$. Both are tractable in closed form. The
+expectations of these two controls present a clean opportunity to
+illustrate a subtle but important pedagogical point about how
+correlation works, which is the main content of this writeup.
+
+\section{Control 1: the discounted underlying}
+\label{sec:cv-underlying}
+
+\subsection{Definition and tractability}
+
+The discounted underlying at maturity is
+\begin{equation}
+X_1 \;\eqdef\; e^{-rT} S_T.
+\end{equation}
+Under the risk-neutral measure $\Q$, $\{e^{-rt} S_t\}_{t \geq 0}$ is
+a martingale, so
+\begin{equation}
+\E^\Q[X_1] \;=\; e^{-rT} \E^\Q[S_T] \;=\; e^{-rT} \cdot S_0 e^{rT}
+\;=\; S_0.
+\end{equation}
+The expectation is therefore known exactly, with no computation
+needed. This is the simplest possible control variate for any
+GBM-based pricer.
+
+\subsection{Naive correlation prediction}
+
+The relationship between $Y = e^{-rT} (S_T - K)^+$ and $X_1 = e^{-rT}
+S_T$ is:
+\begin{itemize}
+\item On $\{S_T > K\}$ (ITM): $Y = X_1 - e^{-rT} K$, linear in $X_1$
+with slope $1$.
+\item On $\{S_T \leq K\}$ (OTM): $Y = 0$, while $X_1 > 0$. Here $Y$
+is constant and uncorrelated with $X_1$ locally.
+\end{itemize}
+A naive prediction based on this dichotomy is that $\rho_1$ should
+be moderate, perhaps $0.5$--$0.7$, since one of the two regimes (OTM)
+``wastes'' the linear relationship. We will see below that this
+prediction \emph{underestimates} $\rho_1$ substantially: the actual
+value at the ATM point is $\rho_1 \approx 0.92$.
+
+\section{Control 2: the asset-or-nothing payoff}
+\label{sec:cv-aon}
+
+\subsection{Definition and tractability}
+
+The discounted asset-or-nothing call payoff is
+\begin{equation}
+X_2 \;\eqdef\; e^{-rT}\, S_T \indic_{\{S_T > K\}}.
+\end{equation}
+Its expectation has a closed Black-Scholes form. From the standard
+derivation of the BS call price decomposition,
+\begin{equation}
+\E^\Q[X_2] \;=\; e^{-rT} \E^\Q\bigl[S_T \indic_{\{S_T > K\}}\bigr]
+\;=\; S_0 \, \Phi(d_1),
+\end{equation}
+where
+\begin{equation}
+d_1 \;=\; \frac{\log(S_0 / K) + (r + \sigma^2 / 2) T}{\sigma \sqrt T}
+\end{equation}
+is the standard $d_1$ from Black-Scholes. This identity is the
+asset-or-nothing building block of the BS formula
+\begin{equation}
+C^{\mathrm{BS}} \;=\; S_0 \Phi(d_1) - K e^{-rT} \Phi(d_2),
+\quad d_2 = d_1 - \sigma\sqrt T,
+\end{equation}
+so $\E[X_2]$ is available for free as a byproduct of the BS pricer
+code we already implemented in Phase~1.
+
+\subsection{The naive intuition: ``shape matching''}
+
+The relationship between $Y$ and $X_2$ is:
+\begin{itemize}
+\item On $\{S_T > K\}$: $Y = X_2 - e^{-rT} K$, linear in $X_2$ with
+slope $1$.
+\item On $\{S_T \leq K\}$: $Y = 0$ \emph{and} $X_2 = 0$
+simultaneously, both at the origin.
+\end{itemize}
+The naive intuition is that $X_2$ should outperform $X_1$ because it
+matches the target on \emph{both} regions: zero where the target is
+zero, and linearly related where the target is linear. The OTM
+``wasted region'' that hurt $X_1$ does not exist for $X_2$; instead
+both target and control vanish together. One might therefore predict
+$\rho_2$ near $1$, perhaps above $0.95$.
+
+\emph{This prediction is wrong}, and the rest of this writeup is
+devoted to understanding why. Structural similarity --- vanishing
+together, linear together --- is not the same as global linear
+correlation, and the difference is exactly what Pearson's $\rho$
+measures.
+
+\section{The empirical surprise and the correct analysis}
+\label{sec:correct}
+
+We computed $\rho_1$ and $\rho_2$ analytically (and confirmed
+empirically with $10^6$ paths) for the canonical ATM parameters
+$(S_0 = K = 100, r = 0.05, \sigma = 0.20, T = 1)$. The results:
+\begin{equation}
+\rho_1 \;=\; 0.9245, \qquad \rho_2 \;=\; 0.7714,
+\end{equation}
+\begin{equation}
+\mathrm{VRF}_1 \;=\; \frac{1}{1 - \rho_1^2} \;=\; 6.88,
+\qquad
+\mathrm{VRF}_2 \;=\; \frac{1}{1 - \rho_2^2} \;=\; 2.47.
+\end{equation}
+The underlying control beats the asset-or-nothing control by almost
+a factor of $3$ in variance reduction. The naive prediction was
+inverted: $X_1$ is the better control, not $X_2$.
+
+\subsection{The closed-form analysis}
+
+The key algebraic observation is that $Y$ and $X_2$ differ by a
+deterministic function of the path:
+\begin{equation}
+\label{eq:Y-X2}
+Y \;=\; X_2 - e^{-rT} K \cdot A,
+\qquad A \;\eqdef\; \indic_{\{S_T > K\}}.
+\end{equation}
+On $\{S_T > K\}$ both sides equal $e^{-rT}(S_T - K)$; on $\{S_T \leq
+K\}$ both sides equal zero. So $Y$ is exactly $X_2$ shifted down by a
+Bernoulli random variable scaled by the discounted strike.
+
+From this identity:
+\begin{equation}
+\Var(Y) \;=\; \Var(X_2) - 2 e^{-rT} K \,\Cov(X_2, A) + (e^{-rT} K)^2
+\Var(A),
+\end{equation}
+\begin{equation}
+\Cov(Y, X_2) \;=\; \Var(X_2) - e^{-rT} K \,\Cov(X_2, A).
+\end{equation}
+
+The closed forms for the second moments under GBM (lognormal MGF
+applied to the truncated regions) are:
+\begin{align}
+\E[X_1] &= S_0, & \Var(X_1) &= S_0^2 \bigl(e^{\sigma^2 T} - 1\bigr), \\
+\E[X_2] &= S_0 \Phi(d_1), &
+\E[X_2^2] &= S_0^2 \, e^{\sigma^2 T} \, \Phi(d_1 + \sigma\sqrt T),
+\end{align}
+and the cross terms $\Cov(X_1, A)$, $\Cov(X_2, A)$, $\Cov(X_1, X_2)$
+likewise have closed forms in terms of $\Phi(d_1)$, $\Phi(d_2)$, and
+$\Phi(d_1 + \sigma \sqrt T)$. We omit the routine algebra and quote
+the numerical values for our parameters:
+\begin{equation}
+\Var(Y) = 216.66, \quad \Var(X_1) = 408.11, \quad \Var(X_2) = 3322.15.
+\end{equation}
+
+The most informative comparison is between $\Var(X_1)$ and
+$\Var(X_2)$. The variance of the asset-or-nothing control is
+\emph{eight times} that of the underlying control, and \emph{fifteen
+times} that of the target itself.
+
+\subsection{Why excess variance hurts correlation}
+
+Pearson's correlation is
+\begin{equation}
+\rho \;=\; \frac{\Cov(Y, X)}{\sqrt{\Var(Y) \cdot \Var(X)}}.
+\end{equation}
+The covariance and the target variance are fixed by the problem; the
+control's variance enters in the denominator. \emph{A control with
+excess variance --- variance not explained by linear association
+with $Y$ --- gets penalised in the correlation coefficient}.
+
+In our case, the algebraic source of excess variance for $X_2$ is
+the multiplicative structure of the indicator $\indic_{\{S_T > K\}}$:
+when the call is ITM, the value of $X_2$ depends on $S_T$, which
+ranges widely (the typical ITM path can have $S_T$ anywhere from
+$K$ to several times $K$); the variance of $X_2$ on the ITM region
+is therefore large. The target $Y = X_2 - e^{-rT} K$ on the same
+region has the \emph{same} variance as $X_2$ on this region, but the
+\emph{global} target variance is much smaller because $Y = 0$ on
+OTM (a region of probability $\approx 0.44$). The denominator of
+$\rho_2$ therefore picks up the full $\Var(X_2)$ while the numerator
+$\Cov(Y, X_2)$ picks up only the portion correlated with $Y$.
+
+For $X_1$, the analogous algebra plays out differently. $X_1$ has
+\emph{positive but limited} variance on both ITM and OTM regions:
+the variance on OTM is constrained because $S_T \in (0, K]$ there.
+This bounded behaviour makes $\Var(X_1)$ small, only $1.9 \times
+\Var(Y)$, so the denominator does not penalise the correlation
+heavily.
+
+\subsection{The optimal coefficient confirms the picture}
+
+Another way to see the asymmetry is via the optimal coefficient
+$c^*$:
+\begin{equation}
+c_1^* \;=\; \frac{\Cov(Y, X_1)}{\Var(X_1)} \;=\; \frac{274.91}{408.11}
+\;=\; 0.674,
+\end{equation}
+\begin{equation}
+c_2^* \;=\; \frac{\Cov(Y, X_2)}{\Var(X_2)} \;=\; \frac{654.44}{3322.15}
+\;=\; 0.197.
+\end{equation}
+For the underlying, $c_1^* \approx 0.67$, indicating that subtracting
+$0.67 \times (X_1 - S_0)$ from $Y$ removes about two-thirds of the
+``directional'' variance. For the AON, $c_2^* \approx 0.20$, much
+smaller: the algorithm ``does not trust'' the AON nearly as much as
+it does the underlying, because the AON has so much variance unrelated
+to $Y$.
+
+\section{The general lesson}
+\label{sec:lesson}
+
+The mistake corrected in Section~\ref{sec:correct} is a subtle one.
+The naive intuition --- that $X_2$ matches $Y$ on both regions ---
+is correct: $Y$ and $X_2$ are zero together and linear together. But
+this kind of \emph{piecewise} matching is not what Pearson's
+correlation measures; Pearson's correlation measures \emph{global
+linear fit}. Two variables can match each other piecewise and still
+have moderate correlation if the piecewise pieces have very
+different variances.
+
+A useful diagnostic that would have revealed the problem before
+running any code: compute the ratio $\Var(Y) / \Var(X)$ for each
+candidate control. A good control has this ratio close to $1$: the
+control varies on the same scale as the target. A control with
+$\Var(Y)/\Var(X) \ll 1$ has excess variance and will likely give
+modest $\rho$.
+
+\begin{center}
+\begin{tabular}{l c c c}
+Control & $\Var(Y) / \Var(X)$ & Empirical $\rho$ & VRF \\
+\hline
+$X_1$ (underlying) & $0.53$ & $0.92$ & $6.88$ \\
+$X_2$ (AON)        & $0.07$ & $0.77$ & $2.47$ \\
+\end{tabular}
+\end{center}
+
+The variance-ratio diagnostic correctly predicts the ranking of the
+two controls. The naive shape-matching argument does not.
+
+\section{Implementation: empirical \texorpdfstring{$\hat c$}{c-hat}}
+\label{sec:empirical}
+
+We use the empirical estimator of $c^*$ from the same paths that
+produce the estimator. Given samples $\{(Y_i, X_i)\}_{i=1}^M$:
+\begin{equation}
+\hat c \;=\; \frac{\sum_{i=1}^M (Y_i - \bar Y)(X_i - \bar X)}
+                  {\sum_{i=1}^M (X_i - \bar X)^2}
+\quad\text{(OLS slope of $Y$ on $X$)},
+\end{equation}
+\begin{equation}
+\hat C_M^{\mathrm{CV}} \;=\; \frac{1}{M} \sum_{i=1}^M
+\bigl(Y_i - \hat c\,(X_i - \E[X])\bigr).
+\end{equation}
+The bias of $\hat C_M^{\mathrm{CV}}$ is $O(1/M)$, while the standard
+error is $O(1/\sqrt M)$, so the bias is asymptotically negligible
+for any $M$ at which the standard error is acceptable. See
+Block~2.0 writeup, Proposition~4.4.
+
+\subsection{Connection with OLS regression}
+
+The slope estimator $\hat c$ is exactly the slope of the OLS
+regression of $Y$ on $X$ with an intercept. The CV-adjusted samples
+$\tilde Y_i = Y_i - \hat c (X_i - \E[X])$ are the regression residuals
+shifted by $\hat\alpha + \hat c \E[X]$ to recover the original mean.
+The variance of $\tilde Y_i$ is the variance of the regression
+residuals, which is $\Var(Y)(1 - R^2)$ with $R^2 = \rho^2$ for a
+single regressor. The CV variance reduction is therefore exactly
+the OLS coefficient of determination.
+
+\section{Algorithmic specification}
+\label{sec:algorithm}
+
+\begin{algorithm}[H]
+\caption{Control-variate Monte Carlo for the European call (exact GBM)}
+\label{alg:mc-cv}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, strike $K$, maturity $T$, rate $r$, volatility
+$\sigma$, sample size $M$, control identifier $c \in \{1, 2\}$,
+confidence level $1 - \beta$, random generator \texttt{rng}.
+\Ensure Estimate $\hat C^{\mathrm{CV}}$, half-width $h_M^{\mathrm{CV}}$,
+sample variance $S_M^{2,\mathrm{CV}}$.
+\State $D \gets e^{-rT}$
+\For{$i = 1, \ldots, M$}
+\State Draw $Z_i \sim \mathcal{N}(0, 1)$ using \texttt{rng}
+\State $S_T^{(i)} \gets S_0 \exp((r - \tfrac{1}{2}\sigma^2)T
++ \sigma\sqrt{T} Z_i)$
+\State $Y_i \gets D \cdot \max(S_T^{(i)} - K,\, 0)$
+\If{$c = 1$ \Comment{control: discounted underlying}}
+\State $X_i \gets D \cdot S_T^{(i)}$,\quad $\E X \gets S_0$
+\ElsIf{$c = 2$ \Comment{control: asset-or-nothing}}
+\State $X_i \gets D \cdot S_T^{(i)} \cdot \indic_{\{S_T^{(i)} > K\}}$
+\State $\E X \gets S_0\, \Phi(d_1)$ \Comment{closed BS form}
+\EndIf
+\EndFor
+\State $\bar Y \gets M^{-1} \sum_i Y_i$,\quad $\bar X \gets M^{-1} \sum_i X_i$
+\State $\hat c \gets \frac{\sum_i (Y_i - \bar Y)(X_i - \bar X)}
+                          {\sum_i (X_i - \bar X)^2}$
+\Comment{OLS slope}
+\For{$i = 1, \ldots, M$}
+\State $\tilde Y_i \gets Y_i - \hat c\,(X_i - \E X)$
+\EndFor
+\State Reduce: $\hat C^{\mathrm{CV}} \gets M^{-1} \sum_i \tilde Y_i$,
+$\quad S_M^{2,\mathrm{CV}} \gets (M-1)^{-1} \sum_i (\tilde Y_i -
+\hat C^{\mathrm{CV}})^2$
+\State $h_M^{\mathrm{CV}} \gets z_{\beta/2}\,
+\sqrt{S_M^{2,\mathrm{CV}}/M}$
+\State \Return $(\hat C^{\mathrm{CV}},\, h_M^{\mathrm{CV}},\,
+S_M^{2,\mathrm{CV}})$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The validation script for the CV pricers comprises four tests, run
+separately for each control.
+
+\paragraph{Test 1: empirical correlation and VRF.} For each control,
+generate $10^6$ paths and measure $\hat\rho = \widehat{\Corr}(Y, X)$
+and $\widehat{\mathrm{VRF}} = 1/(1 - \hat\rho^2)$. The
+\emph{corrected} predictions, based on the analysis of
+Section~\ref{sec:correct}:
+\begin{itemize}
+\item Control 1 (underlying): $\hat\rho_1 \approx 0.92$, $\mathrm{VRF}_1
+\approx 6.9$.
+\item Control 2 (AON): $\hat\rho_2 \approx 0.77$, $\mathrm{VRF}_2
+\approx 2.5$.
+\end{itemize}
+The control 1 (underlying) is the better choice for European call
+pricing under GBM, contrary to the naive shape-matching prediction.
+
+\paragraph{Test 2: BS coherence.} Each pricer at $M = 50\,000$ paths
+should agree with $C^{\mathrm{BS}}$ within a few half-widths.
+
+\paragraph{Test 3: half-width comparison vs IID at fixed budget.}
+For each control, run the CV pricer with $M = 100\,000$ paths and
+the IID pricer with the same $M = 100\,000$ paths from the same
+seed. The squared half-width ratios IID/CV should match the VRFs
+from Test~1.
+
+\paragraph{Test 4: input validation.} Mechanical: both pricers
+reject bad inputs and accept negative $r$.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The textbook reference is Glasserman~\cite[Section~4.1]{Glasserman}.
+The asset-or-nothing decomposition of the BS formula is in
+Hull~\cite[Chapter~26]{Hull}. The OLS interpretation of the optimal
+control coefficient is well-treated in Asmussen \&
+Glynn~\cite[Chapter~V]{AsmussenGlynn}. The pedagogical point about
+shape matching versus correlation, while well-known to practitioners,
+does not appear to be highlighted in any of the standard textbook
+sources we consulted.
+
+\begin{thebibliography}{99}
+
+\bibitem{AsmussenGlynn}
+S.\ Asmussen and P.\ W.\ Glynn,
+\emph{Stochastic Simulation: Algorithms and Analysis},
+Springer, 2007.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Hull}
+J.\ C.\ Hull,
+\emph{Options, Futures, and Other Derivatives},
+10th edition, Pearson, 2018.
+
+\end{thebibliography}
+
+\end{document}
