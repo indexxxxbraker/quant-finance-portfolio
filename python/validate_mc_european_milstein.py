@@ -1,30 +1,27 @@
-"""Validation suite for the Euler-Maruyama Monte Carlo pricer of the
+"""Validation suite for the Milstein Monte Carlo pricer of the
 European call under geometric Brownian motion.
 
-Implements the four tests of Phase 2 Block 1.2.1 writeup, Section 4:
+Implements four tests as in Phase 2 Block 1.2.2 writeup, Section 4.
 
-    Test 1: empirical strong order. Slope -1/2 in log-log of
-            E[|S_T_exact - S_T_euler|] vs h.
-    Test 2: empirical weak order. Slope -1 in log-log of
-            |E[Phi(S_T_euler) - Phi(S_T_exact)]| vs h, computed
-            under common random numbers (CRN) for variance control.
-    Test 3: coherence with exact pricer. As n_steps -> infty at fixed
-            n_paths (and shared Brownian), the Euler estimate must
-            approach the exact-sampler estimate.
-    Test 4: input validation and basic invariances.
+The most distinctive of these is Test 1, which runs Euler and
+Milstein on the *same* grid of step sizes and on the *same* Brownian
+paths, and reports both fitted slopes side by side. The expected
+result is slope +0.5 for Euler and slope +1.0 for Milstein, the
+direct empirical confirmation of the strong-order asymmetry that is
+the conceptual heart of Block 1.2.
 
 Run from python/:
 
-    python validate_mc_european_euler.py
+    python validate_mc_european_milstein.py
 """
 
 import numpy as np
 
 from quantlib.black_scholes import call_price
-from quantlib.monte_carlo import mc_european_call_euler
+from quantlib.monte_carlo import mc_european_call_milstein
 from quantlib.gbm import (
-    simulate_path_euler,
     simulate_terminal_euler,
+    simulate_terminal_milstein,
     _gbm_exact_from_brownian,
 )
 
@@ -39,79 +36,98 @@ BS_PRICE = call_price(S0, K, r, sigma, T)
 
 
 # =====================================================================
-# Test 1: empirical strong order (expected slope = -1/2)
+# Test 1: side-by-side strong order, Euler vs Milstein
 # =====================================================================
 
-def test_strong_order() -> bool:
-    """Verify strong order 1/2 of Euler-Maruyama on GBM.
+def test_strong_order_side_by_side() -> bool:
+    """Verify strong order 1/2 (Euler) and 1 (Milstein) on a shared grid.
 
-    For each step count N in a logarithmic grid, simulates n_paths
-    Euler paths sharing their Brownian increments with the exact
-    closed-form solution, and estimates E[|S_T_exact - S_T_euler|].
-    Fits a line in log-log; the slope should be -0.5.
+    For each step count N in the grid, both schemes are run on the
+    *same* matrix of Brownian increments, so their pathwise errors
+    can be compared directly. The exact solution is built from
+    W_T = sum of those increments via the closed-form GBM formula.
     """
-    print("\n" + "=" * 68)
-    print("TEST 1: Empirical strong order (expected slope = -1/2)")
-    print("=" * 68)
+    print("\n" + "=" * 78)
+    print("TEST 1: Side-by-side strong order")
+    print("        Expected: slope +0.5 (Euler), +1.0 (Milstein)")
+    print("=" * 78)
 
     n_values = [10, 30, 100, 300, 1000, 3000]
     n_paths = 10_000
     rng_master = np.random.default_rng(0)
 
     log_h = []
-    log_strong = []
+    log_strong_euler = []
+    log_strong_milstein = []
 
+    print(f"  {'N':>5}  {'h':>9}  {'strong_euler':>15}  "
+          f"{'strong_milstein':>15}  ratio")
     for N in n_values:
         h = T / N
-        # Use independent rng per N so successive runs do not share noise.
         rng = np.random.default_rng(rng_master.integers(0, 2**32 - 1))
         delta_W = rng.normal(loc=0.0, scale=np.sqrt(h),
                              size=(n_paths, N))
 
-        # Euler path on these increments.
+        # Both schemes consume the same delta_W.
         S_T_euler = simulate_terminal_euler(
             S0, r, sigma, T, N, n_paths, delta_W=delta_W
         )
-        # Exact terminal on the same Brownian (W_T = sum of increments).
+        S_T_milstein = simulate_terminal_milstein(
+            S0, r, sigma, T, N, n_paths, delta_W=delta_W
+        )
+
+        # Exact terminal on the same Brownian path.
         W_T = delta_W.sum(axis=1)
         S_T_exact = _gbm_exact_from_brownian(S0, r, sigma, T, W_T)
 
-        strong_err = float(np.mean(np.abs(S_T_exact - S_T_euler)))
+        strong_euler = float(np.mean(np.abs(S_T_exact - S_T_euler)))
+        strong_milstein = float(np.mean(np.abs(S_T_exact - S_T_milstein)))
+        ratio = strong_euler / strong_milstein
+
         log_h.append(np.log(h))
-        log_strong.append(np.log(strong_err))
-        print(f"  N={N:5d}  h={h:.5f}  strong_err={strong_err:.5e}")
+        log_strong_euler.append(np.log(strong_euler))
+        log_strong_milstein.append(np.log(strong_milstein))
 
-    slope, _ = np.polyfit(log_h, log_strong, 1)
+        print(f"  {N:>5d}  {h:>9.5f}  {strong_euler:>15.5e}  "
+              f"{strong_milstein:>15.5e}  {ratio:>5.2f}x")
 
-    expected_slope = 0.5
-    tolerance = 0.10
-    passed = abs(slope - expected_slope) < tolerance
+    slope_euler, _ = np.polyfit(log_h, log_strong_euler, 1)
+    slope_milstein, _ = np.polyfit(log_h, log_strong_milstein, 1)
 
-    print(f"\n  Fitted slope: {slope:+.4f}  (expected {expected_slope:+.4f})")
-    print(f"  Tolerance   : {tolerance}")
-    print(f"\n  Test 1 overall: {_format_pass_fail(passed)}")
-    return passed
+    tol_euler = 0.10
+    tol_milstein = 0.15
+
+    pass_euler = abs(slope_euler - 0.5) < tol_euler
+    pass_milstein = abs(slope_milstein - 1.0) < tol_milstein
+
+    print(f"\n  Fitted slopes:")
+    print(f"    Euler   : {slope_euler:+.4f}  "
+          f"(expected +0.5, tolerance {tol_euler}) "
+          f"[{_format_pass_fail(pass_euler)}]")
+    print(f"    Milstein: {slope_milstein:+.4f}  "
+          f"(expected +1.0, tolerance {tol_milstein}) "
+          f"[{_format_pass_fail(pass_milstein)}]")
+
+    overall = pass_euler and pass_milstein
+    print(f"\n  Test 1 overall: {_format_pass_fail(overall)}")
+    return overall
 
 
 # =====================================================================
-# Test 2: empirical weak order (expected slope = -1)
+# Test 2: empirical weak order under common random numbers (Milstein)
 # =====================================================================
 
 def test_weak_order() -> bool:
-    """Verify weak order 1 of Euler-Maruyama on the call payoff.
+    """Verify weak order 1 of Milstein on the call payoff.
 
-    Uses common random numbers between Euler and exact: both
-    estimators consume the same Brownian increments. The weak error
-    is then estimated as the mean of (Phi_euler - Phi_exact) over
-    paths, which has dramatically smaller variance than estimating
-    each estimator independently and subtracting.
-
-    See Block 1.2.1 writeup, Section 4.3, for the variance argument
-    that motivates CRN here.
+    Same CRN methodology as the Block 1.2.1 weak order test: drive
+    both Milstein and exact with the same Brownian path, look at
+    the pathwise difference of payoffs.
     """
-    print("\n" + "=" * 68)
-    print("TEST 2: Empirical weak order under CRN (expected slope = -1)")
-    print("=" * 68)
+    print("\n" + "=" * 78)
+    print("TEST 2: Empirical weak order under CRN (Milstein)")
+    print("        Expected: slope +1.0 (same as Euler)")
+    print("=" * 78)
 
     n_values = [10, 20, 50, 100]
     n_paths = 200_000
@@ -128,16 +144,15 @@ def test_weak_order() -> bool:
         delta_W = rng.normal(loc=0.0, scale=np.sqrt(h),
                              size=(n_paths, N))
 
-        S_T_euler = simulate_terminal_euler(
+        S_T_milstein = simulate_terminal_milstein(
             S0, r, sigma, T, N, n_paths, delta_W=delta_W
         )
         W_T = delta_W.sum(axis=1)
         S_T_exact = _gbm_exact_from_brownian(S0, r, sigma, T, W_T)
 
-        # Pathwise difference of the discounted call payoff.
-        payoff_euler = discount * np.maximum(S_T_euler - K, 0.0)
+        payoff_milstein = discount * np.maximum(S_T_milstein - K, 0.0)
         payoff_exact = discount * np.maximum(S_T_exact - K, 0.0)
-        weak_err = float(np.abs(np.mean(payoff_euler - payoff_exact)))
+        weak_err = float(np.abs(np.mean(payoff_milstein - payoff_exact)))
 
         log_h.append(np.log(h))
         log_weak.append(np.log(weak_err))
@@ -146,10 +161,6 @@ def test_weak_order() -> bool:
     slope, _ = np.polyfit(log_h, log_weak, 1)
 
     expected_slope = 1.0
-    # Wider tolerance than strong: weak order 1 is more affected by
-    # the moderate-h regime and by the residual MC noise on the CRN
-    # difference, especially for the smallest N where the weak error
-    # itself is largest and the slope estimate is least sensitive.
     tolerance = 0.20
     passed = abs(slope - expected_slope) < tolerance
 
@@ -164,23 +175,16 @@ def test_weak_order() -> bool:
 # =====================================================================
 
 def test_coherence_with_exact() -> bool:
-    """As n_steps -> infty, the Euler pricer at fixed n_paths and
-    shared Brownian must approach the BS price.
-
-    This is a sanity check: it verifies that the implementation
-    pipeline (sampler + payoff + reducer) does not have a structural
-    bug. A fast convergence to BS at n_steps in the thousands
-    confirms the algorithm is consistent.
+    """Sanity check: the Milstein pricer at large n_steps agrees with
+    BS within a few half-widths.
     """
-    print("\n" + "=" * 68)
+    print("\n" + "=" * 78)
     print("TEST 3: Coherence with exact pricer at large n_steps")
-    print("=" * 68)
+    print("=" * 78)
 
     n_paths = 20_000
-    # Two large step counts; the Euler estimate at large N should be
-    # within 2-3 half-widths of the BS price.
     for N in [500, 2000]:
-        result = mc_european_call_euler(
+        result = mc_european_call_milstein(
             S0, K, r, sigma, T, n_steps=N, n_paths=n_paths, seed=11,
         )
         within = abs(result.estimate - BS_PRICE) <= 3.0 * result.half_width
@@ -198,37 +202,35 @@ def test_coherence_with_exact() -> bool:
 
 
 # =====================================================================
-# Test 4: input validation and basic invariances
+# Test 4: input validation
 # =====================================================================
 
 def test_input_validation() -> bool:
-    """Mechanical checks: the pricer rejects bad inputs and accepts
-    the documented admissible ones.
-    """
-    print("\n" + "=" * 68)
-    print("TEST 4: Input validation and basic invariances")
-    print("=" * 68)
+    """Mechanical checks: the pricer rejects bad inputs."""
+    print("\n" + "=" * 78)
+    print("TEST 4: Input validation and basic invariances (Milstein)")
+    print("=" * 78)
 
     rng = np.random.default_rng(0)
 
     cases = [
         ("S must be positive",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              -1.0, K, r, sigma, T, 50, 1000, rng=rng)),
         ("K must be positive",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              S0, 0.0, r, sigma, T, 50, 1000, rng=rng)),
         ("sigma must be positive",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              S0, K, r, -0.10, T, 50, 1000, rng=rng)),
         ("T must be positive",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              S0, K, r, sigma, 0.0, 50, 1000, rng=rng)),
         ("n_steps must be at least 1",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              S0, K, r, sigma, T, 0, 1000, rng=rng)),
         ("n_paths must be at least 2",
-         lambda: mc_european_call_euler(
+         lambda: mc_european_call_milstein(
              S0, K, r, sigma, T, 50, 1, rng=rng)),
     ]
 
@@ -241,9 +243,8 @@ def test_input_validation() -> bool:
         except (ValueError, TypeError):
             print(f"  [{label}]: PASS")
 
-    # Negative rates are admissible.
     try:
-        mc_european_call_euler(S0, K, -0.02, sigma, T, 50, 1000, rng=rng)
+        mc_european_call_milstein(S0, K, -0.02, sigma, T, 50, 1000, rng=rng)
         print(f"  [negative r is admissible]: PASS")
     except Exception as e:
         print(f"  [negative r is admissible]: FAIL ({type(e).__name__})")
@@ -261,17 +262,17 @@ def main():
     np.set_printoptions(linewidth=120, precision=6, suppress=True)
 
     results = {
-        "Test 1 (strong order)"          : test_strong_order(),
-        "Test 2 (weak order, CRN)"       : test_weak_order(),
-        "Test 3 (coherence with exact)"  : test_coherence_with_exact(),
-        "Test 4 (input validation)"      : test_input_validation(),
+        "Test 1 (strong: Euler vs Milstein)" : test_strong_order_side_by_side(),
+        "Test 2 (weak order, CRN)"           : test_weak_order(),
+        "Test 3 (coherence with exact)"      : test_coherence_with_exact(),
+        "Test 4 (input validation)"          : test_input_validation(),
     }
 
-    print("\n" + "=" * 68)
+    print("\n" + "=" * 78)
     print("SUMMARY")
-    print("=" * 68)
+    print("=" * 78)
     for name, passed in results.items():
-        print(f"  {name:35}: {_format_pass_fail(passed)}")
+        print(f"  {name:38}: {_format_pass_fail(passed)}")
 
     overall = all(results.values())
     print("\n  " + ("ALL TESTS PASSED" if overall else "SOME TESTS FAILED"))
