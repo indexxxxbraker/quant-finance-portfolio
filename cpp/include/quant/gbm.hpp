@@ -72,6 +72,16 @@ void validate_confidence_level(double confidence_level);
 double inverse_normal_cdf(double p);
 
 
+// Draw a standard normal from rng by inversion (one uniform draw,
+// then inverse_normal_cdf).
+//
+// Exposed publicly because variance_reduction.cpp needs to generate
+// standard normals from the same rng stream as the GBM samplers,
+// preserving the inversion-based pipeline that ensures QMC
+// compatibility (Phase 2 Block 3).
+double standard_normal(std::mt19937_64& rng);
+
+
 // =====================================================================
 // Exact GBM sampler (Block 1.1)
 // =====================================================================

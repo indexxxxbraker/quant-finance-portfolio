@@ -17,6 +17,7 @@ add_library(quant_lib
     src/implied_volatility.cpp
     src/monte_carlo.cpp
     src/gbm.cpp
+    src/variance_reduction.cpp
 )
 
 add_executable(quant_demo src/main.cpp)
@@ -43,6 +44,7 @@ add_executable(quant_tests
     tests/test_black_scholes.cpp
     tests/test_implied_volatility.cpp
     tests/test_monte_carlo.cpp
+    tests/test_variance_reduction.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 

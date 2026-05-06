@@ -8,28 +8,6 @@
 namespace quant {
 
 // =====================================================================
-// Anonymous-namespace helpers (file-local)
-// =====================================================================
-
-namespace {
-
-// Draw a standard normal from rng by inversion.
-//
-// The distribution is constructed as a local object on each call to
-// preserve byte-exact reproducibility with the inline implementation
-// of Block 1.1's simulate_terminal_gbm: a per-call local distribution
-// is guaranteed to be in its initial state, whereas a thread_local
-// one could in principle carry residual state between calls.
-double standard_normal(std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> uniform(0.0, 1.0);
-    const double u = uniform(rng);
-    return inverse_normal_cdf(u);
-}
-
-}  // anonymous namespace
-
-
-// =====================================================================
 // Public: inverse_normal_cdf (Acklam's approximation)
 // =====================================================================
 
@@ -78,6 +56,22 @@ double inverse_normal_cdf(double p) {
     const double q = std::sqrt(-2.0 * std::log(1.0 - p));
     return -(((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5])
           / ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.0);
+}
+
+
+// =====================================================================
+// Public: standard_normal (inversion-based sampler)
+// =====================================================================
+
+// The distribution is constructed as a local object on each call to
+// preserve byte-exact reproducibility with the inline implementation
+// of Block 1.1's simulate_terminal_gbm: a per-call local distribution
+// is guaranteed to be in its initial state, whereas a thread_local
+// one could in principle carry residual state between calls.
+double standard_normal(std::mt19937_64& rng) {
+    std::uniform_real_distribution<double> uniform(0.0, 1.0);
+    const double u = uniform(rng);
+    return inverse_normal_cdf(u);
 }
 
 
