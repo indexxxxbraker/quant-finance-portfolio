@@ -1,9 +1,9 @@
 // main.cpp
 //
-// Smoke test: prints prices, Greeks, implied volatility recovery at the
-// Hull example point, plus a Hull example for IV, plus the Monte Carlo
-// pricers (exact sampler from Block 1.1 and Euler-Maruyama from Block
-// 1.2.1).
+// Smoke test: prints prices, Greeks, implied volatility recovery at
+// the Hull example point, plus a Hull example for IV, plus the three
+// Monte Carlo pricers (exact sampler from Block 1.1, Euler-Maruyama
+// from Block 1.2.1, Milstein from Block 1.2.2).
 
 #include "black_scholes.hpp"
 #include "implied_volatility.hpp"
@@ -63,7 +63,18 @@ int main() {
                   << "  (BS: 10.4506)\n"
                   << "  Half-width  : " << mc_euler.half_width << "\n"
                   << "  Sample var  : " << mc_euler.sample_variance << "\n"
-                  << "  N paths     : " << mc_euler.n_paths << "\n";
+                  << "  N paths     : " << mc_euler.n_paths << "\n\n";
+    }
+    {
+        std::mt19937_64 rng(42);
+        const auto mc_milstein = quant::mc_european_call_milstein(
+            100.0, 100.0, 0.05, 0.20, 1.0, 100, 100'000, rng);
+        std::cout << "Milstein MC pricer (Block 1.2.2, n_steps=100, n_paths=100000):\n"
+                  << "  Estimate    : " << mc_milstein.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << mc_milstein.half_width << "\n"
+                  << "  Sample var  : " << mc_milstein.sample_variance << "\n"
+                  << "  N paths     : " << mc_milstein.n_paths << "\n";
     }
 
     return 0;

@@ -1,31 +1,28 @@
-// test_monte_carlo.cpp — Catch2 tests for the Monte Carlo module.
+// test_monte_carlo.cpp -- Catch2 tests for the Monte Carlo module.
 //
-// Covers Block 1.1 (exact GBM sampler, vanilla European call) and
-// Block 1.2.1 (Euler-Maruyama scheme).
+// Covers Block 1.1 (exact GBM sampler), Block 1.2.1 (Euler-Maruyama),
+// and Block 1.2.2 (Milstein).
 //
 // The Block 1.1 tests mirror the four triangulation tests of the
-// Block 1.1 writeup (Section 6) plus input-validation cases.
+// Block 1.1 writeup plus input-validation cases.
 //
-// The Block 1.2.1 tests verify:
+// The Block 1.2.x tests verify:
 //   - Input validation of the new pricers and samplers.
-//   - simulate_path_euler returns the correct shape and starts at S0.
-//   - simulate_terminal_euler agrees with simulate_path_euler's
-//     terminal column when both consume the same RNG state.
-//   - The Euler pricer at large n_steps produces an estimate
-//     consistent with the BS price within a few half-widths.
-//   - Negative-r is admissible.
+//   - simulate_path_* returns the correct shape and starts at S0.
+//   - simulate_terminal_* agrees with simulate_path_*'s last column
+//     when both consume the same RNG state.
+//   - The pricer at large n_steps produces an estimate consistent
+//     with the BS price within a few half-widths.
 //
-// Empirical convergence-order verification (slope -1/2 strong, slope
-// -1 weak) lives in the Python validation script
-// `validate_mc_european_euler.py`. Reproducing those tests in C++
-// would duplicate work without adding signal: the Python tests
-// already exercise the exact same algorithm.
+// Empirical convergence-order verification (slope tests) lives in
+// the Python validation scripts.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "black_scholes.hpp"
 #include "monte_carlo.hpp"
+#include "gbm.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -107,7 +104,6 @@ TEST_CASE("MC vanilla: containment frequency of BS price",
     constexpr int          n_seeds          = 200;
     constexpr std::size_t  n_paths          = 10'000;
     constexpr double       confidence_level = 0.95;
-    // Binomial 95% CI for p = 0.95 with n = 200 trials: ~[0.92, 0.98].
     constexpr double       lower_acceptance = 0.92;
     constexpr double       upper_acceptance = 0.98;
 
@@ -382,7 +378,6 @@ TEST_CASE("Euler path: shape and initial column",
     REQUIRE(paths.size() == n_paths);
     for (const auto& path : paths) {
         REQUIRE(path.size() == n_steps + 1);
-        // Column 0 must equal S0 on every path.
         REQUIRE(path.front() == S0);
     }
 }
@@ -399,9 +394,6 @@ TEST_CASE("Euler: terminal sampler agrees with path's last column",
     constexpr std::size_t n_paths = 50;
     constexpr uint64_t seed = 7;
 
-    // Both samplers consume the rng in the same order: per path, then
-    // per step. So with two engines initialised from the same seed,
-    // their terminal values must coincide bit-for-bit.
     std::mt19937_64 rng_path(seed), rng_terminal(seed);
 
     const auto paths = quant::simulate_path_euler(
@@ -411,9 +403,6 @@ TEST_CASE("Euler: terminal sampler agrees with path's last column",
 
     REQUIRE(terminal.size() == n_paths);
     for (std::size_t i = 0; i < n_paths; ++i) {
-        // Bit-exact equality is acceptable here because the two
-        // implementations execute the same sequence of arithmetic on
-        // the same uniforms, in the same order.
         REQUIRE(terminal[i] == paths[i].back());
     }
 }
@@ -439,11 +428,131 @@ TEST_CASE("Euler pricer: consistent with BS at large n_steps",
          << ", BS = " << bs_price
          << ", half-width = " << result.half_width);
 
-    // The estimate should be within 3 half-widths of the BS price.
-    // The bias at n_steps=200 is on the order of T/n_steps ~ 5e-3,
-    // negligible compared to the half-width of ~0.1 at n_paths=50k,
-    // so the test is essentially a confidence-interval containment
-    // check.
+    REQUIRE(std::abs(result.estimate - bs_price)
+            <= 3.0 * result.half_width);
+}
+
+
+// =====================================================================
+// Block 1.2.2: input validation (Milstein pricer)
+// =====================================================================
+
+TEST_CASE("MC Milstein: input validation",
+          "[mc][milstein][validation]") {
+    std::mt19937_64 rng(42);
+
+    SECTION("S must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                -1.0, 100.0, 0.05, 0.20, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("K must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                100.0, 0.0, 0.05, 0.20, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("sigma must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                100.0, 100.0, 0.05, -0.10, 1.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("T must be positive") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                100.0, 100.0, 0.05, 0.20, 0.0, 50, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_steps must be at least 1") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                100.0, 100.0, 0.05, 0.20, 1.0, 0, 1000, rng),
+            std::invalid_argument);
+    }
+    SECTION("n_paths must be at least 2") {
+        REQUIRE_THROWS_AS(
+            quant::mc_european_call_milstein(
+                100.0, 100.0, 0.05, 0.20, 1.0, 50, 1, rng),
+            std::invalid_argument);
+    }
+    SECTION("r is unconstrained (negative rates admissible)") {
+        REQUIRE_NOTHROW(
+            quant::mc_european_call_milstein(
+                100.0, 100.0, -0.02, 0.20, 1.0, 50, 1000, rng));
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.2: simulate_path_milstein shape and initial value
+// =====================================================================
+
+TEST_CASE("Milstein path: shape and initial column",
+          "[mc][milstein][path]") {
+    constexpr double S0 = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_steps = 50;
+    constexpr std::size_t n_paths = 100;
+
+    std::mt19937_64 rng(123);
+    const auto paths = quant::simulate_path_milstein(
+        S0, r, sigma, T, n_steps, n_paths, rng);
+
+    REQUIRE(paths.size() == n_paths);
+    for (const auto& path : paths) {
+        REQUIRE(path.size() == n_steps + 1);
+        REQUIRE(path.front() == S0);
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.2: terminal sampler agrees with path sampler under same seed
+// =====================================================================
+
+TEST_CASE("Milstein: terminal sampler agrees with path's last column",
+          "[mc][milstein][equivalence]") {
+    constexpr double S0 = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    constexpr std::size_t n_steps = 30;
+    constexpr std::size_t n_paths = 50;
+    constexpr uint64_t seed = 7;
+
+    std::mt19937_64 rng_path(seed), rng_terminal(seed);
+
+    const auto paths = quant::simulate_path_milstein(
+        S0, r, sigma, T, n_steps, n_paths, rng_path);
+    const auto terminal = quant::simulate_terminal_milstein(
+        S0, r, sigma, T, n_steps, n_paths, rng_terminal);
+
+    REQUIRE(terminal.size() == n_paths);
+    for (std::size_t i = 0; i < n_paths; ++i) {
+        // Bit-exact: same RNG state, same arithmetic, same order.
+        REQUIRE(terminal[i] == paths[i].back());
+    }
+}
+
+
+// =====================================================================
+// Block 1.2.2: sanity check vs BS at large n_steps
+// =====================================================================
+
+TEST_CASE("Milstein pricer: consistent with BS at large n_steps",
+          "[mc][milstein][bs]") {
+    constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+    const double bs_price = quant::call_price(S, K, r, sigma, T);
+
+    constexpr std::size_t n_steps = 200;
+    constexpr std::size_t n_paths = 50'000;
+
+    std::mt19937_64 rng(42);
+    const auto result = quant::mc_european_call_milstein(
+        S, K, r, sigma, T, n_steps, n_paths, rng);
+
+    INFO("Milstein estimate = " << result.estimate
+         << ", BS = " << bs_price
+         << ", half-width = " << result.half_width);
+
     REQUIRE(std::abs(result.estimate - bs_price)
             <= 3.0 * result.half_width);
 }

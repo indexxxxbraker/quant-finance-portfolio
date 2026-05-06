@@ -16,6 +16,7 @@ add_library(quant_lib
     src/black_scholes.cpp
     src/implied_volatility.cpp
     src/monte_carlo.cpp
+    src/gbm.cpp
 )
 
 add_executable(quant_demo src/main.cpp)
