@@ -5,13 +5,16 @@
 // Monte Carlo pricers (exact sampler from Block 1.1, Euler-Maruyama
 // from Block 1.2.1, Milstein from Block 1.2.2, antithetic variates
 // from Block 2.1, control variates -- both controls -- from Block 2.2,
-// QMC-Sobol and RQMC-Sobol from Block 3).
+// QMC-Sobol and RQMC-Sobol from Block 3), plus a comparison of Greek
+// estimators (Delta via three methods, Vega via three methods, Gamma
+// via bumping) from Block 4.
 
 #include "black_scholes.hpp"
 #include "implied_volatility.hpp"
 #include "monte_carlo.hpp"
 #include "variance_reduction.hpp"
 #include "qmc.hpp"
+#include "greeks.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -130,7 +133,40 @@ int main() {
                   << "  (BS: 10.4506)\n"
                   << "  Half-width  : " << rqmc.half_width << "\n"
                   << "  Sample var  : " << rqmc.sample_variance << "\n"
-                  << "  N (= R)     : " << rqmc.n_paths << "\n";
+                  << "  N (= R)     : " << rqmc.n_paths << "\n\n";
+    }
+    {
+        const double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+        const std::size_t n = 100'000;
+
+        std::cout << "Greek estimators (Block 4, n=100000):\n";
+        std::cout << "  BS Delta = " << quant::call_delta(S, K, r, sigma, T) << "\n";
+        std::cout << "  BS Vega  = " << quant::vega(S, K, r, sigma, T) << "\n";
+        std::cout << "  BS Gamma = " << quant::gamma(S, K, r, sigma, T) << "\n\n";
+
+        {
+            std::mt19937_64 rng_b(42), rng_p(42), rng_l(42);
+            const auto db = quant::delta_bump(S, K, r, sigma, T, n, rng_b);
+            const auto dp = quant::delta_pathwise(S, K, r, sigma, T, n, rng_p);
+            const auto dl = quant::delta_lr(S, K, r, sigma, T, n, rng_l);
+            std::cout << "  Delta bump    : " << db.estimate << "  hw " << db.half_width << "\n";
+            std::cout << "  Delta pathwise: " << dp.estimate << "  hw " << dp.half_width << "\n";
+            std::cout << "  Delta LR      : " << dl.estimate << "  hw " << dl.half_width << "\n";
+        }
+        {
+            std::mt19937_64 rng_b(42), rng_p(42), rng_l(42);
+            const auto vb = quant::vega_bump(S, K, r, sigma, T, n, rng_b);
+            const auto vp = quant::vega_pathwise(S, K, r, sigma, T, n, rng_p);
+            const auto vl = quant::vega_lr(S, K, r, sigma, T, n, rng_l);
+            std::cout << "  Vega bump     : " << vb.estimate << "  hw " << vb.half_width << "\n";
+            std::cout << "  Vega pathwise : " << vp.estimate << "  hw " << vp.half_width << "\n";
+            std::cout << "  Vega LR       : " << vl.estimate << "  hw " << vl.half_width << "\n";
+        }
+        {
+            std::mt19937_64 rng(42);
+            const auto gb = quant::gamma_bump(S, K, r, sigma, T, n, rng);
+            std::cout << "  Gamma bump    : " << gb.estimate << "  hw " << gb.half_width << "\n";
+        }
     }
 
     return 0;
