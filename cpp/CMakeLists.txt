@@ -18,6 +18,15 @@ add_library(quant_lib
     src/monte_carlo.cpp
     src/gbm.cpp
     src/variance_reduction.cpp
+    src/qmc.cpp
+)
+
+# QMC needs to know the path to the Joe-Kuo direction-numbers file.
+# We bake the absolute path in at compile time as a macro. If the
+# data file is moved, only this line needs to change.
+set(SOBOL_DATA_FILE_PATH "${CMAKE_SOURCE_DIR}/data/new-joe-kuo-6.21201")
+target_compile_definitions(quant_lib PUBLIC
+    SOBOL_DATA_FILE="${SOBOL_DATA_FILE_PATH}"
 )
 
 add_executable(quant_demo src/main.cpp)
@@ -45,6 +54,7 @@ add_executable(quant_tests
     tests/test_implied_volatility.cpp
     tests/test_monte_carlo.cpp
     tests/test_variance_reduction.cpp
+    tests/test_qmc.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 

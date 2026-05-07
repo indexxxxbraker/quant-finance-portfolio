@@ -1,15 +1,17 @@
 // main.cpp
 //
 // Smoke test: prints prices, Greeks, implied volatility recovery at
-// the Hull example point, plus a Hull example for IV, plus the five
+// the Hull example point, plus a Hull example for IV, plus the seven
 // Monte Carlo pricers (exact sampler from Block 1.1, Euler-Maruyama
 // from Block 1.2.1, Milstein from Block 1.2.2, antithetic variates
-// from Block 2.1, control variates -- both controls -- from Block 2.2).
+// from Block 2.1, control variates -- both controls -- from Block 2.2,
+// QMC-Sobol and RQMC-Sobol from Block 3).
 
 #include "black_scholes.hpp"
 #include "implied_volatility.hpp"
 #include "monte_carlo.hpp"
 #include "variance_reduction.hpp"
+#include "qmc.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -109,7 +111,26 @@ int main() {
                   << "  (BS: 10.4506)\n"
                   << "  Half-width  : " << mc_cv2.half_width << "\n"
                   << "  Sample var  : " << mc_cv2.sample_variance << "\n"
-                  << "  N paths     : " << mc_cv2.n_paths << "\n";
+                  << "  N paths     : " << mc_cv2.n_paths << "\n\n";
+    }
+    {
+        const double est = quant::mc_european_call_euler_qmc(
+            100.0, 100.0, 0.05, 0.20, 1.0, 8192, 20, "sobol");
+        std::cout << "QMC Sobol pricer (Block 3, n=8192, N=20):\n"
+                  << "  Estimate    : " << est
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : N/A (deterministic estimator)\n\n";
+    }
+    {
+        std::mt19937_64 rng(42);
+        const auto rqmc = quant::mc_european_call_euler_rqmc(
+            100.0, 100.0, 0.05, 0.20, 1.0, 4096, 20, 20, rng);
+        std::cout << "RQMC Sobol pricer (Block 3, n=4096, R=20, N=20):\n"
+                  << "  Estimate    : " << rqmc.estimate
+                  << "  (BS: 10.4506)\n"
+                  << "  Half-width  : " << rqmc.half_width << "\n"
+                  << "  Sample var  : " << rqmc.sample_variance << "\n"
+                  << "  N (= R)     : " << rqmc.n_paths << "\n";
     }
 
     return 0;
