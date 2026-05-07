@@ -1,0 +1,558 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Tcal}{\mathcal{T}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+\newcommand{\esssup}{\operatorname*{ess\,sup}}
+
+% ---------- Document metadata ----------
+\title{American Options by Longstaff-Schwartz:\\
+       Regression-Based Optimal Stopping with a Binomial-Tree Validator}
+\author{Quant Finance Portfolio --- Phase 2, Block 6}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The American option pricing problem is fundamentally different from
+its European counterpart: the holder can exercise at any time up to
+maturity, so the price is the value function of a continuous-time
+optimal stopping problem. No closed form is available except in
+degenerate cases (zero rate, infinite maturity). This block presents
+the Longstaff-Schwartz (2001) regression-based Monte Carlo algorithm,
+which discretises the exercise dates to a Bermudan grid and replaces
+the conditional expectation in the dynamic-programming Bellman
+equation by a cross-sectional regression of continuation values onto
+a finite basis of polynomials of the underlying. We use Laguerre
+polynomials of degree up to three for the regression basis. The
+algorithm is validated against an independent Cox-Ross-Rubinstein
+binomial tree implementation, also from scratch, which serves as the
+ground truth in the limit of small step size.
+\end{abstract}
+
+\tableofcontents
+
+\section{Optimal stopping and the American option}
+\label{sec:setting}
+
+\subsection{The American put}
+
+An \emph{American put} on a single non-dividend-paying asset $S$ with
+strike $K$ and maturity $T$ pays its holder $\max(K - S_\tau, 0)$ at
+any chosen time $\tau \in [0, T]$, at the holder's discretion. Under
+the risk-neutral measure $\Q$ with constant rate $r$, the time-zero
+price is
+\begin{equation}
+V_0 \;=\; \sup_{\tau \in \Tcal_{[0, T]}}
+            \E^{\Q}\!\left[ e^{-r\tau}\, (K - S_\tau)^+ \right],
+\label{eq:american-price}
+\end{equation}
+where $\Tcal_{[0, T]}$ is the set of stopping times of the natural
+filtration $\F = \{\F_t\}$ taking values in $[0, T]$, and
+$x^+ \eqdef \max(x, 0)$.
+
+The supremum is attained at an \emph{optimal stopping time} $\tau^\star$.
+The map $t \mapsto S_t^\star$ separating the continuation region
+$\{S > S_t^\star\}$ from the exercise region $\{S \le S_t^\star\}$ is
+the \emph{optimal exercise boundary}; it is a non-trivial function of
+$t$ for the American put and admits no closed form.
+
+\subsection{Why no Black-Scholes formula}
+
+For the European put, the holder is committed to exercising at $T$,
+so the option price is just the discounted expectation
+$e^{-rT}\,\E^\Q[(K - S_T)^+]$, which integrates against the lognormal
+density of $S_T$ to produce the Black-Scholes formula. The American
+case introduces an entirely different kind of object: the supremum
+over $\tau$ in~\eqref{eq:american-price} is a sup over an
+infinite-dimensional set of measurable strategies. There is no
+elementary integral that captures it.
+
+The classical machinery for handling \eqref{eq:american-price} is the
+\emph{Snell envelope} construction.
+
+\subsection{The Snell envelope}
+
+For a discounted reward process $X_t = e^{-rt} (K - S_t)^+$ adapted
+to $\F$, the Snell envelope $U$ is defined as the smallest
+supermartingale dominating $X$:
+\begin{equation}
+U_t \;=\; \esssup_{\tau \in \Tcal_{[t, T]}} \E^\Q[X_\tau \mid \F_t].
+\end{equation}
+Under standard regularity, $U_t$ exists and is the unique solution to
+the recursive equation
+\begin{equation}
+U_t \;=\; \max\!\bigl(\, X_t,\, \E^\Q[U_{t+\dd t} \mid \F_t]\, \bigr),
+\qquad U_T = X_T.
+\label{eq:snell}
+\end{equation}
+The price of the American option is $V_0 = U_0$, and the optimal
+stopping time is $\tau^\star = \inf\{ t \ge 0 : U_t = X_t \}$ --- the
+first time the envelope touches the immediate-exercise reward.
+
+Equation~\eqref{eq:snell} is a backward dynamic programming
+recursion. In continuous time it leads to a free-boundary PDE (the
+Black-Scholes PDE with an obstacle); in discrete time, which we
+adopt below, it gives a clean numerical scheme.
+
+\section{Bermudan approximation and the Bellman equation}
+\label{sec:bermudan}
+
+\subsection{Discretising the exercise dates}
+
+A \emph{Bermudan} option is the discrete analogue: exercisable only at
+a finite set of pre-specified dates $0 = t_0 < t_1 < \cdots < t_N = T$.
+We take an equispaced grid $t_k = kT/N$ for some large $N$. As $N \to
+\infty$, the Bermudan price converges to the American price
+monotonically from below~\cite[Section 8.3]{Glasserman}.
+
+Let $S_k \eqdef S_{t_k}$. The Bermudan put value at exercise date
+$t_k$, given $S_k = s$, satisfies the Bellman recursion:
+\begin{equation}
+\boxed{
+\begin{aligned}
+V_N(s) \;&=\; (K - s)^+, \\[0.4em]
+V_k(s) \;&=\; \max\!\bigl( \underbrace{(K - s)^+}_{\text{intrinsic}},\;
+\underbrace{e^{-r\Delta t}\,\E^\Q[V_{k+1}(S_{k+1}) \mid S_k = s]}_{\text{continuation value }C_k(s)} \bigr),
+\end{aligned}
+}
+\label{eq:bellman}
+\end{equation}
+for $k = N - 1, N - 2, \ldots, 0$, with $\Delta t = T/N$. Then
+$V_0(S_0)$ is the Bermudan put price.
+
+The Markov property of GBM under $\Q$ guarantees that the conditional
+expectation $\E^\Q[V_{k+1}(S_{k+1}) \mid \F_k]$ depends on $\F_k$
+only through $S_k$, so the continuation value $C_k(s)$ is a function
+of one scalar variable. This is essential for the regression-based
+approach below.
+
+\subsection{The optimal exercise rule}
+
+Equation~\eqref{eq:bellman} also gives the optimal exercise rule:
+exercise at the first $k$ such that
+\[
+(K - S_k)^+ \;\ge\; C_k(S_k).
+\]
+At each path, the rule depends only on the comparison between the
+known intrinsic value and the unknown continuation value. The whole
+challenge is computing $C_k(s)$.
+
+\subsection{Why pure Monte Carlo fails directly}
+
+A naive attempt to estimate $C_k(s)$ would require, at each path
+$i$ and each time $k$, simulating a sub-tree of paths from
+$(t_k, S_k^{(i)})$ to $(t_{k+1}, S_{k+1})$ and averaging the
+continuation values $V_{k+1}(S_{k+1})$. This is a nested simulation
+of cost $O(n^2 N)$ for $n$ paths and $N$ time steps --- prohibitive
+for any realistic $N$ and $n$. Worse, $V_{k+1}$ is itself defined by
+nested simulation, so the cost compounds geometrically with $k$.
+
+Longstaff and Schwartz~\cite{LongstaffSchwartz2001} solved this in a
+single line of insight: \emph{the conditional expectation is a
+function of $S_k$, so we can fit it by cross-sectional regression
+across the existing paths.}
+
+\section{The Longstaff-Schwartz algorithm}
+\label{sec:lsm}
+
+\subsection{The regression idea}
+
+At time $t_k$, the unknown continuation value $C_k(\cdot): \R_+ \to
+\R$ is approximated by a linear combination of $M$ basis functions
+$\psi_1, \psi_2, \ldots, \psi_M$ of the underlying:
+\begin{equation}
+C_k(s) \;\approx\; \widehat C_k(s) \;\eqdef\;
+\sum_{m=1}^M \beta_m^{(k)}\, \psi_m(s).
+\end{equation}
+The coefficients $\beta^{(k)} = (\beta_1^{(k)}, \ldots, \beta_M^{(k)})$
+are chosen by ordinary least squares against the simulated cash flows
+of the optimal strategy from $t_{k+1}$ onwards.
+
+Concretely: simulate $n$ independent paths
+$(S_0, S_1^{(i)}, \ldots, S_N^{(i)})_{i = 1, \ldots, n}$ of the GBM
+under $\Q$. Process the time grid \emph{backwards}. At step $k$, we
+have already determined, for each path $i$, the discounted cash flow
+$Y^{(i)}$ that the optimal strategy from time $t_{k+1}$ onwards
+produces, evaluated at time $t_k$ (i.e., discounted back to $t_k$).
+Regress these $\{Y^{(i)}\}_i$ on the $M$-vector of basis values
+$\{\psi_m(S_k^{(i)})\}_m$:
+\begin{equation}
+\beta^{(k)} \;=\; (\Psi_k^\top \Psi_k)^{-1} \Psi_k^\top Y,
+\label{eq:ols}
+\end{equation}
+where $\Psi_k$ is the $n \times M$ design matrix with entries
+$(\Psi_k)_{i, m} = \psi_m(S_k^{(i)})$. The regression produces an
+estimated continuation value $\widehat C_k(S_k^{(i)})$ at each path.
+
+Then update the cash flow array: at any path $i$ where the intrinsic
+value $(K - S_k^{(i)})^+$ exceeds $\widehat C_k(S_k^{(i)})$, the
+optimal action is to exercise now, so $Y^{(i)}$ is replaced by
+$(K - S_k^{(i)})^+$. Otherwise $Y^{(i)}$ is discounted back one step:
+$Y^{(i)} \to e^{-r\Delta t} Y^{(i)}$.
+
+After the recursion reaches $k = 0$, the price estimator is the
+sample mean of the $\{Y^{(i)}\}_i$ discounted to $t_0$:
+\begin{equation}
+\widehat V_0 \;=\; \frac{1}{n} \sum_{i=1}^n Y^{(i)}.
+\label{eq:price-estimator}
+\end{equation}
+
+\subsection{The in-the-money restriction}
+
+A critical detail of the original LS paper: the regression
+\eqref{eq:ols} should be performed only on the subset of paths that
+are \emph{in the money} at $t_k$, i.e., for which $K - S_k^{(i)} > 0$.
+Out-of-the-money paths contribute zero intrinsic value, so the
+exercise vs.\ continuation decision is moot at those paths (always
+continue). Including them in the regression dilutes the signal: it
+forces the polynomial fit to behave reasonably where it doesn't
+matter, at the cost of accuracy where it does matter.
+
+This is one of those small algorithmic choices that makes a large
+practical difference. We follow it in the implementation.
+
+\subsection{Algorithm pseudocode}
+
+\begin{algorithm}[H]
+\caption{Longstaff-Schwartz for the American put}
+\label{alg:lsm}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, params $(K, r, \sigma, T)$, exercise grid $N$, paths $n$, basis $\{\psi_m\}_{m=1}^M$.
+\State Simulate matrix $\mathbf{S} \in \R^{n \times (N+1)}$ of GBM paths.
+\State Initialise cash flow $Y^{(i)} \gets (K - S_N^{(i)})^+$ for all $i$.
+\For{$k = N - 1$ \textbf{downto} $1$}
+  \State Discount cash flows: $Y^{(i)} \gets e^{-r\Delta t} Y^{(i)}$.
+  \State Find ITM paths: $\mathcal{I}_k = \{i : K - S_k^{(i)} > 0\}$.
+  \State Build design $\Psi_k \in \R^{|\mathcal{I}_k| \times M}$, target $Y_{\mathcal{I}_k}$.
+  \State Solve $\beta^{(k)} = (\Psi_k^\top \Psi_k)^{-1} \Psi_k^\top Y_{\mathcal{I}_k}$.
+  \State Compute $\widehat C_k^{(i)} = \sum_m \beta_m^{(k)} \psi_m(S_k^{(i)})$ for $i \in \mathcal{I}_k$.
+  \State Determine exercise set $\mathcal{E}_k = \{i \in \mathcal{I}_k : (K - S_k^{(i)}) \ge \widehat C_k^{(i)}\}$.
+  \State For $i \in \mathcal{E}_k$: replace $Y^{(i)} \gets K - S_k^{(i)}$.
+\EndFor
+\State Final discount: $Y^{(i)} \gets e^{-r\Delta t} Y^{(i)}$ for all $i$.
+\State \Return $\widehat V_0 = \frac{1}{n}\sum_i Y^{(i)}$ and standard MC half-width.
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Note on time $k = 0$.} The algorithm exits the loop at
+$k = 1$ and applies one final discount. This is because $S_0$ is
+deterministic, so the exercise-or-continue decision at $t_0$ is just a
+comparison of the immediate intrinsic value $(K - S_0)^+$ against the
+sample mean $\widehat V_0$ produced by the algorithm. We return the
+maximum of the two. (For the canonical at-the-money put this is
+moot, since $(K - S_0)^+ = 0$.)
+
+\section{The Laguerre basis}
+\label{sec:laguerre}
+
+\subsection{Definition}
+
+The Laguerre polynomials $\{L_n\}_{n \ge 0}$ are the orthogonal
+polynomials on $[0, \infty)$ with respect to the weight
+$w(x) = e^{-x}$. They are defined by the recurrence
+\begin{equation}
+L_0(x) = 1, \quad L_1(x) = 1 - x,
+\quad
+(n + 1) L_{n+1}(x) = (2n + 1 - x) L_n(x) - n\, L_{n-1}(x).
+\end{equation}
+Closed forms for the first few:
+\begin{align}
+L_0(x) &= 1, \\
+L_1(x) &= 1 - x, \\
+L_2(x) &= \tfrac{1}{2}(x^2 - 4x + 2), \\
+L_3(x) &= \tfrac{1}{6}(-x^3 + 9x^2 - 18x + 6).
+\end{align}
+Their orthogonality is
+\(
+\int_0^\infty L_n(x) L_m(x)\, e^{-x}\,\dd x \;=\; \delta_{nm}.
+\)
+
+\subsection{Use in LSM}
+
+In our LSM implementation we apply the basis to the normalised
+underlying $x = S/K$, with $M = 4$ basis functions:
+\begin{equation}
+\psi_m(S) = L_{m-1}(S/K), \qquad m = 1, 2, 3, 4.
+\end{equation}
+The normalisation $S/K$ keeps the argument in a controlled range
+(typically in $[0, 1]$ for ITM put paths, since ITM means $S < K$).
+On $[0, 1]$, the unweighted Laguerre polynomials are well-behaved and
+linearly independent; the design matrix $\Psi_k^\top \Psi_k$ is
+positive-definite and Cholesky-factorisable.
+
+\paragraph{Why Laguerre and not monomials?} The original
+Longstaff-Schwartz paper uses weighted Laguerre $\tilde\psi_m(x) =
+e^{-x/2} L_{m-1}(x)$, which is orthonormal under $\dd x$. The weight
+makes the basis bounded uniformly on $[0, \infty)$. Our use of the
+unweighted form is acceptable because we restrict regression to ITM
+paths (so $x \in [0, 1]$ effectively), where the weight is close to
+constant. The numerical behaviour is essentially identical; we choose
+unweighted for code simplicity. Plain monomials $\{1, x, x^2, x^3\}$
+also work and are commonly used by practitioners; the choice of basis
+matters less than the principle of \emph{using one}.
+
+\section{The Cox-Ross-Rubinstein binomial tree validator}
+\label{sec:binomial}
+
+The LSM estimator is statistically biased and depends on basis
+choice, sample size, and number of exercise dates. To validate it we
+need an independent reference price computed by a different method.
+The standard choice is the Cox-Ross-Rubinstein (CRR)
+\emph{binomial tree}~\cite{CRR1979}, which converges to the true
+American price as the tree depth increases.
+
+\subsection{Construction}
+
+Discretise time into $N$ steps of size $\Delta t = T/N$. At each step
+the asset goes up by factor $u$ or down by factor $d$, with
+risk-neutral probabilities $(p, 1 - p)$:
+\begin{equation}
+u = e^{\sigma \sqrt{\Delta t}},
+\quad
+d = 1/u = e^{-\sigma \sqrt{\Delta t}},
+\quad
+p = \frac{e^{r \Delta t} - d}{u - d}.
+\end{equation}
+The choice $u \cdot d = 1$ keeps the tree recombining: after $j$ ups
+and $k - j$ downs, the asset price is $S_0 \cdot u^{2j - k}$. The
+total number of nodes after $N$ steps is $(N + 1)(N + 2)/2$, so the
+tree fits in memory for $N$ up to several thousand.
+
+\subsection{Backward induction}
+
+At maturity ($k = N$), the option value at each terminal node is the
+intrinsic put value. At earlier nodes, we apply the Bellman equation
+exactly (no regression needed):
+\begin{equation}
+V_k(j) \;=\; \max\!\bigl( K - S_k(j),\; e^{-r \Delta t}
+[\,p\, V_{k+1}(j + 1) + (1 - p)\, V_{k+1}(j)\,] \bigr),
+\end{equation}
+where $V_k(j)$ is the option value at node $j$ of step $k$ and
+$S_k(j) = S_0 u^{2j - k}$. The price is $V_0(0)$.
+
+\subsection{Convergence}
+
+The CRR price converges to the true American price as $N \to \infty$
+at rate roughly $1/\sqrt N$ (see~\cite[Section 4.5]{Hull}); in
+practice $N = 1000$ to $5000$ is sufficient for four-decimal accuracy
+on a one-year ATM American put with $\sigma = 0.20$.
+
+\section{Bias and convergence of the LSM estimator}
+\label{sec:bias}
+
+\subsection{Two sources of error}
+
+The LSM estimator $\widehat V_0^{\mathrm{LSM}}$ has two distinct
+sources of error compared to the true Bermudan price:
+
+\begin{enumerate}
+\item \textbf{Stochastic error}: the Monte Carlo sampling
+      uncertainty, of order $1/\sqrt n$ in the number of paths. This
+      is the standard MC error and is captured by the asymptotic
+      half-width.
+
+\item \textbf{Approximation bias}: the regression-based continuation
+      value $\widehat C_k$ is an approximation of the true $C_k$.
+      Two effects compete:
+
+      \begin{itemize}
+      \item \emph{Sub-optimal stopping}: any approximation of
+            $C_k$ leads to a stopping rule different from $\tau^\star$,
+            which gives a strictly lower expected payoff (because
+            $\tau^\star$ is by definition the supremum). This is a
+            \textbf{negative bias} (LSM tends to underprice).
+      \item \emph{In-sample bias}: when we use the same paths to
+            estimate $\widehat C_k$ and to apply the resulting rule,
+            the rule is data-mined to look better than it really is
+            on those paths. This is a \textbf{positive bias} (LSM
+            tends to overprice).
+      \end{itemize}
+\end{enumerate}
+
+In practice the two biases approximately cancel: the LSM estimator is
+near-unbiased for sufficiently many paths and a sufficiently rich
+basis. The literature documents agreement with reference values to
+better than $1\%$ on the canonical American put problem with $n =
+10^5$ and $M = 3$ to $4$ Laguerre basis functions.
+
+\subsection{The unbiased upper bound}
+
+A rigorously unbiased \emph{lower bound} estimator of the price can
+be obtained by splitting the simulation into two independent batches:
+the first batch is used to fit the regression coefficients, the
+second to apply the resulting exercise rule and average the cash
+flows. This eliminates the in-sample bias at the cost of a constant
+factor of paths.
+
+A separate \emph{upper bound} can be constructed via the
+Andersen-Broadie (2004) duality approach, which exploits the
+martingale formulation of the optimal stopping problem. We do not
+implement either refinement in this block; we rely on the
+near-cancellation of the two biases and validate against the
+binomial tree.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The validation script implements four tests.
+
+\paragraph{Test 1: binomial tree convergence.} Compute the binomial
+American put at $N = 100, 500, 1000, 5000, 10000$. The sequence
+should converge to a stable value at four decimal places by
+$N = 5000$.
+
+\paragraph{Test 2: LSM matches binomial.} At canonical parameters
+($S = K = 100$, $r = 0.05$, $\sigma = 0.20$, $T = 1$), with $N_{LSM} =
+50$ exercise dates and $n = 10^5$ paths, the LSM estimator should
+agree with the binomial reference (at $N_{tree} = 5000$) within
+three half-widths.
+
+\paragraph{Test 3: early exercise premium.} Compute both the European
+put (Black-Scholes) and the American put (LSM, plus binomial as
+sanity). The American minus European spread is the early-exercise
+premium; it must be strictly positive, and large enough to be
+distinguishable from MC noise (the canonical ATM case gives a
+premium of order $0.1$ on a put of order $5.6$).
+
+\paragraph{Test 4: input validation.} Mechanical.
+
+\section{Discussion: when LSM works and when it does not}
+\label{sec:discussion}
+
+LSM is the workhorse method for high-dimensional American options
+where binomial and PDE methods are infeasible. Its strength is that
+the cost scales linearly in the dimension of the underlying state, in
+contrast to the exponential blowup of grid-based methods. For our
+single-asset American put it is overkill --- the binomial tree is
+faster, more accurate, and entirely deterministic --- but the value
+of the implementation is in the methodology: LSM is the standard tool
+for path-dependent and multi-asset Americans (basket Americans,
+swing options, real options on multi-factor commodities).
+
+\paragraph{When LSM fails or struggles.} Three regimes:
+
+\begin{enumerate}
+\item \emph{Deeply out-of-the-money options}: the regression has
+      few in-the-money paths, so the continuation function is
+      poorly identified. Workaround: use importance sampling to
+      bias paths into the money.
+\item \emph{Highly path-dependent payoffs}: if the option's value
+      depends on the entire history rather than just $S_k$, a
+      one-dimensional regression is insufficient. Workaround:
+      include path-summary statistics in the basis (the running
+      maximum, average, etc.).
+\item \emph{Discontinuous payoffs}: digital Americans have
+      discontinuous intrinsic values, which destabilise the
+      regression near the discontinuity. Workaround: smoothing
+      via known regularisations.
+\end{enumerate}
+
+For the smooth, single-state American put we treat in this block,
+none of these difficulties arise.
+
+\section{Implementation outline}
+\label{sec:impl}
+
+The block ships two pricers in a new module \texttt{quantlib.american}
+(and the C++ mirror):
+
+\begin{itemize}
+\item \texttt{binomial\_american\_put}: CRR validator. No randomness,
+      just the lattice recursion. Used as the ground truth.
+\item \texttt{lsm\_american\_put}: Longstaff-Schwartz with Laguerre
+      basis $M = 4$, in-the-money restriction, exact GBM stepping.
+\end{itemize}
+
+The C++ side adds a file-local helper \texttt{cholesky\_solve} that
+factorises the small $M \times M$ normal-equations matrix and
+back-substitutes for $\beta^{(k)}$. For our $M = 4$ basis, this is a
+direct rather than iterative solve; the matrix is small,
+positive-definite, and well-conditioned in practice.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The Longstaff-Schwartz algorithm is from~\cite{LongstaffSchwartz2001}.
+Glasserman~\cite[Chapter 8]{Glasserman} gives a careful textbook
+treatment with full convergence theory. The Cox-Ross-Rubinstein
+binomial tree is from~\cite{CRR1979}; modern textbook treatment in
+Hull~\cite[Chapter 21]{Hull}. Andersen and Broadie's upper-bound
+construction is in~\cite{AndersenBroadie2004}.
+
+The treatment of optimal stopping via Snell envelopes is classical;
+see e.g.\ Karatzas and Shreve~\cite{KaratzasShreve} for a rigorous
+measure-theoretic exposition.
+
+\begin{thebibliography}{99}
+
+\bibitem{LongstaffSchwartz2001}
+F.\ A.\ Longstaff and E.\ S.\ Schwartz,
+\emph{Valuing American options by simulation: a simple least-squares approach},
+Review of Financial Studies, 14(1):113--147, 2001.
+
+\bibitem{CRR1979}
+J.\ C.\ Cox, S.\ A.\ Ross, and M.\ Rubinstein,
+\emph{Option pricing: a simplified approach},
+Journal of Financial Economics, 7(3):229--263, 1979.
+
+\bibitem{AndersenBroadie2004}
+L.\ Andersen and M.\ Broadie,
+\emph{A primal-dual simulation algorithm for pricing multidimensional American options},
+Management Science, 50(9):1222--1234, 2004.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Hull}
+J.\ C.\ Hull,
+\emph{Options, Futures, and Other Derivatives},
+10th edition, Pearson, 2018.
+
+\bibitem{KaratzasShreve}
+I.\ Karatzas and S.\ E.\ Shreve,
+\emph{Methods of Mathematical Finance},
+Springer, 1998.
+
+\end{thebibliography}
+
+\end{document}
