@@ -1,0 +1,442 @@
+% block2_btcs.tex
+%
+% Phase 3, Block 2: implicit BTCS scheme + Thomas algorithm.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{definition}[proposition]{Definition}
+\newtheorem{remark}[proposition]{Remark}
+
+\title{Phase 3, Block 2:\\The implicit BTCS scheme\\and the Thomas algorithm}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting and motivation}
+
+Block~1 implemented the explicit FTCS scheme, which is conditionally
+stable: $\alpha = (\sigma^2/2)\Delta\tau/\Delta x^2 \le 1/2$ forces
+$M \gtrsim N^2$ time steps and $O(N^3)$ total work. This block
+implements BTCS (Backward-Time, Centred-Space), an
+\emph{unconditionally stable} scheme: any $\Delta\tau > 0$ produces a
+convergent solution, decoupling $M$ from $N$.
+
+The cost of unconditional stability is that each time step requires
+solving a linear system. Block~2 has therefore two deliverables:
+\begin{enumerate}[leftmargin=2em]
+\item the BTCS pricer for European options;
+\item the \emph{Thomas algorithm}, a specialised Gaussian elimination
+that solves tridiagonal systems in $O(N)$ work.
+\end{enumerate}
+Thomas is implemented from scratch as a standalone module
+(\texttt{quantlib.thomas} in Python, \texttt{quant::pde::thomas} in
+C++). It will be reused by Crank--Nicolson in Block~3 and by PSOR in
+Block~4.
+
+% =====================================================================
+\section{The BTCS discretisation}
+% =====================================================================
+
+We discretise the transformed Black--Scholes PDE
+\begin{equation}
+\frac{\partial V}{\partial \tau}
+= \frac{\sigma^2}{2}\frac{\partial^2 V}{\partial x^2}
++ \mu\,\frac{\partial V}{\partial x}
+- r\,V
+\label{eq:transformed}
+\end{equation}
+on the grid of Block~0. BTCS evaluates every spatial stencil at the
+\emph{new} time level $n+1$:
+\[
+\frac{V_j^{n+1} - V_j^n}{\Delta\tau}
+= \frac{\sigma^2}{2}\,\frac{V_{j+1}^{n+1} - 2 V_j^{n+1} + V_{j-1}^{n+1}}{\Delta x^2}
++ \mu\,\frac{V_{j+1}^{n+1} - V_{j-1}^{n+1}}{2\Delta x}
+- r\,V_j^{n+1}.
+\]
+Multiplying by $\Delta\tau$ and grouping all $V^{n+1}$ on the left,
+$V^n$ on the right:
+\begin{equation}
+\boxed{\;
+b_-\,V_{j-1}^{n+1} + b_0\,V_j^{n+1} + b_+\,V_{j+1}^{n+1}
+\;=\; V_j^n
+\;}
+\label{eq:btcs}
+\end{equation}
+with
+\[
+b_- = -\alpha + \frac{\mu\,\Delta\tau}{2\,\Delta x},
+\qquad
+b_0 = 1 + 2\alpha + r\,\Delta\tau,
+\qquad
+b_+ = -\alpha - \frac{\mu\,\Delta\tau}{2\,\Delta x},
+\]
+where $\alpha = (\sigma^2/2)\Delta\tau/\Delta x^2$ as before.
+
+Equation \eqref{eq:btcs} is the FTCS scheme \emph{written from the
+other side}: where FTCS reads ``$V_j^{n+1}$ equals an explicit
+combination of $V^n$'', BTCS reads ``$V_j^n$ equals an explicit
+combination of $V^{n+1}$''. The latter is a system to be solved for
+the unknowns $V^{n+1}$. The two schemes are the $\theta = 0$ and
+$\theta = 1$ extremes of the family
+\[
+b_-\,V_{j-1}^{n+1} + b_0\,V_j^{n+1} + b_+\,V_{j+1}^{n+1}
+= a_-\,V_{j-1}^n + a_0\,V_j^n + a_+\,V_{j+1}^n,
+\]
+the $\theta$-scheme, with Crank--Nicolson at $\theta = 1/2$ in
+Block~3.
+
+% =====================================================================
+\section{The tridiagonal system}
+% =====================================================================
+
+For each time step, equation \eqref{eq:btcs} written for the interior
+nodes $j = 1, \dots, N-1$ is a linear system $A\,\mathbf{V}^{n+1}_{\mathrm{int}} = \mathbf{d}$
+where $A \in \mathbb{R}^{(N-1)\times(N-1)}$ is tridiagonal:
+\[
+A = \begin{pmatrix}
+b_0 & b_+ &        &        & \\
+b_- & b_0 & b_+    &        & \\
+    & b_- & b_0    & b_+    & \\
+    &     & \ddots & \ddots & \ddots \\
+    &     &        & b_-    & b_0
+\end{pmatrix}.
+\]
+The boundary nodes $V_0^{n+1}$ and $V_N^{n+1}$ are known from the
+Dirichlet conditions of Block~0; they appear in the right-hand side:
+\begin{equation}
+\mathbf{d} = \begin{pmatrix}
+V_1^n - b_-\,V_0^{n+1} \\
+V_2^n \\
+\vdots \\
+V_{N-2}^n \\
+V_{N-1}^n - b_+\,V_N^{n+1}
+\end{pmatrix}.
+\label{eq:rhs}
+\end{equation}
+The first and last rows pick up the contributions from the
+boundary; the rest of $\mathbf{d}$ is just $V^n$ at the interior.
+
+\paragraph{Constancy of $A$ in time.} The coefficients $b_-, b_0, b_+$
+are independent of $n$ and $j$ thanks to the constant-coefficient
+form \eqref{eq:transformed}. The matrix $A$ is therefore the same at
+every time step; only the right-hand side $\mathbf{d}$ changes.
+This is the structural pay-off of the logarithmic transformation
+that we already exploited in Block~1, now in a stronger form: at
+each step we solve a system with the \emph{same} matrix and a
+different right-hand side. The forward sweep of the Thomas algorithm
+can be done \emph{once} at setup and reused, halving the per-step
+cost.
+
+% =====================================================================
+\section{Stability: unconditional}
+% =====================================================================
+
+The von Neumann analysis of \eqref{eq:btcs} mirrors Block 0, §7.3
+extended with the convective and reactive terms. Substituting
+$V_j^n = g^n e^{ij\theta}$ and solving for $g$:
+\begin{equation}
+g(\theta) = \frac{1}{1 + 4\alpha\sin^2(\theta/2) - i\,\beta\sin\theta + r\,\Delta\tau},
+\qquad \beta = \frac{\mu\,\Delta\tau}{\Delta x}.
+\label{eq:btcs-amplification}
+\end{equation}
+The squared modulus,
+\[
+|g|^2 = \frac{1}{\bigl(1 + 4\alpha\sin^2(\theta/2) + r\Delta\tau\bigr)^2 + \beta^2\sin^2\theta},
+\]
+has denominator $\ge 1$ for every $\theta$ (every term is
+non-negative; one of them, $1$, is strictly so). Hence $|g(\theta)|
+\le 1$ unconditionally: BTCS is stable for any $\Delta\tau > 0$ and
+$\Delta x > 0$.
+
+Combined with consistency ($O(\Delta\tau) + O(\Delta x^2)$ local
+truncation), the Lax equivalence theorem gives convergence:
+\[
+\|V_h - V\|_\infty = O(\Delta\tau) + O(\Delta x^2).
+\]
+
+\begin{remark}[Stability is not monotonicity]
+$L^2$ stability does not imply $L^\infty$ monotonicity. For very
+large $\Delta\tau$ at moderate $\Delta x$, the matrix $A$ ceases to
+be an M-matrix: $A^{-1}$ has negative entries, and the discrete
+operator can produce localised oscillations near the strike kink.
+These oscillations are bounded (stability holds), but they degrade
+local accuracy. For our parameter range this regime is far away;
+when we reach it (large-$\Delta\tau$ tests in the validation), we
+will see prices that are merely imprecise, never explosive.
+\end{remark}
+
+% =====================================================================
+\section{The Thomas algorithm}
+% =====================================================================
+
+Solving $A\,\mathbf{x} = \mathbf{d}$ with general Gaussian elimination
+costs $O(N^3)$ — prohibitive at $N = 200$, hopeless at $N = 1000$.
+The Thomas algorithm exploits the tridiagonal structure to compute
+the same solution in $O(N)$ work, which is asymptotically optimal:
+just reading the input takes $O(N)$ time.
+
+\paragraph{Setup.} Consider the general tridiagonal system
+\[
+\begin{pmatrix}
+\tilde b_1 & c_1        &            &            &        \\
+a_2        & \tilde b_2 & c_2        &            &        \\
+           & a_3        & \tilde b_3 & c_3        &        \\
+           &            & \ddots     & \ddots     & \ddots \\
+           &            &            & a_n        & \tilde b_n
+\end{pmatrix}
+\begin{pmatrix} x_1 \\ x_2 \\ \vdots \\ x_n \end{pmatrix}
+=
+\begin{pmatrix} d_1 \\ d_2 \\ \vdots \\ d_n \end{pmatrix}.
+\]
+We write $\tilde b$ for the diagonal of the general system to
+distinguish from the BTCS-specific $b_0, b_-, b_+$.
+
+\paragraph{Forward sweep.} Standard Gaussian elimination, applied
+naively to a tridiagonal system, produces \emph{no fill}: at each
+step the only non-zero entries below the pivot are $a_i$, and the
+elimination touches $\tilde b_i$ and $d_i$ but not the rows below.
+The recursion is
+\begin{align}
+c'_1 &= \frac{c_1}{\tilde b_1}, &
+d'_1 &= \frac{d_1}{\tilde b_1}, \nonumber \\
+m_i  &= \tilde b_i - a_i\,c'_{i-1}, &
+c'_i &= \frac{c_i}{m_i}, &
+d'_i &= \frac{d_i - a_i\,d'_{i-1}}{m_i}, \quad i = 2, \dots, n.
+\label{eq:thomas-forward}
+\end{align}
+The $m_i$ are the \emph{effective pivots}: what remains on the
+diagonal after eliminating $a_i$. After the sweep the system is
+upper bidiagonal:
+\[
+\begin{pmatrix}
+1 & c'_1 &       &       \\
+  & 1    & c'_2  &       \\
+  &      & 1     & c'_3  \\
+  &      &       & \ddots \\
+\end{pmatrix}
+\mathbf{x} = \mathbf{d'}.
+\]
+
+\paragraph{Backward substitution.} Trivial:
+\begin{equation}
+x_n = d'_n, \qquad
+x_i = d'_i - c'_i\,x_{i+1}, \quad i = n-1, n-2, \dots, 1.
+\label{eq:thomas-back}
+\end{equation}
+
+\paragraph{Operation count.} The forward sweep does roughly $5n$
+floating-point operations (one division for $c'_i$, three operations
+for $d'_i$, one for $m_i$). The backward substitution does $\sim 2n$.
+Total: $O(n)$ with constant $\approx 7$.
+
+\paragraph{Memory.} Only four vectors of length $\le n$: the three
+diagonals (modified in place if desired) and the right-hand side.
+No fill-in, no $O(n^2)$ storage.
+
+\paragraph{Pre-factoring for repeated solves.} The forward sweep
+\eqref{eq:thomas-forward} computes two distinct families of
+quantities: those depending only on $(a, \tilde b, c)$, namely
+$\{m_i, c'_i\}$, and those depending also on $d$, namely
+$\{d'_i\}$. When the matrix is constant across many right-hand
+sides — exactly our case, with one fixed $A$ and $M$ different
+right-hand sides — we compute the $(m_i, c'_i)$ once at setup, and
+each subsequent solve costs only the $d'$ recursion plus the
+backward substitution. The savings are $O(n)$ divisions per solve,
+i.e., a factor $\sim 1.5$--$2$ in practice.
+
+% =====================================================================
+\section{Stability of Thomas without pivoting}
+% =====================================================================
+
+The Thomas algorithm as written does \emph{not} pivot: there is no
+provision for $m_i = 0$ or $|m_i|$ small. In general, Gaussian
+elimination without pivoting is unsafe — a small pivot amplifies
+round-off catastrophically. For Thomas there is a clean theorem
+that rules out the failure mode for our matrices.
+
+\begin{theorem}[Thomas without pivoting under diagonal dominance]
+\label{thm:thomas-stab}
+If the tridiagonal matrix is diagonally dominant in the sense
+\begin{equation}
+|\tilde b_i| \ge |a_i| + |c_i|, \quad i = 1, \dots, n,
+\label{eq:diag-dominance}
+\end{equation}
+with strict inequality in at least one row, then all effective
+pivots $m_i$ in \eqref{eq:thomas-forward} satisfy $|m_i| \ge
+|\tilde b_i| - |a_i| > 0$, and the algorithm is backward stable:
+the computed solution $\hat{\mathbf{x}}$ satisfies
+$(A + \delta A)\hat{\mathbf{x}} = \mathbf{d}$ with
+$\|\delta A\|_\infty \le c_n\,\varepsilon_{\mathrm{mach}}\|A\|_\infty$
+for a small constant $c_n$ proportional to $n$.
+\end{theorem}
+
+(Proof in Higham, \emph{Accuracy and Stability of Numerical Algorithms},
+\S9.5.)
+
+\paragraph{Application to BTCS.} The BTCS matrix has $\tilde b_i =
+b_0$, $a_i = b_-$, $c_i = b_+$, all constant in $i$. Diagonal
+dominance reduces to
+\[
+|b_0| \;\ge\; |b_-| + |b_+|.
+\]
+We have $|b_0| = 1 + 2\alpha + r\Delta\tau$ (positive). Computing the
+right-hand side:
+\[
+|b_-| + |b_+|
+= \left|\alpha - \frac{\mu\Delta\tau}{2\Delta x}\right|
+ + \left|\alpha + \frac{\mu\Delta\tau}{2\Delta x}\right|.
+\]
+When $\alpha \ge \bigl|\mu\Delta\tau/(2\Delta x)\bigr|$ — i.e.,
+$\bigl|\mu\bigr|\Delta x/\sigma^2 \le 1$, the grid Péclet condition
+of Block~1 — both terms inside the absolute values have $\alpha$
+dominating and the same sign, and we get
+$|b_-| + |b_+| = 2\alpha$. Then
+\[
+|b_0| - (|b_-| + |b_+|) = 1 + r\Delta\tau > 0,
+\]
+strict diagonal dominance. So Thomas without pivoting is provably
+stable for BTCS whenever $\mathrm{Pe}_h \le 1$, which the project's
+parameter range satisfies with comfortable margin
+($\mathrm{Pe}_h \le 0.25$).
+
+% =====================================================================
+\section{Convergence rates and computational cost}
+% =====================================================================
+
+The BTCS error is $O(\Delta\tau) + O(\Delta x^2)$. With $M$ now
+independent of $N$, the user has a choice:
+
+\paragraph{Quadratic-precision regime ($M \sim N^2$).} Choose
+$\Delta\tau \sim \Delta x^2$. Both error contributions are
+$O(\Delta x^2)$; the total error is $O(\Delta x^2)$. The
+computational cost is $O(N) \cdot M \cdot 2 = O(N \cdot N^2) =
+O(N^3)$, with the constant a factor $\sim 7$ from the Thomas count.
+\emph{Same asymptotic cost as FTCS for the same precision.}
+
+\paragraph{Linear-precision regime ($M \sim N$).} Choose
+$\Delta\tau \sim \Delta x$. The error is dominated by $O(\Delta\tau)
+= O(\Delta x)$; the spatial $O(\Delta x^2)$ contribution is
+sub-dominant. The total error is $O(\Delta x)$. Cost: $O(N) \cdot
+M = O(N^2)$. \emph{Acceptable when first-order precision is enough}
+(prototyping, calibration of insensitive parameters, sanity checks).
+
+\paragraph{Crank--Nicolson preview.} The next block achieves
+$O(\Delta\tau^2) + O(\Delta x^2)$ local truncation, so $M \sim N$
+gives full $O(\Delta x^2)$ precision at $O(N^2)$ cost. That is the
+point where the explicit-vs-implicit trade decisively tips toward
+implicit.
+
+\paragraph{Summary table.}
+\begin{center}
+\begin{tabular}{lcccc}
+\hline
+Scheme & Local error & Stability & For $O(\Delta x^2)$ & For $O(\Delta x)$ \\
+\hline
+FTCS  & $\Delta\tau + \Delta x^2$  & $\alpha \le 1/2$       & $O(N^3)$ (forced) & not relevant \\
+BTCS  & $\Delta\tau + \Delta x^2$  & unconditional          & $O(N^3)$ (M $\sim N^2$) & $O(N^2)$ (M $\sim N$) \\
+CN    & $\Delta\tau^2 + \Delta x^2$ & unconditional         & $O(N^2)$ (M $\sim N$) & overkill \\
+\hline
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+The deliverables are two modules each in Python and C++:
+
+\begin{itemize}[leftmargin=2em]
+\item \texttt{quantlib.thomas} (Python) / \texttt{quant::pde::thomas\_*}
+(C++) provides
+\texttt{thomas\_solve(sub, diag, sup, rhs)} for one-shot solves and
+the pair \texttt{thomas\_factor(sub, diag, sup)} +
+\texttt{thomas\_solve\_factored(factor, rhs)} for repeated solves
+with a fixed matrix.
+\item \texttt{quantlib.btcs} (Python) / \texttt{quant::pde::btcs\_*}
+(C++) provides \texttt{btcs\_european\_call/put} with the same
+signature as the FTCS pricers, except that there is no CFL check:
+any $M \ge 1$ is valid input.
+\end{itemize}
+
+The validation suite checks five properties:
+\begin{enumerate}[leftmargin=2em]
+\item Cross-validation of \texttt{thomas\_solve} against
+\texttt{numpy.linalg.solve} (Python) and against an independent dense
+LU implementation in the C++ tests, for randomly-generated diagonally
+dominant matrices.
+\item Cross-validation of BTCS against Black--Scholes closed-form,
+with tolerance scaled to the discretisation error.
+\item Convergence rate at $\Delta\tau \sim \Delta x^2$: error reduction
+by a factor of $\sim 4$ when $N \to 2N$, $M \to 4M$.
+\item First-order convergence in time at fixed (large) $N$, $M \to
+2M$: error reduction by $\sim 2$.
+\item \emph{Large-$\Delta\tau$ stability test}: BTCS at $M = 10$
+for $T = 1$ produces a finite, sensible price (although imprecise),
+with no explosion. This is the operational signature of unconditional
+stability.
+\end{enumerate}
+
+% =====================================================================
+\section*{References}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. \S3.2 (BTCS for BS), \S3.4 (stability of implicit
+schemes).
+
+\bibitem{Seydel2017}
+R. Seydel.
+\emph{Tools for Computational Finance.}
+6th ed., Springer, 2017. \S4.2.2 (BTCS), \S4.6 (linear solvers).
+
+\bibitem{Strikwerda2004}
+J.~C. Strikwerda.
+\emph{Finite Difference Schemes and Partial Differential Equations.}
+2nd ed., SIAM, 2004. \S3.1--3.2 (implicit methods, von Neumann
+analysis).
+
+\bibitem{NumericalRecipes}
+W.~H. Press, S.~A. Teukolsky, W.~T. Vetterling and B.~P. Flannery.
+\emph{Numerical Recipes: The Art of Scientific Computing.}
+3rd ed., CUP, 2007. \S2.4 (the Thomas algorithm with code).
+
+\bibitem{Higham2002}
+N.~J. Higham.
+\emph{Accuracy and Stability of Numerical Algorithms.}
+2nd ed., SIAM, 2002. \S9.5 (stability of LU without pivoting for
+diagonally-dominant matrices, including the proof of
+Theorem~\ref{thm:thomas-stab}).
+
+\bibitem{TrefethenBau1997}
+L.~N. Trefethen and D.~Bau~III.
+\emph{Numerical Linear Algebra.}
+SIAM, 1997. Lecture~21 (Gaussian elimination without pivoting).
+
+\bibitem{Smith1985}
+G.~D. Smith.
+\emph{Numerical Solution of Partial Differential Equations:
+Finite Difference Methods.}
+3rd ed., OUP, 1985. \S1.13 (the $\theta$-family of schemes).
+
+\end{thebibliography}
+
+\end{document}
