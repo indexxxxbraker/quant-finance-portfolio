@@ -1,0 +1,429 @@
+% block1_ftcs.tex
+%
+% Phase 3, Block 1: the explicit FTCS scheme for the Black-Scholes PDE.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{definition}[proposition]{Definition}
+\newtheorem{remark}[proposition]{Remark}
+
+\title{Phase 3, Block 1:\\The explicit FTCS scheme\\for the Black--Scholes PDE}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting}
+
+This block implements the Forward-Time, Centred-Space (FTCS) finite-
+difference pricer for European calls and puts. We use the
+constant-coefficient transformed Black--Scholes equation derived in
+Block~0,
+\begin{equation}
+\frac{\partial V}{\partial \tau}
+\;=\; \frac{\sigma^2}{2}\frac{\partial^2 V}{\partial x^2}
+   + \mu\,\frac{\partial V}{\partial x}
+   - r\, V,
+\qquad \mu = r - \tfrac{\sigma^2}{2},
+\label{eq:transformed}
+\end{equation}
+with $x = \ln(S/K)$, $\tau = T - t$, on the truncated domain
+$[x_{\min}, x_{\max}] \times [0, T]$ with Dirichlet boundary
+conditions specified in Block~0. The deliverable is a pricer,
+validated against the Black--Scholes closed form and analysed in
+terms of stability and convergence.
+
+% =====================================================================
+\section{The FTCS discretisation}
+% =====================================================================
+
+Let $V_j^n \approx V(x_j, \tau_n)$ on the uniform grid $x_j = x_{\min}
++ j\,\Delta x,\;\tau_n = n\,\Delta\tau$. Substituting the centred space
+stencils and the forward-time stencil into \eqref{eq:transformed}:
+\[
+\frac{V_j^{n+1} - V_j^n}{\Delta\tau}
+\;=\; \frac{\sigma^2}{2}\,\frac{V_{j+1}^n - 2\,V_j^n + V_{j-1}^n}{\Delta x^2}
++ \mu\,\frac{V_{j+1}^n - V_{j-1}^n}{2\,\Delta x}
+- r\,V_j^n.
+\]
+All spatial differences are evaluated at the \emph{old} time level $n$.
+This is what makes the scheme explicit: the new-time value $V_j^{n+1}$
+is given directly as a linear combination of three old-time values,
+without solving any system.
+
+Multiplying by $\Delta\tau$ and isolating $V_j^{n+1}$ on the left,
+\begin{equation}
+\boxed{\;\;
+V_j^{n+1} \;=\; a_-\,V_{j-1}^n \,+\, a_0\,V_j^n \,+\, a_+\,V_{j+1}^n
+\;\;}
+\label{eq:ftcs}
+\end{equation}
+with constant coefficients
+\begin{equation}
+a_-  = \alpha - \frac{\mu\,\Delta\tau}{2\,\Delta x},\quad
+a_0  = 1 - 2\alpha - r\,\Delta\tau,\quad
+a_+  = \alpha + \frac{\mu\,\Delta\tau}{2\,\Delta x},
+\label{eq:coeffs}
+\end{equation}
+where $\alpha = \frac{\sigma^2}{2}\,\Delta\tau / \Delta x^2$ is the
+Fourier number from Block~0. The coefficients do not depend on
+$j$ or $n$, by virtue of the constant-coefficient structure of
+\eqref{eq:transformed}: this is the structural pay-off of the
+logarithmic transformation.
+
+% =====================================================================
+\section{Probabilistic interpretation}
+% =====================================================================
+
+The three coefficients sum to
+\[
+a_- + a_0 + a_+ \;=\; 1 - r\,\Delta\tau.
+\]
+This identity has a clean reading: if $a_-$, $a_0$, $a_+$ are
+non-negative, define
+\[
+p_-  = \frac{a_-}{1 - r\Delta\tau},\quad
+p_0  = \frac{a_0}{1 - r\Delta\tau},\quad
+p_+  = \frac{a_+}{1 - r\Delta\tau},
+\]
+so that $p_-, p_0, p_+ \ge 0$ and $p_- + p_0 + p_+ = 1$. Then
+\eqref{eq:ftcs} is exactly
+\begin{equation}
+V_j^{n+1} \;=\; (1 - r\,\Delta\tau)\,
+\Bigl(p_-\,V_{j-1}^n + p_0\,V_j^n + p_+\,V_{j+1}^n\Bigr)
+\;\approx\; e^{-r\Delta\tau}\,
+\mathbb{E}^{\mathbb{Q}}\!\Bigl[\,V(x_j + \xi\,\Delta x,\,\tau_n)\,\Bigr],
+\label{eq:prob-reading}
+\end{equation}
+where $\xi \in \{-1, 0, +1\}$ with $\mathbb{Q}$-probabilities
+$(p_-, p_0, p_+)$. The factor $1 - r\,\Delta\tau$ is the
+forward-Euler approximation to the discount factor $e^{-r\Delta\tau}$.
+
+Equation \eqref{eq:prob-reading} says that FTCS is the discretisation
+of the risk-neutral pricing identity
+\[
+V(x_j, \tau_{n+1})
+\;=\; e^{-r\Delta\tau}\,\mathbb{E}^{\mathbb{Q}}\!\bigl[V(X_{n+1}, \tau_n)\,
+\big|\, X_n = x_j\bigr]
+\]
+on a discrete state space, with $X_{n+1} - X_n$ taking the values
+$\pm\Delta x, 0$. This is exactly the structure of a trinomial tree.
+We will revisit this connection in Block~5: the Kamrad--Ritchken tree
+is, after a precise reparametrisation, FTCS in disguise.
+
+The reading also highlights why the non-negativity of the coefficients
+matters: if any $p_\xi < 0$, the operation loses its interpretation as
+a discrete expectation, and the scheme can amplify oscillations near
+the strike kink in the payoff.
+
+% =====================================================================
+\section{Non-negativity of the coefficients}\label{sec:positivity}
+% =====================================================================
+
+Three conditions, one per coefficient.
+
+\paragraph{Central coefficient.}
+$a_0 \ge 0$ requires
+\begin{equation}
+\alpha \;\le\; \frac{1 - r\,\Delta\tau}{2}.
+\label{eq:cfl-strict}
+\end{equation}
+For $r\,\Delta\tau \ll 1$ (always true in this project: $r \le 0.1$
+and $\Delta\tau \le 10^{-2}$), \eqref{eq:cfl-strict} is essentially
+the CFL condition $\alpha \le 1/2$ from Block~0.
+
+\paragraph{Lateral coefficients.}
+$a_\pm \ge 0$ requires $\bigl|\,\mu\,\Delta\tau/(2\Delta x)\bigr|\le
+\alpha$, equivalently
+\begin{equation}
+\frac{|\mu|\,\Delta x}{\sigma^2} \;\le\; 1.
+\label{eq:peclet}
+\end{equation}
+The dimensionless ratio $\mathrm{Pe}_h := |\mu|\Delta x / \sigma^2$ is
+the \emph{grid Péclet number}: it measures the relative weight of
+convection to diffusion at the scale of one grid cell. For the
+parameter range of this project ($\sigma \in [0.1, 0.4]$,
+$|\mu| \le 0.1$, $\Delta x \le 0.1$), $\mathrm{Pe}_h \le 1$ is
+satisfied with comfortable margin.
+
+\begin{remark}[Convection-dominated regimes]
+When $\mathrm{Pe}_h > 1$ (extreme dividends, very small volatility,
+very coarse grid), centred differences for the convective term
+produce one negative lateral coefficient, the probabilistic reading
+breaks, and the scheme exhibits localised oscillations near the
+strike kink. The standard remedy is an \emph{upwind} discretisation
+of the convective term: replace
+$(V_{j+1} - V_{j-1}) / (2\Delta x)$ by $(V_j - V_{j-1})/\Delta x$ if
+$\mu > 0$ or $(V_{j+1} - V_j)/\Delta x$ if $\mu < 0$. This restores
+$L^\infty$ stability at the price of one order of accuracy in space
+($O(\Delta x)$ instead of $O(\Delta x^2)$). Out of scope for Phase~3.
+\end{remark}
+
+\paragraph{Summary.}
+The probability-positive (monotone) regime is
+\begin{equation}
+\boxed{\;\;\alpha \le \tfrac{1}{2}\;\;\text{and}\;\;\mathrm{Pe}_h \le 1.\;\;}
+\label{eq:ppos}
+\end{equation}
+In this regime the scheme is monotone, and monotonicity implies
+stability in the uniform $L^\infty$ norm:
+\[
+\max_j |V_j^{n+1}|
+\;\le\; (1 - r\Delta\tau)\,\max_j |V_j^n|
+\;\le\; \max_j |V_j^n|.
+\]
+This is a strictly stronger result than the $L^2$ stability of the
+next section, and it is the practical reason the prices computed by
+FTCS \emph{look smooth}: oscillations cannot grow.
+
+% =====================================================================
+\section{Von Neumann stability analysis}\label{sec:vN}
+% =====================================================================
+
+The von Neumann analysis of \eqref{eq:ftcs} for the full
+convection-diffusion-reaction equation supplements the previous
+section with a tight necessary-and-sufficient condition for $L^2$
+stability.
+
+Substituting the Fourier ansatz $V_j^n = g^n e^{ij\theta}$ into
+\eqref{eq:ftcs} and using $e^{i\theta} + e^{-i\theta} = 2 - 4\sin^2(\theta/2)$,
+$e^{i\theta} - e^{-i\theta} = 2 i\sin\theta$, the amplification factor is
+\begin{equation}
+g(\theta) \;=\; (1 - r\,\Delta\tau)
+- 4\,\alpha\,\sin^2\!\tfrac{\theta}{2}
++ i\,\beta\,\sin\theta,
+\qquad
+\beta \;:=\; \frac{\mu\,\Delta\tau}{\Delta x}.
+\label{eq:vn-factor}
+\end{equation}
+($\beta$ is the unsymmetrised Courant number; it differs from the
+$\nu$ of Block~0 by a factor of $1/2$.) The factor is complex: the
+real part is the diffusive contribution shifted by the reactive term;
+the imaginary part is the convective contribution.
+
+\begin{proposition}[Stability of FTCS]
+Set $r = 0$ for clarity (the reactive term shifts the analysis
+trivially and never contributes to instability when $r \ge 0$ and
+$\Delta\tau \le 1/r$). The condition $|g(\theta)|^2 \le 1$ for all
+$\theta \in [-\pi, \pi]$ is equivalent to
+\begin{equation}
+\alpha \;\le\; \tfrac{1}{2}
+\qquad\text{and}\qquad
+\beta^2 \;\le\; 2\,\alpha.
+\label{eq:vn-conds}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+With $s := \sin^2(\theta/2) \in [0, 1]$, $\sin^2\theta = 4 s (1-s)$.
+Then
+\[
+|g|^2 = (1 - 4\alpha s)^2 + 4\beta^2 s(1-s),
+\]
+and after expansion,
+\[
+|g|^2 - 1 = s\,\bigl[(16\alpha^2 - 4\beta^2)\,s + (4\beta^2 - 8\alpha)\bigr].
+\]
+The bracket is linear in $s$. The condition $|g|^2 \le 1$ for all
+$s \in (0, 1]$ is equivalent to the bracket being non-positive at
+both endpoints $s = 0$ and $s = 1$ (linear function on a compact
+interval attains its extrema at the endpoints). At $s = 0$:
+$4\beta^2 - 8\alpha \le 0 \Leftrightarrow \beta^2 \le 2\alpha$. At
+$s = 1$: $16\alpha^2 - 8\alpha \le 0 \Leftrightarrow \alpha \le 1/2$.
+\qed
+\end{proof}
+
+\paragraph{The two conditions are not equivalent to monotonicity.} The
+von Neumann conditions \eqref{eq:vn-conds} are about $L^2$
+stability; the conditions \eqref{eq:ppos} are about monotonicity. The
+relationship between them is:
+
+\begin{itemize}[leftmargin=2em]
+\item Both conditions share $\alpha \le 1/2$.
+\item The von Neumann condition $\beta^2 \le 2\alpha$ rewrites as
+$\mu^2 \Delta\tau \le \sigma^2$, a constraint on $\Delta\tau$. For
+typical parameters ($\sigma = 0.2,\;\mu \le 0.1$): $\Delta\tau \le 4
+\sigma^2/\mu^2 = 4$ years. Always satisfied.
+\item The probability-positive condition $\mathrm{Pe}_h \le 1$
+rewrites as $|\mu| \Delta x \le \sigma^2$, a constraint on $\Delta x$.
+\end{itemize}
+The two are different conditions on different variables. The
+probability-positive constraint is strictly stronger: it implies $L^2$
+stability via monotonicity, but the converse fails. In our parameter
+range both conditions are satisfied; in convection-dominated regimes,
+they decouple, and the von Neumann condition can hold without
+monotonicity (giving stable but oscillatory schemes).
+
+\paragraph{What dominates in practice.} The constraint that bites is
+$\alpha \le 1/2$. The Péclet condition $\mathrm{Pe}_h \le 1$ is a
+constraint on $\Delta x$ that is comfortably met for the project's
+parameters. The reactive contribution $r\Delta\tau$ damps every Fourier
+mode uniformly and never destabilises.
+
+% =====================================================================
+\section{The time-marching algorithm}
+% =====================================================================
+
+In pseudocode, the inner loop is
+\begin{verbatim}
+    V[j] for j = 0..N  <-  initial-condition vector at tau = 0
+    for n = 0, 1, ..., M-1:
+        V_new[0] = bc_lower[n+1]                          # Dirichlet
+        V_new[N] = bc_upper[n+1]                          # Dirichlet
+        for j = 1, ..., N-1:                              # interior nodes
+            V_new[j] = a_minus * V[j-1]
+                     + a_zero  * V[j]
+                     + a_plus  * V[j+1]
+        swap(V, V_new)
+    return V                                              # V at tau = T
+\end{verbatim}
+
+Three implementation points worth explicit comment.
+
+\paragraph{Double buffer.} The update of node $j$ at level $n+1$ uses
+$V_{j-1}^n$ and $V_{j+1}^n$. If the implementation overwrites
+$V_j$ in place, the value of $V_j$ used by the update of $V_{j+1}$
+will be the new one rather than the old, breaking the scheme. Two
+buffers $V$ and $V_{\text{new}}$ are needed, swapped after each step.
+
+\paragraph{Boundary conditions are not stencil applications.} The
+boundary nodes $j = 0$ and $j = N$ are fixed by the Dirichlet
+conditions of Block~0; the stencil is applied only to interior
+nodes $j = 1, \dots, N-1$. Trying to apply the stencil at $j = 0$
+would require a phantom node $j = -1$ outside the domain.
+
+\paragraph{Recovery of the price at $S_0$.} The grid is in $x =
+\ln(S/K)$. The pricer must return $V(S_0, 0)$ at the user's spot
+$S_0$, which is generally not on a grid node. The $V$ array at
+$\tau = T$ contains $V_j^M$ for $j = 0, \dots, N$, and the price is
+recovered by interpolation at $x_0 = \ln(S_0/K)$. Linear
+interpolation is enough: it adds an $O(\Delta x^2)$ error consistent
+with the spatial discretisation order.
+
+% =====================================================================
+\section{Convergence and computational cost}
+% =====================================================================
+
+\paragraph{Local truncation error.} By Taylor expansion of every
+stencil,
+\[
+\tau_{j}^n \;=\; O(\Delta\tau) + O(\Delta x^2).
+\]
+First order in $\Delta\tau$ from the forward-Euler step; second order
+in $\Delta x$ from the centred space stencils.
+
+\paragraph{Global error and convergence rate.} By the Lax equivalence
+theorem (Block 0, §7), consistency plus stability gives convergence,
+\[
+\bigl\|V_h - V\bigr\|_\infty \;=\; O(\Delta\tau) + O(\Delta x^2).
+\]
+Under the CFL constraint $\Delta\tau \le \Delta x^2 / \sigma^2$, both
+contributions are $O(\Delta x^2)$, so the scheme converges
+quadratically in $\Delta x$. There is no parameter regime in which
+FTCS achieves better than $O(\Delta x^2)$ convergence: the temporal
+order is locked at $1$, and the spatial order is locked at $2$, but
+the CFL constraint balances the two automatically.
+
+\paragraph{Computational cost.} Each time step does $O(N)$ work
+(one stencil application per interior node). The number of time
+steps is, by CFL,
+\[
+M \;\ge\; \frac{T\,\sigma^2}{\Delta x^2} \;\sim\; N^2.
+\]
+Total work: $O(N \cdot M) = O(N^3)$. Doubling $N$ multiplies the
+cost by $8$. This $N^3$ scaling is the price tag of explicit time
+stepping; Blocks~2 (BTCS) and~3 (Crank--Nicolson) will sidestep it
+by allowing $\Delta\tau \sim \Delta x$ at the cost of solving a
+tridiagonal system per step.
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+The Python module \texttt{quantlib.ftcs} exposes
+\texttt{ftcs\_european\_call} and \texttt{ftcs\_european\_put}, both
+with signature \texttt{(S, K, r, sigma, T, *, N, M, n\_sigma=4.0)}.
+The C++ counterpart in the \texttt{quant::pde} namespace has the
+same arguments. Both validate that $\alpha \le 1/2$ at construction
+and raise an error otherwise (Python: \texttt{ValueError}; C++:
+\texttt{std::invalid\_argument}). The validation is strict and not
+configurable: the pricer will not silently produce nonsense from a
+violated CFL.
+
+The validation tests (Python: \texttt{validate\_ftcs.py}; C++:
+\texttt{test\_ftcs.cpp}) check four properties:
+\begin{enumerate}[leftmargin=2em]
+\item agreement with the Black--Scholes closed form on a grid of
+parameters, with tolerance scaled to $\Delta x^2$;
+\item the empirical convergence rate, by running on $(N, M)$ and
+$(2N, 4M)$ and checking that the error ratio is close to $4$;
+\item put-call parity: $C - P = S - K e^{-rT}$ at every spot, to
+within twice the discretisation tolerance;
+\item that violating CFL ($\alpha > 1/2$) raises the appropriate
+exception.
+\end{enumerate}
+
+A separate diagnostic script, \texttt{demo\_ftcs\_explosion.py},
+disables the CFL check and runs the scheme at $\alpha = 0.6$, to
+visualise the sawtooth instability mode. The output is documented in
+the manual personal as the Phase~3 numerical lesson.
+
+% =====================================================================
+\section*{References}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. \S3.1--3.3 (FTCS for BS, the CFL constraint specific to
+the equation), \S4.2 (convergence).
+
+\bibitem{Seydel2017}
+R. Seydel.
+\emph{Tools for Computational Finance.}
+6th ed., Springer, 2017. \S4.2.1 (FTCS), \S4.2.4 (stability analysis).
+
+\bibitem{Strikwerda2004}
+J.~C. Strikwerda.
+\emph{Finite Difference Schemes and Partial Differential Equations.}
+2nd ed., SIAM, 2004. \S3.4--3.5 (von Neumann analysis for the full
+CDR equation).
+
+\bibitem{MortonMayers2005}
+K.~W. Morton and D.~F. Mayers.
+\emph{Numerical Solution of Partial Differential Equations.}
+2nd ed., CUP, 2005. \S2.7--2.10 (Lax equivalence and consistency
+analysis).
+
+\bibitem{Hull2017}
+J. Hull.
+\emph{Options, Futures, and Other Derivatives.}
+10th ed., Pearson, 2017. \S21.4 (FTCS \(\leftrightarrow\) trinomial
+tree equivalence, from the tree side).
+
+\bibitem{KamradRitchken1991}
+B. Kamrad and P. Ritchken.
+\emph{Multinomial approximating models for options with $k$ state
+variables.}
+Management Science 37(12), 1640--1652, 1991. The original trinomial
+tree paper; will be revisited in Block~5.
+
+\end{thebibliography}
+
+\end{document}
