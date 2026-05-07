@@ -21,6 +21,7 @@ add_library(quant_lib
     src/qmc.cpp
     src/greeks.cpp
     src/asian.cpp
+    src/american.cpp
 )
 
 # QMC needs to know the path to the Joe-Kuo direction-numbers file.
@@ -59,6 +60,7 @@ add_executable(quant_tests
     tests/test_qmc.cpp
     tests/test_greeks.cpp
     tests/test_asian.cpp
+    tests/test_american.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 

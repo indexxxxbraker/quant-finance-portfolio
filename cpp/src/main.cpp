@@ -16,6 +16,7 @@
 #include "qmc.hpp"
 #include "greeks.hpp"
 #include "asian.hpp"
+#include "american.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -208,6 +209,38 @@ int main() {
                             * (res_a_iid.half_width / res_a_cv.half_width);
         std::cout << "VRF (CV vs IID): " << vrf << "x\n";
     }
+    // ===== American options (Block 6) =====
+    {
+        std::cout << "\n--- Phase 2 Block 6: American options ---\n";
 
+        constexpr double S0 = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+
+        // Binomial CRR ground truth.
+        const double v_bin = quant::binomial_american_put(S0, K, r, sigma, T, 5000);
+        std::cout << "Binomial American put (N=5000): " << v_bin << "\n";
+
+        // European put for premium comparison.
+        const double v_eu = quant::put_price(S0, K, r, sigma, T);
+        std::cout << "European put (BS): " << v_eu
+                << "  --  early-ex premium = " << (v_bin - v_eu) << "\n";
+
+        // LSM.
+        constexpr std::size_t n_paths   = 100'000;
+        constexpr std::size_t n_steps   = 50;
+        constexpr std::size_t basis_M   = 4;
+        std::mt19937_64 rng(42);
+        const auto res_lsm = quant::lsm_american_put(
+                                    S0, K, r, sigma, T,
+                                    n_paths, n_steps, basis_M, rng);
+        std::cout << "LSM (n=" << n_paths
+                << ", N=" << n_steps
+                << ", M=" << basis_M << "): "
+                << res_lsm.estimate << " +- " << res_lsm.half_width
+                << " (err to ref = " << (res_lsm.estimate - v_bin)
+                << ", err/hw = "
+                << (std::abs(res_lsm.estimate - v_bin) / res_lsm.half_width)
+                << ")\n";
+    }
+    
     return 0;
 }
