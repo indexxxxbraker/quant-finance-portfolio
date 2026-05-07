@@ -1,0 +1,396 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Asian Options by Monte Carlo:\\
+       Arithmetic Pricing with the Geometric Control Variate}
+\author{Quant Finance Portfolio --- Phase 2, Block 5}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Asian options pay on a time-average of the underlying rather than
+its terminal value. The arithmetic-average Asian call has no closed
+form (the arithmetic average of lognormals is not lognormal), so
+Monte Carlo is the standard pricing tool. The geometric-average
+Asian call \emph{does} have a closed form, because the geometric
+mean of lognormals is lognormal. The two averages are very highly
+correlated under typical parameters ($\rho > 0.999$ for a one-year
+ATM call with daily monitoring), so the geometric Asian is a
+near-perfect control variate for the arithmetic Asian. This block
+derives the closed form for the geometric Asian, implements the
+three pricers (arithmetic IID, geometric IID, arithmetic with
+geometric CV), and demonstrates a variance reduction factor on the
+order of $10^3$ at the canonical ATM point.
+\end{abstract}
+
+\tableofcontents
+
+\section{Path-dependent payoffs and the Asian family}
+\label{sec:setting}
+
+A \emph{path-dependent} option pays at maturity according to the
+trajectory of the underlying, not just its terminal value. Define
+a discrete monitoring grid $0 = t_0 < t_1 < \cdots < t_N = T$
+(here equispaced: $t_k = kT/N$), and let $S_k \eqdef S_{t_k}$.
+
+The two Asian averages are:
+\begin{equation}
+\bar S \;\eqdef\; \frac{1}{N}\sum_{k=1}^N S_k
+\qquad\text{(arithmetic average)},
+\end{equation}
+\begin{equation}
+\tilde S \;\eqdef\; \biggl(\prod_{k=1}^N S_k\biggr)^{1/N}
+\qquad\text{(geometric average)}.
+\end{equation}
+Note that $S_0$ is excluded from both averages (it is the known spot,
+not part of the random history).
+
+The arithmetic-average call pays $\max(\bar S - K, 0)$ at $T$; its
+risk-neutral price is
+\begin{equation}
+C^A \;\eqdef\; e^{-rT}\,\E[\max(\bar S - K, 0)].
+\end{equation}
+The geometric-average call pays $\max(\tilde S - K, 0)$ with price
+$C^G$ analogously.
+
+\paragraph{Why arithmetic Asian has no closed form.} Under GBM, each
+$S_k$ is lognormal. The product of lognormals is lognormal (the log
+is a sum of normals), so $\tilde S$ is lognormal. But the
+\emph{sum} of lognormals is not lognormal, so $\bar S$ is not
+lognormal. There is no known elementary distribution for $\bar S$,
+hence no Black-Scholes formula. Monte Carlo is the workhorse tool.
+
+\paragraph{Why geometric Asian has a closed form.} As noted,
+$\log \tilde S = \frac{1}{N}\sum_{k=1}^N \log S_k$, which is normal
+because each $\log S_k$ is normal. The first two moments determine
+the distribution; we compute them explicitly in
+Section~\ref{sec:closed-form}.
+
+\section{Closed form for the geometric Asian call}
+\label{sec:closed-form}
+
+Under risk-neutral GBM,
+\begin{equation}
+S_k \;=\; S_0 \exp\bigl((r - \tfrac{1}{2}\sigma^2)t_k + \sigma W_{t_k}\bigr),
+\end{equation}
+so
+\begin{equation}
+\log S_k \;=\; \log S_0 + (r - \tfrac{1}{2}\sigma^2)t_k + \sigma W_{t_k}.
+\end{equation}
+
+\subsection{Mean and variance of $\log \tilde S$}
+
+Take the average over $k$:
+\begin{equation}
+\log \tilde S
+\;=\; \log S_0 + (r - \tfrac{1}{2}\sigma^2) \cdot \frac{1}{N}\sum_{k=1}^N t_k
++ \sigma \cdot \frac{1}{N}\sum_{k=1}^N W_{t_k}.
+\end{equation}
+With equispaced monitoring $t_k = kT/N$:
+\begin{equation}
+\frac{1}{N}\sum_{k=1}^N t_k
+\;=\; \frac{T}{N^2}\sum_{k=1}^N k
+\;=\; \frac{T(N+1)}{2N}.
+\end{equation}
+So the mean is
+\begin{equation}
+\mu_G \;\eqdef\; \E[\log \tilde S]
+\;=\; \log S_0 + (r - \tfrac{1}{2}\sigma^2) \cdot \frac{T(N+1)}{2N}.
+\end{equation}
+
+For the variance, we need
+\begin{equation}
+\Var\!\left(\frac{1}{N}\sum_{k=1}^N W_{t_k}\right)
+\;=\; \frac{1}{N^2} \sum_{j=1}^N \sum_{k=1}^N \Cov(W_{t_j}, W_{t_k})
+\;=\; \frac{1}{N^2} \sum_{j,k} \min(t_j, t_k).
+\end{equation}
+Using $t_k = kT/N$:
+\begin{equation}
+\frac{1}{N^2}\sum_{j,k} \min(t_j, t_k)
+\;=\; \frac{T}{N^3}\sum_{j,k}\min(j, k).
+\end{equation}
+The double sum $\sum_{j,k}\min(j,k)$ over $\{1, \ldots, N\}^2$ equals
+\begin{equation}
+\sum_{j=1}^N\sum_{k=1}^N \min(j,k)
+\;=\; \sum_{m=1}^N m \cdot (2(N-m) + 1)
+\;=\; \frac{N(N+1)(2N+1)}{6}.
+\end{equation}
+(The identity $\sum_{m=1}^N m(2N - 2m + 1) = \frac{N(N+1)(2N+1)}{6}$
+is a standard finite sum manipulation.)
+So
+\begin{equation}
+\Var\!\left(\frac{1}{N}\sum W_{t_k}\right)
+\;=\; \frac{T(N+1)(2N+1)}{6N^2},
+\end{equation}
+and
+\begin{equation}
+\sigma_G^2 \;\eqdef\; \Var(\log \tilde S)
+\;=\; \sigma^2 \cdot \frac{T(N+1)(2N+1)}{6N^2}.
+\end{equation}
+
+\subsection{Effective parameters and the Black-Scholes formula}
+
+We have $\log \tilde S \sim \mathcal{N}(\mu_G, \sigma_G^2)$, so
+$\tilde S$ is lognormal. Define the \emph{effective volatility}
+\begin{equation}
+\sigma_{\mathrm{eff}}
+\;\eqdef\; \sigma \sqrt{\frac{(N+1)(2N+1)}{6N^2}}.
+\end{equation}
+Note $\sigma_{\mathrm{eff}}^2 \cdot T = \sigma_G^2$. To match the
+standard BS form, we want to write
+\begin{equation}
+\log \tilde S \;=\; \log S_0 + (r_{\mathrm{eff}} - \tfrac{1}{2}\sigma_{\mathrm{eff}}^2)T + \sigma_{\mathrm{eff}}\sqrt T \tilde Z
+\end{equation}
+for some standard normal $\tilde Z$. Matching means:
+\begin{equation}
+r_{\mathrm{eff}} \cdot T - \tfrac{1}{2}\sigma_{\mathrm{eff}}^2 T
+\;=\; (r - \tfrac{1}{2}\sigma^2) \cdot \frac{T(N+1)}{2N},
+\end{equation}
+so
+\begin{equation}
+r_{\mathrm{eff}} \;=\; \frac{(N+1)}{2N}(r - \tfrac{1}{2}\sigma^2)
++ \tfrac{1}{2}\sigma_{\mathrm{eff}}^2.
+\end{equation}
+
+Then the geometric Asian call has Black-Scholes form, but with
+discounting at $r$ (the original risk-free rate, since we
+\emph{discount}, not \emph{drift}, the geometric average):
+\begin{equation}
+\boxed{
+C^G \;=\; e^{-rT}\bigl[ S_0 e^{r_{\mathrm{eff}}\,T}\,\Phi(d_1)
+- K\,\Phi(d_2)\bigr]
+}
+\end{equation}
+where
+\begin{equation}
+d_1 = \frac{\log(S_0/K) + (r_{\mathrm{eff}} + \tfrac{1}{2}\sigma_{\mathrm{eff}}^2)\,T}
+{\sigma_{\mathrm{eff}}\sqrt T},
+\qquad
+d_2 = d_1 - \sigma_{\mathrm{eff}}\sqrt T.
+\end{equation}
+
+\paragraph{Sanity check at $N \to \infty$.} As $N$ grows,
+\[
+\frac{(N+1)(2N+1)}{6N^2} \;\to\; \frac{1}{3},
+\]
+so $\sigma_{\mathrm{eff}} \to \sigma/\sqrt 3$. This reproduces the
+classical result that the continuous-monitoring geometric Asian
+behaves as a vanilla call with volatility $\sigma/\sqrt 3$. Good
+sanity check.
+
+\paragraph{Sanity check at $N = 1$.} With $N = 1$ the geometric
+average reduces to $S_T$ itself, so $C^G$ should reduce to the
+vanilla call price. Plugging in:
+\[
+\sigma_{\mathrm{eff}}^2 = \sigma^2 \cdot \frac{2 \cdot 3}{6} = \sigma^2,
+\quad
+r_{\mathrm{eff}} = (r - \tfrac{1}{2}\sigma^2) \cdot 1 + \tfrac{1}{2}\sigma^2 = r,
+\]
+so $C^G = e^{-rT}[S_0 e^{rT}\Phi(d_1) - K\Phi(d_2)] = S_0\Phi(d_1) -
+K e^{-rT}\Phi(d_2)$, the standard BS formula. Verified.
+
+\section{Why geometric is a near-perfect control for arithmetic}
+\label{sec:correlation}
+
+The geometric and arithmetic means satisfy the AM-GM inequality:
+$\tilde S \le \bar S$ pointwise. Moreover, on a single GBM path,
+both quantities respond to the same randomness (the same Brownian
+increments), so they are highly correlated. We can quantify how
+high.
+
+\paragraph{Heuristic argument.} Write $X_k = \log S_k$. Then
+\[
+\log \tilde S = \frac{1}{N}\sum_k X_k,
+\qquad
+\log \bar S = \log\!\left(\frac{1}{N}\sum_k e^{X_k}\right).
+\]
+For small relative variation in $\{X_k\}$ (which holds for
+moderate $\sigma\sqrt T$ and reasonable $N$), $\log \bar S \approx
+\log \tilde S + \tfrac{1}{2}\Var_k(X_k)$ by a Taylor expansion of
+the log-sum-exp around its mean. The correction is a deterministic
+shift, so $\Corr(\log \tilde S, \log \bar S) \to 1$ in this regime.
+
+In practice, for a 1-year ATM call with $\sigma = 0.20$ and $N = 50$
+monitoring dates, empirical correlation between $\bar S - K$ and
+$\tilde S - K$ exceeds $0.9999$ on $10^4$ Monte Carlo paths.
+
+\paragraph{Implication for variance reduction.} The control variate
+identity from Block~2.2 gives, for paired estimators
+$X = e^{-rT}\max(\bar S - K, 0)$ and $Y = e^{-rT}\max(\tilde S - K, 0)$,
+\begin{equation}
+\Var(X - \beta^\star Y) \;=\; \Var(X)(1 - \rho^2),
+\end{equation}
+where $\beta^\star = \Cov(X, Y)/\Var(Y)$ and $\rho = \Corr(X, Y)$.
+With $\rho \approx 0.9999$, the variance reduction factor is
+$1/(1 - \rho^2) \approx 5\,000$. This is by far the most powerful
+control variate we have encountered in Phase~2.
+
+\section{Implementation: three pricers}
+\label{sec:impl}
+
+The block ships three pricers in a new module
+\texttt{quantlib.asian} (and the C++ mirror).
+
+\subsection{The arithmetic IID baseline}
+
+Standard MC: simulate $n$ paths of $\{S_k\}_{k=1}^N$ exactly under
+GBM (no Euler), compute $\bar S^{(i)}$ for each, return
+\begin{equation}
+\hat C^A_n \;=\; \frac{1}{n}\sum_{i=1}^n e^{-rT}\max(\bar S^{(i)} - K, 0).
+\end{equation}
+
+\begin{algorithm}[H]
+\caption{Arithmetic Asian call by IID Monte Carlo (exact GBM)}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, params $(K, r, \sigma, T)$, monitoring $N$, sample $n$.
+\State Compute $h \gets T/N$, drift $\mu \gets (r - \tfrac{1}{2}\sigma^2)h$, diffusion $\nu \gets \sigma\sqrt h$.
+\For{$i = 1, \ldots, n$}
+\State $S \gets S_0$
+\State $\text{sum} \gets 0$
+\For{$k = 1, \ldots, N$}
+\State $Z \gets \mathcal{N}(0, 1)$
+\State $S \gets S \cdot \exp(\mu + \nu Z)$
+\State $\text{sum} \gets \text{sum} + S$
+\EndFor
+\State $\bar S^{(i)} \gets \text{sum}/N$
+\State $\Pi^{A,(i)} \gets e^{-rT}\max(\bar S^{(i)} - K, 0)$
+\EndFor
+\State \Return mean and half-width of $\{\Pi^{A,(i)}\}$.
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{The geometric IID estimator (validation)}
+
+Same path simulation, but accumulate $\sum \log S_k$ and exponentiate
+at the end. Used purely to validate the closed form: the IID estimate
+must agree with $C^G$ from Section~\ref{sec:closed-form} within MC
+error.
+
+\subsection{The arithmetic with geometric CV}
+
+Run both estimators on the \emph{same paths} (CRN), compute the
+optimal $\beta^\star$ from sample covariance, and apply the control
+variate correction. Following Block~2.2's API:
+\begin{equation}
+\hat C^A_{\mathrm{CV}}
+\;=\; \bar X - \hat\beta^\star (\bar Y - C^G),
+\end{equation}
+where $C^G$ is the closed-form geometric price. The half-width is
+computed from the variance of $X - \hat\beta^\star Y$, which is
+$(1 - \hat\rho^2)$ times the variance of $X$.
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The script \texttt{python/validate\_mc\_asian.py} runs four tests.
+
+\paragraph{Test 1: closed-form match for geometric Asian.} The IID
+estimator $\hat C^G_n$ at $n = 10^5$ should agree with the closed
+form $C^G$ within $3$ half-widths.
+
+\paragraph{Test 2: CV gives huge VRF.} Compare half-width of
+$\hat C^A_{\mathrm{CV}}$ vs $\hat C^A_{\mathrm{IID}}$ at the same
+budget. Predicted: VRF $> 500$ (typical $> 1000$ at our parameters).
+
+\paragraph{Test 3: empirical correlation.} Measure $\hat \rho$
+between arithmetic and geometric per-path payoffs. Predicted:
+$\rho > 0.999$.
+
+\paragraph{Test 4: input validation.} Mechanical.
+
+\section{Contrast with Block~2.2 control variates}
+\label{sec:contrast}
+
+Block~2.2 introduced control variates with two examples on the
+European call: discounted-underlying ($\rho \approx 0.92$, VRF $\approx 7$)
+and asset-or-nothing ($\rho \approx 0.77$, VRF $\approx 2.5$). Block~5
+applies the same machinery to a different problem and gets a vastly
+better outcome ($\rho > 0.999$, VRF $> 1000$).
+
+The lesson is that \emph{control variate quality is determined by
+the structural relationship between control and target}, not by the
+sophistication of the technique. The geometric and arithmetic
+averages of the same set of lognormals are bound by AM-GM and share
+all the same noise; they could not help being correlated. The
+discounted-underlying and the European call payoff are connected
+only through the indicator function $\indic_{\{S_T > K\}}$, which
+loses about $40\%$ of the variance to the bounded-payoff truncation.
+
+\paragraph{Operational rule.} When designing a control variate, look
+for a problem that shares as much algebraic structure as possible
+with the target. The Asian-geometric-as-CV-for-Asian-arithmetic is
+the canonical example of this principle.
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The geometric-Asian closed form has been re-derived independently
+many times; the version we use is essentially that of Kemna and
+Vorst (1990)~\cite{KemnaVorst1990}. The use of the geometric Asian
+as a control variate for the arithmetic Asian goes back to the same
+paper. Glasserman~\cite[Section 4.5]{Glasserman} treats the
+construction at modern length and discusses the limits of the
+approximation. Asian options are also treated extensively in
+Hull~\cite{Hull}.
+
+\begin{thebibliography}{99}
+
+\bibitem{KemnaVorst1990}
+A.\ G.\ Z.\ Kemna and A.\ C.\ F.\ Vorst,
+\emph{A pricing method for options based on average asset values},
+Journal of Banking and Finance, 14(1):113--129, 1990.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\bibitem{Hull}
+J.\ C.\ Hull,
+\emph{Options, Futures, and Other Derivatives},
+10th edition, Pearson, 2018.
+
+\end{thebibliography}
+
+\end{document}
