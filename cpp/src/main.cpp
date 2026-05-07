@@ -15,6 +15,7 @@
 #include "variance_reduction.hpp"
 #include "qmc.hpp"
 #include "greeks.hpp"
+#include "asian.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -167,6 +168,45 @@ int main() {
             const auto gb = quant::gamma_bump(S, K, r, sigma, T, n, rng);
             std::cout << "  Gamma bump    : " << gb.estimate << "  hw " << gb.half_width << "\n";
         }
+    }
+    // ===== Asian options (Block 5) =====
+    {
+        std::cout << "\n--- Phase 2 Block 5: Asian options ---\n";
+
+        constexpr double S0 = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
+        constexpr std::size_t N = 50;
+        constexpr std::size_t n = 100'000;
+        std::mt19937_64 rng(42);
+
+        const double cg_closed = quant::geometric_asian_call_closed_form(
+                                    S0, K, r, sigma, T, N);
+        std::cout << "Geometric Asian closed form (N=" << N << "): "
+                << cg_closed << "\n";
+
+        std::mt19937_64 rng_g(42);
+        const auto res_g = quant::mc_asian_call_geometric_iid(
+                                S0, K, r, sigma, T, n, N, rng_g);
+        std::cout << "Geometric IID (n=" << n << "): "
+                << res_g.estimate << " +- " << res_g.half_width
+                << " (err/hw = "
+                << std::abs(res_g.estimate - cg_closed) / res_g.half_width
+                << ")\n";
+
+        std::mt19937_64 rng_a(42);
+        const auto res_a_iid = quant::mc_asian_call_arithmetic_iid(
+                                    S0, K, r, sigma, T, n, N, rng_a);
+        std::cout << "Arithmetic IID (n=" << n << "): "
+                << res_a_iid.estimate << " +- " << res_a_iid.half_width << "\n";
+
+        std::mt19937_64 rng_cv(42);
+        const auto res_a_cv = quant::mc_asian_call_arithmetic_cv(
+                                    S0, K, r, sigma, T, n, N, rng_cv);
+        std::cout << "Arithmetic CV  (n=" << n << "): "
+                << res_a_cv.estimate << " +- " << res_a_cv.half_width << "\n";
+
+        const double vrf = (res_a_iid.half_width / res_a_cv.half_width)
+                            * (res_a_iid.half_width / res_a_cv.half_width);
+        std::cout << "VRF (CV vs IID): " << vrf << "x\n";
     }
 
     return 0;
