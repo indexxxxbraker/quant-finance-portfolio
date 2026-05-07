@@ -1,0 +1,573 @@
+% block0_pde_foundations.tex
+%
+% Phase 3, Block 0: Foundations of the finite-difference solution of the
+% Black-Scholes PDE.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{definition}[proposition]{Definition}
+\newtheorem{remark}[proposition]{Remark}
+
+\title{Phase 3, Block 0:\\Foundations of the finite-difference solution\\of the Black-Scholes PDE}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Scope}
+
+This block sets up the mathematical and numerical scaffolding on which
+all of Phase~3 rests. It contains no pricer. Its deliverables are:
+\begin{enumerate}[leftmargin=2em]
+\item the logarithmic transformation that turns the Black--Scholes PDE
+      into a constant-coefficient parabolic PDE;
+\item the truncation of the spatial domain and the choice of artificial
+      Dirichlet boundary conditions;
+\item the discretisation grid and the standard centred finite-difference
+      stencils;
+\item the von~Neumann stability analysis applied to the explicit (FTCS)
+      and implicit (BTCS) schemes for the pure-diffusive part of the PDE.
+\end{enumerate}
+The pricers themselves (FTCS, BTCS, Crank--Nicolson, PSOR, trinomial)
+appear in Blocks~1--5, all built on this foundation.
+
+% =====================================================================
+\section{The Black--Scholes PDE}
+% =====================================================================
+
+Under the risk-neutral measure $\mathbb{Q}$, the price $V(S,t)$ of a
+European option on a non-dividend-paying asset $S_t$ following geometric
+Brownian motion
+\[
+dS_t = r S_t\, dt + \sigma S_t\, dW_t^{\mathbb{Q}}
+\]
+satisfies the Black--Scholes partial differential equation
+\begin{equation}
+\frac{\partial V}{\partial t}
++ \frac{1}{2}\sigma^2 S^2 \frac{\partial^2 V}{\partial S^2}
++ r S \frac{\partial V}{\partial S}
+- r V \;=\; 0,
+\qquad S > 0,\; t \in [0,T),
+\label{eq:BS}
+\end{equation}
+with terminal condition $V(S,T) = \phi(S)$, where $\phi$ is the option
+payoff. This is a backward parabolic equation in calendar time.
+
+Direct discretisation of \eqref{eq:BS} on a uniform grid in $S$ is
+unsatisfactory for two independent reasons. First, the coefficients
+$\frac{1}{2}\sigma^2 S^2$ and $rS$ depend on the grid position, which
+complicates the von~Neumann stability analysis: the standard analysis
+assumes constant coefficients. Second, a uniform grid in $S$ resolves
+the lognormal-tailed distribution of $S_T$ poorly, with too few nodes
+near $S = 0$ relative to the scale on which $V(S,t)$ varies.
+
+Both problems are removed by a single change of variables.
+
+% =====================================================================
+\section{Logarithmic transformation}\label{sec:logtransform}
+% =====================================================================
+
+Introduce
+\begin{equation}
+x \;=\; \ln\!\left(\frac{S}{K}\right), \qquad
+\tau \;=\; T - t.
+\label{eq:transform}
+\end{equation}
+The variable $x$ is the log-moneyness; $\tau \in [0, T]$ is the time to
+maturity. Anchoring at the strike $K$ (rather than using $\ln S$
+directly) places $x = 0$ at the at-the-money point, which gives a
+canonical centring for the truncated domain.
+
+Computing the derivatives by the chain rule, with $S = K e^x$,
+\[
+\frac{\partial V}{\partial t} \;=\; -\frac{\partial V}{\partial \tau},
+\qquad
+\frac{\partial V}{\partial S} \;=\; \frac{1}{S}\frac{\partial V}{\partial x},
+\qquad
+\frac{\partial^2 V}{\partial S^2}
+\;=\; \frac{1}{S^2}\!\left(
+  \frac{\partial^2 V}{\partial x^2} - \frac{\partial V}{\partial x}
+\right).
+\]
+Substituting into \eqref{eq:BS} and rearranging yields
+\begin{equation}
+\boxed{\;
+\frac{\partial V}{\partial \tau}
+\;=\; \frac{\sigma^2}{2}\frac{\partial^2 V}{\partial x^2}
+   + \mu\,\frac{\partial V}{\partial x}
+   - r\, V,
+\qquad
+\mu \;:=\; r - \frac{\sigma^2}{2}.
+\;}
+\label{eq:transformed}
+\end{equation}
+This is a forward parabolic equation in $\tau$ on the unbounded domain
+$x \in \mathbb{R}$, with constant coefficients. The drift $\mu$ in
+\eqref{eq:transformed} is precisely the drift of $\ln S_t$ under
+$\mathbb{Q}$, by It\^o.
+
+The initial condition becomes
+\[
+V(x, 0) \;=\; \phi(K e^x), \qquad x \in \mathbb{R}.
+\]
+
+\begin{remark}
+The transformation \eqref{eq:transform} preserves the regularity of
+$V$. The non-smoothness of $\phi$ at the strike (the kink of
+$(\cdot)^+$) becomes a kink of the transformed initial condition at
+$x = 0$. This irregularity will be relevant in Block~3 when we discuss
+spurious oscillations in Crank--Nicolson.
+\end{remark}
+
+% =====================================================================
+\section{Structure of the transformed PDE}
+% =====================================================================
+
+Equation \eqref{eq:transformed} is a constant-coefficient
+\emph{convection--diffusion--reaction} (CDR) equation:
+\[
+V_\tau \;=\; D\, V_{xx} \,+\, a\, V_x \,+\, c\, V,
+\qquad
+D = \frac{\sigma^2}{2} > 0,\quad
+a = \mu \in \mathbb{R},\quad
+c = -r \le 0.
+\]
+Each of the three terms has a distinct numerical character.
+\begin{itemize}[leftmargin=2em]
+\item The \emph{diffusive} term $D\, V_{xx}$ is dominant for typical
+      financial parameters ($\sigma \in [0.1, 0.5]$, $\Delta x$ small).
+      It governs the most restrictive stability constraint on the
+      explicit scheme of Block~1.
+\item The \emph{convective} term $a\, V_x$ encodes directional drift.
+      For $\mu > 0$ information flows toward $+x$; for $\mu < 0$
+      toward $-x$. With centred space differences (used throughout
+      Phase~3) the contribution to the von~Neumann factor is purely
+      imaginary.
+\item The \emph{reactive} term $c V = -rV$ is local in space and acts
+      as a uniform exponential decay with rate $r$. It contributes
+      only a multiplicative factor $1 - r\Delta\tau$ (or its implicit
+      analogue) to the amplification factor and never destabilises
+      the scheme.
+\end{itemize}
+
+\begin{remark}[Why we keep all three terms together]
+A common simplification in textbooks is to apply a further change of
+variables $V = e^{-r\tau} U$ (kills the reactive term) and a Galilean
+shift in $x$ (kills the convective term), reducing
+\eqref{eq:transformed} to the pure heat equation $U_\tau = D\,U_{xx}$.
+This is mathematically clean but obscures the discrete structure: the
+boundary conditions and the payoff become time-dependent in non-trivial
+ways, and the relationship to the original $V$ is harder to read off
+the code. Following the standard practice of Tavella \&
+Randall~\cite{TavellaRandall2000}, we discretise
+\eqref{eq:transformed} as it stands.
+\end{remark}
+
+% =====================================================================
+\section{Truncation of the spatial domain}
+% =====================================================================
+
+The unbounded domain $x \in \mathbb{R}$ has to be truncated to a finite
+interval $[x_{\min}, x_{\max}]$. The truncation introduces an artificial
+boundary; on it we will impose Dirichlet conditions whose values are
+read off the analytic asymptotics of $V$.
+
+A standard choice is symmetric truncation centred at $x = 0$:
+\begin{equation}
+x_{\min} \;=\; -N_\sigma\,\sigma\sqrt{T},
+\qquad
+x_{\max} \;=\; +N_\sigma\,\sigma\sqrt{T},
+\label{eq:domain}
+\end{equation}
+with $N_\sigma$ a small constant (typically $4$ or $5$). The
+justification is that the lognormal density of $S_T = K e^{x_T}$ has
+$x_T \sim \mathcal{N}(\mu T,\, \sigma^2 T)$ under
+$\mathbb{Q}$, so the probability mass outside
+$[-N_\sigma \sigma\sqrt{T},\, +N_\sigma \sigma\sqrt{T}]$ is
+$O\!\bigl(e^{-N_\sigma^2/2}\bigr)$, which for $N_\sigma = 4$ is
+$\approx 6 \times 10^{-5}$ and decays super-polynomially in $N_\sigma$.
+
+\begin{remark}
+The total error of any FD pricer is the sum of three contributions:
+the discretisation error (powers of $\Delta x$ and $\Delta\tau$), the
+truncation error from the artificial boundary, and floating-point
+round-off. For $N_\sigma \ge 4$ the truncation contribution is
+typically below the discretisation error already at moderate
+$N \sim 100$ and never becomes the dominant error, so we treat it as
+negligible throughout. This separation of error sources will reappear
+in Block~3 when verifying the empirical convergence rate of CN.
+\end{remark}
+
+% =====================================================================
+\section{Boundary and initial conditions}\label{sec:bcs}
+% =====================================================================
+
+\subsection*{European call}
+
+The terminal payoff $\phi(S) = (S-K)^+$ becomes, in $x$,
+\begin{equation}
+V(x, 0) \;=\; K\,(e^x - 1)^+,
+\qquad x \in [x_{\min}, x_{\max}].
+\label{eq:ic-call}
+\end{equation}
+For the boundary conditions we use the well-known asymptotic limits.
+As $S \to 0$ the call goes to zero; as $S \to \infty$ it tends to the
+forward $S - K e^{-r(T-t)}$. Translating to $(x, \tau)$,
+\begin{align}
+V(x_{\min}, \tau) &\;=\; 0, \label{eq:bc-call-lo}\\
+V(x_{\max}, \tau) &\;=\; K\!\left(e^{x_{\max}} - e^{-r\tau}\right).
+\label{eq:bc-call-hi}
+\end{align}
+Both equalities hold in the limit $x_{\min}\to -\infty$,
+$x_{\max} \to +\infty$. On a truncated domain they are imposed as
+exact Dirichlet conditions; the small additional error this introduces
+is the truncation error discussed above.
+
+\subsection*{European put}
+
+By analogous reasoning, the put payoff $\phi(S) = (K-S)^+$ becomes
+\begin{equation}
+V(x, 0) \;=\; K\,(1 - e^x)^+,
+\label{eq:ic-put}
+\end{equation}
+and the asymptotic boundary values are
+\begin{align}
+V(x_{\min}, \tau) &\;=\; K\!\left(e^{-r\tau} - e^{x_{\min}}\right),
+   \label{eq:bc-put-lo}\\
+V(x_{\max}, \tau) &\;=\; 0.
+   \label{eq:bc-put-hi}
+\end{align}
+Equation \eqref{eq:bc-put-lo} is a simple consequence of the
+martingale property: as $S \to 0$, $\mathbb{Q}\{S_T < K\} \to 1$ so
+\(
+V(S,t) \to e^{-r(T-t)}\bigl(K - \mathbb{E}^{\mathbb{Q}}[S_T \mid S_t = S]\bigr)
+= K e^{-r(T-t)} - S,
+\)
+which is precisely $K(e^{-r\tau} - e^x)$.
+
+\begin{remark}
+For Block~4 (American put) the boundary conditions
+\eqref{eq:bc-put-lo}--\eqref{eq:bc-put-hi} have to be replaced by the
+\emph{intrinsic-value} conditions $V(x_{\min},\tau) = K - K e^{x_{\min}}$
+(the option is exercised immediately for very low $S$) and the same
+$V(x_{\max},\tau) = 0$. We will revisit this in Block~4.
+\end{remark}
+
+% =====================================================================
+\section{The discretisation grid}
+% =====================================================================
+
+We discretise on a uniform tensor-product grid in $(x, \tau)$. Let
+\begin{equation}
+N \in \mathbb{N},\quad M \in \mathbb{N},\qquad
+\Delta x \;=\; \frac{x_{\max} - x_{\min}}{N},\qquad
+\Delta \tau \;=\; \frac{T}{M}.
+\label{eq:grid-spacing}
+\end{equation}
+The spatial nodes are
+\(
+x_j = x_{\min} + j\,\Delta x,\; j = 0, 1, \dots, N,
+\)
+giving $N+1$ nodes; the time levels are
+\(
+\tau_n = n\,\Delta \tau,\; n = 0, 1, \dots, M,
+\)
+giving $M+1$ levels.
+
+The discrete unknown is $V_j^n \approx V(x_j, \tau_n)$. The
+\emph{interior nodes} are $j = 1, \dots, N-1$ (a total of $N-1$
+unknowns at each time level); the boundary nodes $j = 0$ and $j = N$
+are fixed by the Dirichlet conditions of Section~\ref{sec:bcs}. At
+$\tau_0 = 0$ all nodes are fixed by the initial condition; the answer
+of interest is $V(0, T)$ if $S_0 = K$, or more generally the
+interpolant of $V_j^M$ at $x = \ln(S_0/K)$.
+
+The uniformity of the grid in $x$ (not in $S$) is the consequence of
+the logarithmic transformation: a uniform grid in $S$ would
+over-resolve the region near $S = 0$ and under-resolve large $S$.
+The transformation makes the natural sampling uniform in
+log-moneyness, which is also the natural scale for $V$ to vary on.
+
+% =====================================================================
+\section{Finite-difference stencils}
+% =====================================================================
+
+Let $f$ be a smooth function. Taylor expansion gives
+\[
+f(x \pm h) \;=\; f(x) \pm h f'(x) + \frac{h^2}{2} f''(x)
+   \pm \frac{h^3}{6} f'''(x) + O(h^4).
+\]
+Combining the $+h$ and $-h$ expansions yields the centred stencils
+\begin{align}
+f'(x)  &\;\approx\; \frac{f(x+h) - f(x-h)}{2h} + O(h^2),
+   \label{eq:fd-d1}\\
+f''(x) &\;\approx\; \frac{f(x+h) - 2 f(x) + f(x-h)}{h^2} + O(h^2).
+   \label{eq:fd-d2}
+\end{align}
+For the time derivative we use forward or backward Euler:
+\begin{align}
+\partial_\tau V|_j^n &\;\approx\;
+   \frac{V_j^{n+1} - V_j^n}{\Delta \tau} + O(\Delta \tau),
+   \qquad &\text{(forward, used in FTCS)}\label{eq:fd-fwd}\\
+\partial_\tau V|_j^n &\;\approx\;
+   \frac{V_j^n - V_j^{n-1}}{\Delta \tau} + O(\Delta \tau).
+   \qquad &\text{(backward, used in BTCS)}\label{eq:fd-bwd}
+\end{align}
+Centred-in-time differences (used in Crank--Nicolson, Block~3) achieve
+$O(\Delta\tau^2)$ at the cost of being implicit at both adjacent
+levels.
+
+The label \emph{FTCS} stands for \emph{Forward-Time, Centred-Space}
+(combining \eqref{eq:fd-fwd} with \eqref{eq:fd-d1}--\eqref{eq:fd-d2}
+evaluated at level $n$); \emph{BTCS} for \emph{Backward-Time,
+Centred-Space} (combining \eqref{eq:fd-bwd} with the same spatial
+stencils, but evaluated at level $n+1$ from the perspective of the
+unknown).
+
+% =====================================================================
+\section{Von Neumann stability analysis}\label{sec:vN}
+% =====================================================================
+
+Stability of a finite-difference scheme is the property that
+round-off errors do not grow unboundedly as the time-stepping
+proceeds. Together with consistency (the truncation error tends to
+zero as $\Delta x, \Delta\tau \to 0$), it implies convergence:
+\begin{theorem}[Lax equivalence,
+{\cite[Theorem 1.5.1]{Strikwerda2004}}]
+For a well-posed linear initial-value problem and a consistent
+finite-difference approximation, stability is necessary and sufficient
+for convergence.
+\end{theorem}
+The criterion of stability we will use is the von~Neumann criterion,
+which exploits the fact that on a uniform grid with constant
+coefficients the discrete Fourier modes $e^{ij\theta}$, $\theta \in
+[-\pi, \pi]$, diagonalise the spatial operators.
+
+\subsection{Setup}
+
+Write the round-off error at the level $n$ as a single Fourier mode,
+\begin{equation}
+\varepsilon_j^n \;=\; g(\theta)^n\, e^{ij\theta},
+\label{eq:vn-ansatz}
+\end{equation}
+with $g(\theta) \in \mathbb{C}$ the (mode-dependent) \emph{amplification
+factor}. Linearity of the scheme allows independent treatment of each
+$\theta$. The scheme is \emph{von Neumann stable} iff
+\begin{equation}
+|g(\theta)| \;\le\; 1
+\qquad
+\text{for all }\theta \in [-\pi, \pi].
+\label{eq:vn-criterion}
+\end{equation}
+
+\subsection{FTCS for the pure-diffusive equation}
+
+Consider first the model problem $V_\tau = D V_{xx}$, ignoring the
+convective and reactive terms; we will reinstate them below. The FTCS
+discretisation is
+\[
+\frac{V_j^{n+1} - V_j^n}{\Delta \tau}
+\;=\; D\,\frac{V_{j+1}^n - 2 V_j^n + V_{j-1}^n}{\Delta x^2}.
+\]
+Substituting the ansatz \eqref{eq:vn-ansatz}, dividing by
+$g^n e^{ij\theta}$, and using $e^{i\theta} + e^{-i\theta} = 2\cos\theta$:
+\[
+g - 1 \;=\; \frac{D\,\Delta\tau}{\Delta x^2}\,
+   \bigl(2\cos\theta - 2\bigr)
+\;=\; -4\,\alpha\,\sin^2\!\tfrac{\theta}{2},
+\]
+where the dimensionless \emph{Fourier number} is
+\begin{equation}
+\alpha \;:=\; D\,\frac{\Delta\tau}{\Delta x^2}
+       \;=\; \frac{\sigma^2}{2}\cdot\frac{\Delta\tau}{\Delta x^2}.
+\label{eq:fourier-number}
+\end{equation}
+Therefore
+\[
+g(\theta) \;=\; 1 - 4\alpha\,\sin^2\!\tfrac{\theta}{2}\;\in\;\mathbb{R}.
+\]
+The criterion \eqref{eq:vn-criterion} becomes $-1 \le g \le 1$. The
+upper bound is automatic since $\alpha,\sin^2 \ge 0$. The lower bound
+is tight at $\theta = \pi$ and gives
+\begin{equation}
+\boxed{\;\alpha \le \tfrac{1}{2}\;}\quad \iff \quad
+\frac{\sigma^2 \Delta\tau}{\Delta x^2} \le 1.
+\label{eq:cfl}
+\end{equation}
+\eqref{eq:cfl} is the \emph{CFL condition} for the heat equation, in
+honour of Courant, Friedrichs and Lewy. It says that an explicit
+diffusive scheme cannot propagate the heat by more than half a grid
+spacing per time step. The constant $1/2$ is sharp.
+
+\begin{remark}
+The CFL constraint is severe in practice. For $\sigma = 0.2$,
+$\Delta x = 0.05$, the largest stable $\Delta\tau$ is
+$\alpha\Delta x^2 / D \approx \frac{0.5 \cdot 0.0025}{0.02} = 0.0625$,
+so a year requires at least $T/\Delta\tau = 16$ time steps. Halving
+$\Delta x$ requires \emph{quadrupling} the number of time steps. This
+$O(\Delta x^{-2})$ scaling of the time-step count is the principal
+limitation of FTCS and the motivation for the implicit schemes in
+Block~2 and beyond.
+\end{remark}
+
+\subsection{BTCS for the pure-diffusive equation}
+
+The implicit scheme evaluates the spatial stencil at level $n+1$:
+\[
+\frac{V_j^{n+1} - V_j^n}{\Delta \tau}
+\;=\; D\,\frac{V_{j+1}^{n+1} - 2 V_j^{n+1} + V_{j-1}^{n+1}}{\Delta x^2}.
+\]
+Substituting \eqref{eq:vn-ansatz} gives
+\[
+g - 1 \;=\; -4\alpha\,g\,\sin^2\!\tfrac{\theta}{2}
+\;\Longrightarrow\;
+g(\theta) \;=\; \frac{1}{1 + 4\alpha\sin^2(\theta/2)}.
+\]
+Since $\alpha > 0$, the denominator is at least $1$ for every
+$\theta$, so $g \in (0, 1]$. The criterion is satisfied for any
+$\alpha > 0$:
+\begin{proposition}[Unconditional stability of BTCS]
+\label{prop:btcs}
+The BTCS scheme for $V_\tau = D V_{xx}$ is von Neumann stable for any
+$\Delta\tau > 0,\; \Delta x > 0$.
+\end{proposition}
+
+This is the central trade-off of Phase~3. FTCS is cheap per step
+(matrix-free) but has the CFL constraint; BTCS allows arbitrary
+$\Delta\tau$ but requires solving a linear system at each step.
+Block~2 will pay the cost of that linear solve via the Thomas
+algorithm.
+
+\subsection{Convective term: an aside}
+
+Reinstating the convective term $a V_x$ with centred-space
+differences in FTCS, the amplification factor becomes complex,
+\[
+g(\theta) \;=\; 1 - 4\alpha\sin^2\!\tfrac{\theta}{2}
+   + i\,\nu\,\sin\theta,
+\qquad
+\nu \;:=\; a\,\frac{\Delta\tau}{2\,\Delta x},
+\]
+where $\nu$ is the \emph{Courant number} (advective). Imposing
+$|g|^2 \le 1$ yields a mixed condition coupling $\alpha$ and $\nu$;
+algebraically, after some manipulation (see~\cite[\S3.5]{Strikwerda2004}),
+\[
+4\alpha^2 \;\ge\; \nu^2
+\quad\text{and}\quad
+\alpha \le \tfrac{1}{2}.
+\]
+For Black--Scholes parameters the relevant figure of merit is the
+\emph{grid Péclet number} $\mathrm{Pe}_h = |a|\Delta x / (2D) =
+|\mu|\Delta x / \sigma^2$. For $\sigma = 0.2$, $|\mu| \le 0.1$,
+$\Delta x \le 0.1$, $\mathrm{Pe}_h \le 0.25$, so the convective
+contribution is sub-dominant and the diffusive bound \eqref{eq:cfl}
+governs in practice. The reactive term $-rV$, being local in space,
+contributes only a multiplicative factor $1 - r\Delta\tau$ to $g$ and
+does not affect stability for $\Delta\tau \le 1/r$, which is always
+satisfied.
+
+\subsection{Summary: two control numbers}
+
+The discrete dynamics of the entire phase is controlled by two
+dimensionless numbers,
+\begin{equation}
+\alpha \;=\; \frac{\sigma^2}{2}\cdot\frac{\Delta\tau}{\Delta x^2},
+\qquad
+\nu \;=\; \frac{|\mu|}{2}\cdot\frac{\Delta\tau}{\Delta x}.
+\label{eq:control-numbers}
+\end{equation}
+FTCS (Block~1) is stable iff $\alpha \le 1/2$ and the convective
+contribution does not violate the mixed bound; in the parameter range
+of this project this reduces effectively to $\alpha \le 1/2$.
+BTCS (Block~2) and Crank--Nicolson (Block~3) are unconditionally stable
+in $\alpha$. As we will see in Block~5, the Kamrad--Ritchken trinomial
+tree maps to FTCS under a specific reparametrisation; its
+non-negative-probability condition $\lambda^2 \ge 1/\alpha$ is the
+discrete-tree avatar of the CFL constraint \eqref{eq:cfl}.
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+The Phase 3 Block 0 implementation provides four ingredients:
+\begin{enumerate}[leftmargin=2em]
+\item \texttt{Grid} (Python dataclass / C++ struct): an immutable
+      container holding $N$, $M$, $T$, $\sigma$, $r$, $K$,
+      $x_{\min}$, $x_{\max}$, $\Delta x$, $\Delta \tau$, the arrays
+      $\{x_j\}$ and $\{\tau_n\}$.
+\item \texttt{build\_grid}: a constructor that picks
+      $x_{\min}, x_{\max}$ from
+      $\pm N_\sigma \sigma \sqrt{T}$ (default $N_\sigma = 4$) and
+      assembles the grid.
+\item Initial-condition functions
+      \texttt{call\_initial\_condition}, \texttt{put\_initial\_condition}
+      returning the payoff vector at $\tau = 0$.
+\item Boundary functions \texttt{call\_boundary\_lower},
+      \texttt{call\_boundary\_upper}, \texttt{put\_boundary\_lower},
+      \texttt{put\_boundary\_upper} returning Dirichlet values for
+      every $\tau_n$.
+\item Stability-number utilities \texttt{fourier\_number} and
+      \texttt{courant\_number} for diagnostic use by the explicit
+      pricer in Block~1.
+\end{enumerate}
+This module imports nothing from outside \texttt{numpy} and the
+standard library. It contains no pricer.
+
+% =====================================================================
+\section*{References}\label{sec:refs}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. Chapters 2--4.\\
+{\small The reference for finite differences in finance: log
+transformation, domain truncation, boundary conditions, and stability
+analysis specific to Black--Scholes.}
+
+\bibitem{Seydel2017}
+R. Seydel.
+\emph{Tools for Computational Finance.}
+6th ed., Springer, 2017. Chapter~4.\\
+{\small Compact, implementation-oriented treatment.}
+
+\bibitem{MortonMayers2005}
+K.~W. Morton and D.~F. Mayers.
+\emph{Numerical Solution of Partial Differential Equations.}
+2nd ed., Cambridge University Press, 2005. Chapters~2--3.\\
+{\small Rigorous mathematical treatment of consistency, stability and
+the Lax equivalence theorem.}
+
+\bibitem{Strikwerda2004}
+J.~C. Strikwerda.
+\emph{Finite Difference Schemes and Partial Differential Equations.}
+2nd ed., SIAM, 2004. Chapters~1--3.\\
+{\small Authoritative reference for von Neumann analysis applied to
+linear constant-coefficient schemes.}
+
+\bibitem{Wilmott1998}
+P. Wilmott.
+\emph{Derivatives: The Theory and Practice of Financial Engineering.}
+Wiley, 1998. Chapters~46--49.\\
+{\small Practitioner-oriented exposition with explicit Black--Scholes
+PDE discretisation.}
+
+\end{thebibliography}
+
+\end{document}
