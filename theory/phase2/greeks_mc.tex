@@ -1,0 +1,467 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\indic}{\mathbf{1}}
+
+% ---------- Document metadata ----------
+\title{Greeks by Monte Carlo:\\
+       Bumping, Pathwise, and Likelihood Ratio}
+\author{Quant Finance Portfolio --- Phase 2, Block 4}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We compute the European-call Greeks (Delta, Vega, Gamma) by Monte
+Carlo using three increasingly sophisticated techniques: bumping
+(finite differences applied to the pricer), pathwise sensitivities
+(differentiation of the payoff under the integral), and likelihood
+ratio (differentiation of the kernel of the underlying density). All
+three are unbiased for the appropriate Greeks under appropriate
+regularity conditions; they trade off variance, bias, and
+applicability differently. We derive each from first principles,
+implement them under the exact GBM sampler of Block~1.1, and
+validate against closed-form Black-Scholes Greeks at the canonical
+ATM point. The block also surfaces a delicate but important point:
+the pathwise method does \emph{not} apply to Gamma (the kink of
+$\max(\cdot, 0)$ produces a Dirac contribution after the second
+derivative), and the likelihood-ratio method is known to be
+high-variance for Gamma; in practice Gamma is computed by central
+finite differences.
+\end{abstract}
+
+\tableofcontents
+
+\section{The setting}
+\label{sec:setting}
+
+The price of a European call under risk-neutral GBM is
+\begin{equation}
+C(S_0, \sigma) \;=\; e^{-rT}\,\E\bigl[\max(S_T - K, 0)\bigr],
+\qquad
+S_T \;=\; S_0 \exp\bigl((r - \tfrac{1}{2}\sigma^2)T + \sigma\sqrt T\,Z\bigr),
+\qquad Z \sim \mathcal{N}(0, 1).
+\end{equation}
+The Greeks of interest are
+\begin{equation}
+\Delta \;=\; \frac{\partial C}{\partial S_0},
+\qquad
+\nu \;=\; \frac{\partial C}{\partial \sigma},
+\qquad
+\Gamma \;=\; \frac{\partial^2 C}{\partial S_0^2}.
+\end{equation}
+Black-Scholes provides closed forms (Block~1):
+\begin{equation}
+\Delta^{\mathrm{BS}} = \Phi(d_1),
+\qquad
+\nu^{\mathrm{BS}} = S_0 \phi(d_1) \sqrt T,
+\qquad
+\Gamma^{\mathrm{BS}} = \frac{\phi(d_1)}{S_0 \sigma \sqrt T},
+\end{equation}
+with $\phi$ the standard normal pdf and $d_1 = (\log(S_0/K) + (r +
+\sigma^2/2)T)/(\sigma\sqrt T)$. We use these as ground truth.
+
+The MC pricer of Block~1.1 produces an estimate
+$\hat C_n = \frac{1}{n}\sum_{i=1}^n e^{-rT}\max(S_T^{(i)} - K, 0)$
+where $S_T^{(i)} = S_0 \exp((r-\frac{1}{2}\sigma^2)T + \sigma\sqrt T
+Z_i)$ for $Z_i$ iid $\mathcal N(0,1)$. Greeks are MC estimators of
+$\partial C / \partial \theta$ for $\theta \in \{S_0, \sigma\}$ or
+of the second derivative.
+
+\section{Bumping (finite differences)}
+\label{sec:bumping}
+
+The conceptually simplest Greek estimator: differentiate the
+\emph{pricer}, not the payoff.
+
+\subsection{Construction}
+
+Let $\hat C_n(\theta)$ be the MC estimate at parameter $\theta$.
+Choose a small bump $h$. The forward-difference estimator of
+$\partial C/\partial\theta$ is
+\begin{equation}
+\widehat{\partial_\theta C}_n^{\mathrm{FD}}
+\;=\; \frac{\hat C_n(\theta + h) - \hat C_n(\theta)}{h}.
+\end{equation}
+The central-difference estimator is
+\begin{equation}
+\widehat{\partial_\theta C}_n^{\mathrm{CD}}
+\;=\; \frac{\hat C_n(\theta + h) - \hat C_n(\theta - h)}{2h}.
+\end{equation}
+For Gamma we apply central differences twice:
+\begin{equation}
+\widehat{\Gamma}_n
+\;=\; \frac{\hat C_n(S_0 + h) - 2\hat C_n(S_0) + \hat C_n(S_0 - h)}{h^2}.
+\end{equation}
+
+\subsection{Common random numbers (CRN)}
+
+Naively, the two evaluations $\hat C_n(\theta + h)$ and $\hat
+C_n(\theta - h)$ would use independent Monte Carlo samples. The
+variance of the difference is then $\Var(\hat C_n(\theta + h)) +
+\Var(\hat C_n(\theta - h)) \approx 2 \sigma^2/n$, and dividing by
+$2h$ amplifies this further. The result: a bump-and-revalue Greek
+has variance scaling as $\sigma^2/(n h^2)$, which blows up as
+$h \to 0$.
+
+The standard fix is \emph{common random numbers}: use the same set
+of $\{Z_i\}$ for both evaluations. Pathwise on each $i$, the only
+thing that changes between the two evaluations is the parameter,
+not the noise. The variance of the difference is then much smaller
+because the noise mostly cancels. For our setting,
+\begin{equation}
+\Var\Bigl(\hat C_n(S_0 + h, \{Z_i\}) - \hat C_n(S_0 - h, \{Z_i\})\Bigr)
+\;\approx\; h^2 \cdot \Var(\partial_{S_0} f_i)
+\end{equation}
+to leading order in $h$, where $f_i = e^{-rT}\max(S_T^{(i)} - K, 0)$.
+The factor of $h^2$ cancels with the $1/h^2$ in $\Gamma$, leaving a
+finite variance estimator.
+
+\subsection{The bias-variance trade-off in $h$}
+
+With CRN, the bumping estimator has:
+\begin{itemize}
+\item Bias: $O(h)$ for forward differences, $O(h^2)$ for central
+differences.
+\item Variance: roughly constant in $h$ (after CRN cancellation).
+\end{itemize}
+The optimal $h$ minimises bias$^2$ + variance. For central
+differences with bias $O(h^2)$ and variance $O(1)$, the optimum is
+where both contribute equally, giving $h_\star$ on the order of
+$\epsilon^{1/4}$ where $\epsilon$ is the floating-point precision
+($\sim 10^{-16}$), so $h_\star \sim 10^{-4}$ for double precision.
+We use $h = 10^{-2}$ for stability against MC noise; the bias is
+then $\sim 10^{-4}$, comfortably below the half-width at our
+budgets.
+
+For Gamma, the second-order central difference has bias $O(h^2)$
+but variance $O(1/h^2)$ even with CRN (the leading-order
+cancellation that worked for $\Delta$ does not extend to the second
+derivative). Gamma is intrinsically harder.
+
+\section{Pathwise sensitivities}
+\label{sec:pathwise}
+
+The bumping method differentiates the pricer. The pathwise method
+differentiates the \emph{payoff}.
+
+\subsection{The interchange of differentiation and expectation}
+
+Suppose $f(\theta, Z)$ is the payoff (a function of the parameter
+$\theta$ and the underlying randomness $Z$), and we want to
+estimate $\partial_\theta \E[f(\theta, Z)]$. If $f$ is sufficiently
+regular, we can interchange differentiation and expectation:
+\begin{equation}
+\frac{\partial}{\partial\theta} \E[f(\theta, Z)]
+\;=\; \E\!\left[\frac{\partial f(\theta, Z)}{\partial \theta}\right].
+\end{equation}
+The Monte Carlo estimator of the right-hand side is
+\begin{equation}
+\widehat{\partial_\theta C}_n^{\mathrm{PW}}
+\;=\; \frac{1}{n} \sum_{i=1}^n
+\frac{\partial f(\theta, Z_i)}{\partial \theta}.
+\end{equation}
+This is unbiased for the true derivative if the interchange is
+justified, which by dominated convergence requires $f$ Lipschitz in
+$\theta$ uniformly in $Z$ (or weaker conditions). The European call
+payoff $\max(S_T - K, 0)$ is Lipschitz in $S_T$ (with constant 1),
+which is in turn $C^\infty$ in $S_0$ and $\sigma$, so the
+interchange is valid.
+
+\subsection{Pathwise Delta and Vega for the European call}
+
+Compute $\partial f/\partial S_0$ first. Using
+\begin{equation}
+S_T = S_0 \exp\bigl((r - \tfrac{1}{2}\sigma^2)T + \sigma\sqrt T \,Z\bigr)
+\;=\; \frac{S_T}{S_0} \cdot S_0,
+\end{equation}
+so $\partial S_T / \partial S_0 = S_T / S_0$. By the chain rule
+(and noting that $\max(x, 0)$ has derivative $\indic_{\{x > 0\}}$
+almost everywhere),
+\begin{equation}
+\frac{\partial f}{\partial S_0}
+\;=\; e^{-rT} \cdot \indic_{\{S_T > K\}} \cdot \frac{S_T}{S_0}.
+\end{equation}
+
+For Vega:
+\begin{equation}
+\frac{\partial S_T}{\partial \sigma}
+\;=\; S_T \cdot (-\sigma T + \sqrt T \, Z),
+\end{equation}
+so
+\begin{equation}
+\frac{\partial f}{\partial \sigma}
+\;=\; e^{-rT} \cdot \indic_{\{S_T > K\}} \cdot S_T \cdot (\sqrt T\, Z - \sigma T).
+\end{equation}
+
+The pathwise Delta and Vega estimators are then
+\begin{equation}
+\widehat{\Delta}_n^{\mathrm{PW}}
+\;=\; \frac{1}{n} \sum_{i=1}^n e^{-rT} \indic_{\{S_T^{(i)} > K\}}
+\frac{S_T^{(i)}}{S_0},
+\end{equation}
+\begin{equation}
+\widehat{\nu}_n^{\mathrm{PW}}
+\;=\; \frac{1}{n} \sum_{i=1}^n e^{-rT} \indic_{\{S_T^{(i)} > K\}}
+S_T^{(i)} (\sqrt T\, Z_i - \sigma T).
+\end{equation}
+
+These are unbiased and have variance comparable to (often less
+than) the variance of the price estimator itself. They are the
+gold standard when applicable.
+
+\subsection{Why pathwise fails for Gamma}
+
+For Gamma we want $\partial^2 C / \partial S_0^2$, which would
+require differentiating $\partial f/\partial S_0$ once more.
+Computing:
+\begin{equation}
+\frac{\partial^2 f}{\partial S_0^2}
+\;=\; \frac{\partial}{\partial S_0}\bigl[
+e^{-rT} \indic_{\{S_T > K\}} \frac{S_T}{S_0}\bigr].
+\end{equation}
+The indicator $\indic_{\{S_T > K\}}$ is the Heaviside step
+function of $S_T - K$. Its derivative in the distributional sense
+is the Dirac delta $\delta(S_T - K)$. Once we differentiate, the
+expectation
+\begin{equation}
+\E\!\left[\delta(S_T - K) \cdot (\text{stuff})\right]
+\end{equation}
+is finite (it equals (stuff at $S_T = K$) times the density of $S_T$
+at $K$), but \emph{not estimable by Monte Carlo}: a single sample
+has $S_T = K$ with probability zero, so the sum is identically zero
+on every realisation.
+
+This is the canonical failure of pathwise for second-order Greeks
+of payoffs with kinks: the second derivative is a measure, not a
+function, and Monte Carlo can only estimate functions.
+
+\section{Likelihood ratio}
+\label{sec:lr}
+
+The likelihood-ratio (LR) method, developed by Broadie and
+Glasserman, sidesteps the problem of differentiating the payoff by
+differentiating the \emph{density of the underlying} instead.
+
+\subsection{The construction}
+
+Suppose $S_T$ has a density $p(s; \theta)$ depending on the parameter
+$\theta$. Then
+\begin{equation}
+C(\theta) \;=\; e^{-rT} \int f(s)\, p(s; \theta)\, \dd s,
+\end{equation}
+and (assuming we can interchange differentiation and integration)
+\begin{equation}
+\frac{\partial C}{\partial\theta}
+\;=\; e^{-rT} \int f(s) \cdot \frac{\partial p(s; \theta)/\partial\theta}{p(s; \theta)}
+\cdot p(s; \theta)\, \dd s
+\;=\; e^{-rT} \E\!\left[ f(S_T) \cdot \mathcal{S}(\theta, S_T) \right],
+\end{equation}
+where
+\begin{equation}
+\mathcal{S}(\theta, S_T)
+\;\eqdef\; \frac{\partial}{\partial\theta} \log p(S_T; \theta)
+\end{equation}
+is the \emph{score function} associated with the density family.
+
+The MC estimator is
+\begin{equation}
+\widehat{\partial_\theta C}_n^{\mathrm{LR}}
+\;=\; \frac{1}{n} \sum_{i=1}^n e^{-rT}\, f(S_T^{(i)}) \cdot \mathcal{S}(\theta, S_T^{(i)}).
+\end{equation}
+
+\subsection{Score function for GBM}
+
+Under GBM, $\log S_T = \log S_0 + (r - \frac{1}{2}\sigma^2)T +
+\sigma\sqrt T \, Z$ is normal with mean $\mu = \log S_0 + (r -
+\frac{1}{2}\sigma^2)T$ and standard deviation $\nu = \sigma\sqrt T$.
+The density of $\log S_T$ is
+\begin{equation}
+p_{\log}(\ell; S_0, \sigma)
+\;=\; \frac{1}{\nu \sqrt{2\pi}}
+\exp\!\left(-\frac{(\ell - \mu)^2}{2\nu^2}\right).
+\end{equation}
+Differentiating $\log p_{\log}$ with respect to $S_0$:
+\begin{equation}
+\mathcal{S}_{S_0}(\log S_T) \;=\; \frac{Z}{S_0 \sigma \sqrt T}.
+\end{equation}
+With respect to $\sigma$:
+\begin{equation}
+\mathcal{S}_\sigma(\log S_T)
+\;=\; \frac{Z^2 - 1}{\sigma} - Z \sqrt T.
+\end{equation}
+(Both derivations use the chain rule and the fact that $Z = (\log
+S_T - \mu)/\nu$.)
+
+The LR Delta and Vega estimators are
+\begin{equation}
+\widehat{\Delta}_n^{\mathrm{LR}}
+\;=\; \frac{1}{n} \sum_{i=1}^n e^{-rT} \max(S_T^{(i)} - K, 0)
+\cdot \frac{Z_i}{S_0 \sigma \sqrt T},
+\end{equation}
+\begin{equation}
+\widehat{\nu}_n^{\mathrm{LR}}
+\;=\; \frac{1}{n} \sum_{i=1}^n e^{-rT} \max(S_T^{(i)} - K, 0)
+\cdot \left(\frac{Z_i^2 - 1}{\sigma} - Z_i \sqrt T\right).
+\end{equation}
+
+\subsection{Variance comparison: pathwise vs LR}
+
+For the European call, both pathwise and LR are unbiased. The
+variance comparison is:
+\begin{itemize}
+\item Pathwise: the estimand is $e^{-rT}\indic_{\{S_T>K\}}(S_T/S_0)$,
+which is bounded for typical paths and has moderate variance.
+\item LR: the estimand is $f(S_T) \cdot Z / (S_0 \sigma \sqrt T)$,
+which carries the full payoff $f$ multiplied by a factor that can
+have large absolute value when $|Z|$ is large. Tails of $Z$
+contribute $f(S_T) \cdot Z$, which can be large.
+\end{itemize}
+Empirically, for the call, pathwise has variance roughly $2$--$3
+\times$ smaller than LR. The advantage of LR is universality:
+for digital options where $f$ is a Heaviside (not Lipschitz),
+pathwise fails but LR works.
+
+\section{Algorithmic specifications}
+\label{sec:algorithms}
+
+\begin{algorithm}[H]
+\caption{Bump-and-revalue Delta with central differences and CRN}
+\label{alg:bump}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, parameters, sample size $n$, bump $h$, rng.
+\State Generate $\{Z_i\}_{i=1}^n$ iid $\mathcal N(0,1)$.
+\State $C^+ \gets \frac{1}{n} \sum_i e^{-rT} \max(S_0(1+h) e^{(r-\sigma^2/2)T + \sigma\sqrt T Z_i} - K, 0)$
+\State $C^- \gets \frac{1}{n} \sum_i e^{-rT} \max(S_0(1-h) e^{(r-\sigma^2/2)T + \sigma\sqrt T Z_i} - K, 0)$
+\State $\Delta \gets (C^+ - C^-)/(2 S_0 h)$
+\State \Return $\Delta$
+\end{algorithmic}
+\end{algorithm}
+
+The trick: we bump $S_0$ multiplicatively (by $1 \pm h$) so that
+the formulae work uniformly without recomputing the diffusion
+coefficient.
+
+\begin{algorithm}[H]
+\caption{Pathwise Delta}
+\label{alg:pathwise}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, parameters, sample size $n$, rng.
+\State Generate $\{Z_i\}_{i=1}^n$ iid $\mathcal N(0, 1)$.
+\For{$i = 1, \ldots, n$}
+\State $S_T^{(i)} \gets S_0 \exp((r - \tfrac{1}{2}\sigma^2)T + \sigma\sqrt T Z_i)$
+\State $\Delta_i \gets e^{-rT} \cdot \indic_{\{S_T^{(i)} > K\}} \cdot S_T^{(i)} / S_0$
+\EndFor
+\State \Return $\bar\Delta = n^{-1} \sum_i \Delta_i$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Likelihood-ratio Delta}
+\label{alg:lr}
+\begin{algorithmic}[1]
+\Require Spot $S_0$, parameters, sample size $n$, rng.
+\State Generate $\{Z_i\}_{i=1}^n$ iid $\mathcal N(0, 1)$.
+\For{$i = 1, \ldots, n$}
+\State $S_T^{(i)} \gets S_0 \exp((r - \tfrac{1}{2}\sigma^2)T + \sigma\sqrt T Z_i)$
+\State $\Delta_i \gets e^{-rT} \max(S_T^{(i)} - K, 0) \cdot Z_i / (S_0 \sigma \sqrt T)$
+\EndFor
+\State \Return $\bar\Delta = n^{-1} \sum_i \Delta_i$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Empirical validation strategy}
+\label{sec:validation}
+
+The script \texttt{python/validate\_greeks\_mc.py} runs four
+tests.
+
+\paragraph{Test 1: BS coherence.} For each Greek and each method,
+the estimator at $n = 10^5$ should agree with the closed-form BS
+Greek within a few standard errors.
+
+\paragraph{Test 2: variance comparison Delta.} Pathwise vs LR vs
+bumping. Predicted: pathwise $<$ LR $<$ bumping. Report variance
+ratios at fixed budget.
+
+\paragraph{Test 3: variance comparison Vega.} Same as Test 2.
+
+\paragraph{Test 4: input validation.} Mechanical: bad inputs
+should raise.
+
+The Block~4 implementation is a single new module
+\texttt{quantlib.greeks} containing nine pricers (3 methods
+$\times$ 3 Greeks, with the caveat that pathwise/LR Gamma is
+``not implemented'' and falls back to bumping).
+
+\section{Bibliographic notes}
+\label{sec:biblio}
+
+The pathwise method for option Greeks is due to Broadie and
+Glasserman~\cite{BroadieGlasserman1996}. The likelihood-ratio
+method is also from \cite{BroadieGlasserman1996}; the broader
+context of efficient simulation of derivatives is in
+\cite[Chapter~7]{Glasserman}. The malliavin calculus generalisation,
+which provides a unified framework for both pathwise and LR, is in
+Fourni\'e et al.~\cite{FournieEtAl1999}. We do not pursue the
+Malliavin generalisation in this writeup but note that it is the
+modern theoretical lens.
+
+\begin{thebibliography}{99}
+
+\bibitem{BroadieGlasserman1996}
+M.\ Broadie and P.\ Glasserman,
+\emph{Estimating security price derivatives using simulation},
+Management Science, 42(2):269--285, 1996.
+
+\bibitem{FournieEtAl1999}
+E.\ Fourni\'e, J.\ M.\ Lasry, J.\ Lebuchoux, P.\ L.\ Lions, N.\ Touzi,
+\emph{Applications of Malliavin calculus to Monte-Carlo methods in
+finance},
+Finance and Stochastics, 3(4):391--412, 1999.
+
+\bibitem{Glasserman}
+P.\ Glasserman,
+\emph{Monte Carlo Methods in Financial Engineering},
+Springer, 2004.
+
+\end{thebibliography}
+
+\end{document}
