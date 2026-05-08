@@ -1,0 +1,527 @@
+% block4_psor.tex
+%
+% Phase 3, Block 4: American put pricing via PSOR.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{remark}[proposition]{Remark}
+\newtheorem{definition}[proposition]{Definition}
+
+\title{Phase 3, Block 4:\\Pricing the American put via PSOR}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting and motivation}
+
+The American put can be exercised at any time $t \in [0, T]$, not
+only at maturity. This single change relative to the European case
+transforms the pricing problem qualitatively: the price now depends
+on a free \emph{exercise boundary} $S_f(t)$ that separates a
+\emph{continuation region} (where the option is held) from an
+\emph{exercise region} (where it is exercised immediately). The
+boundary itself is unknown a priori --- it is part of the solution.
+
+The deliverable of this block is a numerical method that handles the
+free boundary cleanly, by reformulating the problem as a
+\emph{Linear Complementarity Problem} (LCP) on a fixed domain and
+solving it iteratively at every time step using \emph{Projected
+Successive Over-Relaxation} (PSOR). The block ships two modules:
+\begin{itemize}[leftmargin=2em]
+\item \texttt{quantlib.psor}: a generic PSOR solver for tridiagonal
+LCPs (analogous to \texttt{quantlib.thomas} of Block~2).
+\item \texttt{quantlib.cn\_american}: the user-facing American put
+pricer, built on the $\theta$-scheme infrastructure of Block~3 with
+PSOR replacing Thomas in the per-step solve.
+\end{itemize}
+
+% =====================================================================
+\section{The American put as an optimal stopping problem}
+% =====================================================================
+
+Under the risk-neutral measure $\mathbb{Q}$, the price of the
+American put is
+\begin{equation}
+V(S_0, 0) = \sup_{\tau \in \mathcal{T}_{[0,T]}}
+\mathbb{E}^{\mathbb{Q}}\!\left[\,e^{-r\tau}(K - S_\tau)^+ \,\big|\,
+S_0\,\right],
+\label{eq:opt-stop}
+\end{equation}
+where $\mathcal{T}_{[0,T]}$ is the set of stopping times taking
+values in $[0, T]$. Equation \eqref{eq:opt-stop} states that the
+holder picks the stopping rule $\tau$ that maximises the discounted
+expected payoff.
+
+The optimal $\tau$ partitions the state space $(S, t)$ into two
+regions:
+\begin{itemize}[leftmargin=2em]
+\item \textbf{Continuation region} $\mathcal{C} = \{(S, t) : V(S, t) >
+(K - S)^+\}$: holding the option is strictly better than exercising
+now.
+\item \textbf{Exercise region} $\mathcal{E} = \{(S, t) : V(S, t) =
+(K - S)^+\}$: it is optimal (or at least no worse) to exercise.
+\end{itemize}
+The boundary between the two is the curve
+$S = S_f(t)$, the \emph{exercise boundary}, also called the
+\emph{free boundary} because its location is part of the solution
+rather than known a priori. For a put, $S_f(t)$ is increasing in
+$t$ with $S_f(T^-) = K$.
+
+% =====================================================================
+\section{The classical free-boundary PDE formulation}
+% =====================================================================
+
+In the continuation region, the standard arbitrage argument shows
+that $V$ satisfies the Black--Scholes PDE:
+\begin{equation}
+\frac{\partial V}{\partial t} + \tfrac{1}{2}\sigma^2 S^2
+\frac{\partial^2 V}{\partial S^2} + r S \frac{\partial V}{\partial S}
+- r V = 0, \qquad (S, t) \in \mathcal{C}.
+\label{eq:bs-pde-cont}
+\end{equation}
+In the exercise region, $V$ equals the intrinsic value:
+\begin{equation}
+V(S, t) = K - S, \qquad (S, t) \in \mathcal{E}.
+\label{eq:exercise-region}
+\end{equation}
+At the free boundary $S = S_f(t)$, two matching conditions hold:
+\begin{align}
+V(S_f(t), t) &= K - S_f(t), \label{eq:value-matching} \\
+\frac{\partial V}{\partial S}(S_f(t), t) &= -1.
+\label{eq:smooth-pasting}
+\end{align}
+The first is value matching: $V$ is continuous across the boundary.
+The second is the \emph{smooth pasting} condition: $V_S$ is also
+continuous. Two conditions are needed because the boundary itself
+is unknown; smooth pasting is the optimality condition that
+determines $S_f(t)$.
+
+\paragraph{Why this formulation is hard numerically.} The PDE
+\eqref{eq:bs-pde-cont} holds on the time-varying domain
+$\mathcal{C}$, whose boundary moves with $t$. The finite-difference
+methods of Blocks 1--3 work on fixed domains; adapting the spatial
+mesh to track $S_f(t)$ would require remeshing at every time step,
+which is expensive and error-prone. We need a reformulation on a
+fixed domain.
+
+% =====================================================================
+\section{The variational reformulation as an LCP}
+% =====================================================================
+
+Switching to log-coordinates $x = \ln(S/K)$ and $\tau = T - t$ and
+denoting the spatial operator
+$\mathcal{L}V = \frac{\sigma^2}{2}V_{xx} + \mu V_x - rV$ as in
+Block~3, we reformulate the American put as the system
+\begin{equation}
+\boxed{\;\;\begin{aligned}
+V_\tau - \mathcal{L}V \;&\geq\; 0 \\
+V - g \;&\geq\; 0 \\
+(V_\tau - \mathcal{L}V)(V - g) \;&=\; 0
+\end{aligned}\;\;}
+\qquad
+\text{on } x \in (x_{\min}, x_{\max}),\; \tau \in (0, T],
+\label{eq:lcp-cont}
+\end{equation}
+where $g(x) = K(1 - e^x)^+$ is the put payoff function (the
+\emph{obstacle}). Initial condition: $V(x, 0) = g(x)$. Boundary
+conditions: $V(x_{\min}, \tau) = K - K e^{x_{\min}}$ (deep ITM:
+exercise immediately, no discount) and
+$V(x_{\max}, \tau) = 0$ (deep OTM: worthless).
+
+\paragraph{Why each inequality is correct.} Take them in turn.
+
+\begin{enumerate}[leftmargin=2em]
+\item $V_\tau - \mathcal{L}V \geq 0$. In $\mathcal{C}$ this is an
+equality (the BS PDE itself). In $\mathcal{E}$ we have $V \equiv g$,
+so $V_\tau = 0$, and a direct calculation
+$\mathcal{L}g = -rK \leq 0$ for $x < 0$ (the put-ITM region) makes
+$V_\tau - \mathcal{L}V = -\mathcal{L}g \geq 0$.
+
+\item $V - g \geq 0$. The price never falls below the immediate
+payoff: if it did, exercising would dominate holding, an arbitrage.
+
+\item $(V_\tau - \mathcal{L}V)(V - g) = 0$ \emph{(complementarity)}.
+At every $(x, \tau)$, exactly one of the two preceding inequalities
+is strict: in $\mathcal{C}$ the second is strict ($V > g$) and the
+first is an equality (BS PDE); in $\mathcal{E}$ the first is strict
+($V_\tau - \mathcal{L}V > 0$) and the second is an equality
+($V = g$).
+\end{enumerate}
+
+\paragraph{The structural payoff.} The system \eqref{eq:lcp-cont}
+makes no reference to the free boundary $S_f$. The boundary emerges
+a posteriori as the locus where one inequality changes from strict
+to equality. Numerically, this is enormous: we can work on the
+fixed log-truncated domain of Block~0, with no need to track a
+moving boundary, and the complementarity condition automatically
+selects which nodes are in which region.
+
+\paragraph{Equivalence.} The LCP \eqref{eq:lcp-cont} is equivalent
+to the classical PDE+free-boundary formulation
+\eqref{eq:bs-pde-cont}--\eqref{eq:smooth-pasting} for solutions
+$V \in C^1$. The smooth pasting condition is recovered automatically:
+from $V \geq g$ everywhere and $V = g$ on $\mathcal{E}$, taking the
+spatial derivative at the boundary gives $V_S \geq g_S = -1$ from
+the continuation side and $V_S = -1$ on the exercise side; combined
+with $V \in C^1$, this forces $V_S = -1$ at the boundary. Reference:
+Wilmott--Howison--Dewynne~\cite{WHD1995}, Chapter~7.
+
+% =====================================================================
+\section{Discretisation: from continuous to discrete LCP}
+% =====================================================================
+
+Apply the $\theta$-scheme to the operator $V_\tau - \mathcal{L}V$
+exactly as in Block~3. The discrete equality $A V^{n+1} = B V^n +
+\mathbf{b}_{\mathrm{bnd}}$ (with $A$, $B$, $\mathbf{b}_{\mathrm{bnd}}$ from
+Block~3) becomes the discrete LCP
+\begin{equation}
+\boxed{\;\;\begin{aligned}
+A V^{n+1} \;&\geq\; B V^n + \mathbf{b}_{\mathrm{bnd}} \\
+V^{n+1} \;&\geq\; \mathbf{g} \\
+\bigl(A V^{n+1} - B V^n - \mathbf{b}_{\mathrm{bnd}}\bigr) \cdot
+\bigl(V^{n+1} - \mathbf{g}\bigr) \;&=\; 0
+\end{aligned}\;\;}
+\label{eq:lcp-discrete}
+\end{equation}
+componentwise, where $\mathbf{g} \in \mathbb{R}^{N-1}$ is the payoff
+sampled on the interior grid: $g_j = K(1 - e^{x_j})^+$.
+
+Each time step now requires solving the LCP \eqref{eq:lcp-discrete}
+instead of a linear system. Thomas does not apply: it solves
+$Ax = b$, not $Ax \geq b$ with $x \geq c$. We need a new solver.
+
+% =====================================================================
+\section{SOR: the iterative method behind PSOR}
+% =====================================================================
+
+For the linear system $Ax = b$ with $A$ tridiagonal and diagonal
+dominant, an alternative to Thomas is the iterative
+\emph{Successive Over-Relaxation} (SOR) method. SOR produces a
+sequence $x^{(0)}, x^{(1)}, x^{(2)}, \dots$ that converges to the
+exact solution. Although asymptotically more expensive than Thomas
+($O(N \log\epsilon^{-1})$ per solve vs $O(N)$), SOR has a structural
+advantage: it generalises naturally to LCPs.
+
+\paragraph{Definition.} SOR updates one component at a time. For a
+tridiagonal system $a_{i,i-1} x_{i-1} + a_{ii} x_i + a_{i,i+1}
+x_{i+1} = b_i$, SOR uses
+\begin{equation}
+x_i^{(k+1)} = (1 - \omega)\,x_i^{(k)} \,+\,
+\omega \cdot \frac{1}{a_{ii}}\Bigl(\, b_i \,-\, a_{i,i-1}\,
+x_{i-1}^{(k+1)} \,-\, a_{i,i+1}\,x_{i+1}^{(k)} \,\Bigr)
+\label{eq:sor}
+\end{equation}
+for $i = 1, \dots, n$, with $\omega \in (0, 2)$ the
+\emph{relaxation parameter}. At $\omega = 1$, equation \eqref{eq:sor}
+is plain Gauss--Seidel; at $\omega > 1$ it over-relaxes (extrapolates
+beyond the GS update); at $\omega < 1$ it under-relaxes
+(interpolates between old and new). Note that \eqref{eq:sor} uses
+$x_{i-1}^{(k+1)}$ (the just-updated value) and $x_{i+1}^{(k)}$ (the
+old value) --- this in-place update is what makes SOR efficient.
+
+\paragraph{Convergence.} A classical result (Kahan; Ostrowski--Reich):
+
+\begin{theorem}[SOR convergence]
+If $A$ is symmetric positive definite, SOR converges for every
+$\omega \in (0, 2)$ from any initial guess $x^{(0)}$. For a
+tridiagonal $A$ with constant coefficients (our case), the
+convergence rate is geometric with optimal relaxation parameter
+\begin{equation}
+\omega^* = \frac{2}{1 + \sqrt{1 - \rho_J^2}},
+\label{eq:omega-star}
+\end{equation}
+where $\rho_J$ is the spectral radius of the Jacobi iteration matrix
+$D^{-1}(L + U)$.
+\end{theorem}
+
+For the matrices arising from BTCS or CN, $\rho_J \approx 1 - O(1/N)$,
+giving $\omega^* \approx 2 - O(1/\sqrt{N})$. For typical project
+parameters, $\omega^* \in [1.2, 1.5]$.
+
+\paragraph{Asymmetry.} The CN matrix $A$ is not symmetric (the
+convective term $\mu V_x$ uses centred differences, breaking
+symmetry). The Ostrowski--Reich theorem does not apply directly.
+However, $A$ remains diagonally dominant, and a generalisation
+(Varga~\cite{Varga2000}, Theorem~3.5) covers diagonally dominant
+M-matrices: SOR converges for $\omega \in (0, 2)$, with
+$\omega^*$ moderately shifted from \eqref{eq:omega-star}. In
+practice, for our parameter range with grid Pe'clet $\leq 0.25$,
+$\omega \approx 1.2$ is near optimal.
+
+% =====================================================================
+\section{PSOR: SOR with projection}
+% =====================================================================
+
+PSOR is the generalisation of SOR to linear complementarity problems.
+The modification is a single line: after each SOR component update,
+project onto the constraint $x_i \geq g_i$:
+\begin{equation}
+\boxed{\;\;
+x_i^{(k+1)} = \max\!\left\{\,g_i,\;\;
+(1 - \omega)\,x_i^{(k)}
++ \omega \cdot \frac{1}{a_{ii}}\Bigl(b_i
+- a_{i,i-1}\,x_{i-1}^{(k+1)}
+- a_{i,i+1}\,x_{i+1}^{(k)}\Bigr)\,\right\}.
+\;\;}
+\label{eq:psor}
+\end{equation}
+That is: compute the SOR candidate, and if it falls below the
+obstacle $g_i$, raise it to $g_i$. If it lies above, leave it.
+
+\paragraph{Variational interpretation.} The LCP
+\eqref{eq:lcp-discrete} is equivalent (when $A$ is symmetric positive
+definite) to the constrained minimisation
+\[
+\min_{x \geq \mathbf{g}}\;\; \tfrac{1}{2} x^T A x - x^T b,
+\]
+where $b = B V^n + \mathbf{b}_{\mathrm{bnd}}$. PSOR is the
+componentwise application of SOR to the KKT conditions of this
+minimisation, and the projection $\max\{g_i, \cdot\}$ is exactly the
+projection onto the feasible set $\{x : x \geq \mathbf{g}\}$. This
+construction is due to Cryer~\cite{Cryer1971}.
+
+\begin{theorem}[Cryer 1971]
+If $A \in \mathbb{R}^{n \times n}$ is symmetric positive definite
+and $\omega \in (0, 2)$, the PSOR iteration \eqref{eq:psor} converges
+to the unique solution of the LCP $A x \geq b$, $x \geq \mathbf{g}$,
+$(Ax - b)(x - \mathbf{g}) = 0$ from any initial guess $x^{(0)} \geq
+\mathbf{g}$.
+\end{theorem}
+
+\paragraph{For non-symmetric $A$.} The CN matrix is not symmetric,
+but is a strictly diagonally dominant M-matrix in the project's
+parameter range. PSOR convergence in this setting follows from
+results of Mangasarian and others; see Cottle--Pang--Stone
+\cite{CPS2009}, \S5.3 and \S5.6 for the rigorous treatment. The
+qualitative picture is that for moderate Pe'clet number, asymmetry
+slows convergence by a constant factor but does not destroy it.
+
+\paragraph{Initialisation.} A natural choice is $x^{(0)} = \mathbf{g}$
+(the obstacle itself). It is feasible by construction, and is exact
+on the eventual exercise region. An alternative is warm-starting from
+the previous time step, $x^{(0)} = V^n$. Since $V^{n+1} - V^n =
+O(\Delta\tau)$, the warm start saves roughly half the iterations
+in practice.
+
+% =====================================================================
+\section{Stopping criterion}
+% =====================================================================
+
+The iteration must be terminated at finite $k$. The standard test
+is on the increment:
+\begin{equation}
+\bigl\|x^{(k+1)} - x^{(k)}\bigr\|_\infty
+\,<\,
+\texttt{tol}_{\mathrm{abs}}
++ \texttt{tol}_{\mathrm{rel}} \cdot \bigl\|x^{(k)}\bigr\|_\infty,
+\label{eq:stopping}
+\end{equation}
+with typical values $\texttt{tol}_{\mathrm{abs}} = 10^{-8}$ and
+$\texttt{tol}_{\mathrm{rel}} = 10^{-7}$. The absolute component
+protects against deep-OTM puts where prices are small (cents); the
+relative component protects against deep-ITM puts where prices are
+large (close to $K$). The mixed criterion is robust across the entire
+strike range.
+
+\paragraph{Why not the residual.} The residual criterion
+$\|Ax - b\| < \texttt{tol}$, standard for linear systems, does not
+apply to the LCP: the residual is non-zero in the exercise region
+(by the first inequality) even at the optimum. The increment
+criterion is agnostic to the problem type and works for both linear
+systems and LCPs.
+
+\paragraph{Maximum iteration safeguard.} If $\omega$ is mis-tuned or
+the matrix is poorly conditioned, the iteration may converge slowly
+or not at all. A hard limit \texttt{max\_iter} (typically $10^4$)
+prevents an infinite loop. Reaching the limit raises a
+\texttt{RuntimeError} (or \texttt{std::runtime\_error} in C++),
+making a silent failure visible to the caller.
+
+% =====================================================================
+\section{Computational cost}
+% =====================================================================
+
+Per time step:
+\begin{itemize}[leftmargin=2em]
+\item Each PSOR sweep is $O(N)$ operations.
+\item Number of sweeps to reach tolerance $\epsilon$:
+$K \sim -\log\epsilon / \log(1/\rho(\omega^*))$.
+For $\rho(\omega^*) \approx 1 - C/N$ (typical for our matrices)
+and $\epsilon = 10^{-7}$, $K = O(N)$.
+\item Cost per time step: $O(N^2)$.
+\end{itemize}
+Total cost over $M$ time steps: $O(M \cdot N^2)$. Taking $M \sim N$
+(matched to spatial accuracy as in CN), this is $O(N^3)$. For
+$N = 200$, $\epsilon = 10^{-7}$, the constant ratio of CN-PSOR to CN-Thomas is
+roughly $K \sim 200$ --- two orders of magnitude more work per step
+than the European pricer, the price of LCP generality.
+
+\paragraph{Comparison with other American pricers.}
+\begin{center}
+\begin{tabular}{lll}
+\hline
+Method & Cost & Accuracy \\
+\hline
+CRR binomial (Phase 2)        & $O(N^2)$ & $O(1/N)$, $O(1/N^2)$ Richardson \\
+LSM (Phase 2)                 & $O(N_{\mathrm{paths}} N_{\mathrm{steps}})$ & MC, $O(1/\sqrt{N_{\mathrm{paths}}})$ \\
+\textbf{CN-PSOR (this block)} & $O(N^3 \log\epsilon^{-1})$ & $O(\Delta x^2 + \Delta\tau^2)$ \\
+\hline
+\end{tabular}
+\end{center}
+CN-PSOR is the most accurate but most expensive at moderate $N$.
+LSM scales best to high dimensions; CRR is the simplest and most
+robust. Block~6 makes the comparison numerical.
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+Two new modules:
+
+\paragraph{\texttt{quantlib.psor} / \texttt{quant::pde::psor}.}
+Generic LCP solver. The signature mirrors Thomas:
+\begin{verbatim}
+def psor_solve(sub, diag, sup, rhs, obstacle, *,
+               omega=1.2, tol_abs=1e-8, tol_rel=1e-7,
+               max_iter=10000, x0=None) -> (x, n_iter)
+\end{verbatim}
+Returns both the solution and the number of iterations performed
+(the iteration count is informative diagnostic data; the lesson
+section below uses it to demonstrate $\omega$ optimality).
+
+\paragraph{\texttt{quantlib.cn\_american} / \texttt{quant::pde::cn\_american}.}
+American put pricer. Reuses the $\theta$-scheme grid and boundary
+construction of Block~3, replacing the per-step Thomas solve with a
+PSOR solve. Two notable differences from \texttt{cn\_european\_put}:
+\begin{enumerate}[leftmargin=2em]
+\item The lower boundary condition is $V(x_{\min}, \tau) = K
+- K e^{x_{\min}}$ (no discount, since exercise is immediate).
+\item No Rannacher smoothing. Justification: the Rannacher protocol
+addresses the kink in the European payoff, which produces
+high-frequency oscillations that CN cannot damp. For the American
+put the oscillations are the same in nature, but they are
+\emph{absorbed by the projection step}: nodes near the strike fall
+in the exercise region $\mathcal{E}$ where $V = g$ exactly, so the
+oscillation is clipped at $g$ before it can propagate. Empirically,
+CN-PSOR for the American put has $O(\Delta\tau^2)$ convergence
+without Rannacher; the projection does the smoothing implicitly.
+\end{enumerate}
+
+% =====================================================================
+\section{Validation strategy}
+% =====================================================================
+
+Seven tests certify the new pricer:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Cross-validation against CRR binomial} (from Phase 2):
+the gold-standard reference for American puts. Tolerance comparable
+to the discretisation error.
+
+\item \textbf{Cross-validation against LSM} (from Phase 2): a
+secondary check. Tolerance loosened to account for Monte Carlo
+variance.
+
+\item \textbf{Quadratic convergence in $\Delta x$}: doubling $N$
+should reduce the error by approximately 4. Demonstrates that the
+$\theta = 1/2$ scheme retains its second-order spatial accuracy under
+the projection.
+
+\item \textbf{American $\geq$ European}: at every spot, the American
+put price must be at least the European put price. Strict in the
+exercise region, equality possible deep in the continuation region.
+
+\item \textbf{$\omega$-sweep convergence}: at fixed problem,
+$\omega \in \{0.5, 1.0, 1.2, 1.5, 1.9\}$ produces different
+iteration counts. The minimum should occur near $\omega \approx 1.2$,
+confirming the theoretical $\omega^*$ prediction.
+
+\item \textbf{$\omega$ outside $(0, 2)$ raises}: $\omega = 0$ or
+$\omega = 2$ produces no-convergence within
+\texttt{max\_iter}, raising a runtime error.
+
+\item \textbf{Free boundary monotonicity}: the recovered exercise
+boundary $S_f(\tau)$ (the largest $S$ such that $V = g$ at each
+$\tau$) is monotonically increasing in $\tau$, with $S_f(\tau \to T)
+\to K$. A qualitative shape test that catches gross errors.
+\end{enumerate}
+
+% =====================================================================
+\section*{References}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{WHD1995}
+P. Wilmott, S.~Howison and J. Dewynne.
+\emph{The Mathematics of Financial Derivatives.}
+CUP, 1995. Chapter 7 on American options as free-boundary problems;
+self-contained derivation of smooth pasting from optimality.
+
+\bibitem{Wilmott1998}
+P. Wilmott.
+\emph{Paul Wilmott on Quantitative Finance.}
+Wiley, 1998 (2nd ed. 2006). Chapters 8 and 35: practical PSOR
+implementation with code.
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. Chapter 5 on American options; explicit treatment of
+PSOR with code.
+
+\bibitem{Seydel2017}
+R. Seydel.
+\emph{Tools for Computational Finance.}
+6th ed., Springer, 2017. \S4.5 on American options; concise.
+
+\bibitem{Cryer1971}
+C.~W. Cryer.
+\emph{The solution of a quadratic programming problem using
+systematic overrelaxation.}
+SIAM Journal on Control 9, 385--392, 1971. Original PSOR paper:
+proof of convergence for symmetric positive-definite LCPs.
+
+\bibitem{CPS2009}
+R.~W. Cottle, J.-S. Pang and R.~E. Stone.
+\emph{The Linear Complementarity Problem.}
+SIAM Classics in Applied Mathematics, 2009 (orig. Academic Press,
+1992). The rigorous reference for LCP theory. \S5.2--5.3 cover
+PSOR convergence in detail.
+
+\bibitem{Glowinski2008}
+R. Glowinski.
+\emph{Numerical Methods for Nonlinear Variational Problems.}
+Springer, 2008 (orig. Springer 1984). The variational treatment of
+obstacle problems.
+
+\bibitem{Varga2000}
+R.~S. Varga.
+\emph{Matrix Iterative Analysis.}
+Revised 2nd ed., Springer, 2000. Chapters 3--4 on SOR convergence
+theory and optimal $\omega$.
+
+\bibitem{Saad2003}
+Y. Saad.
+\emph{Iterative Methods for Sparse Linear Systems.}
+2nd ed., SIAM, 2003. Chapter 4 on relaxation methods, modern
+treatment.
+
+\end{thebibliography}
+
+\end{document}
