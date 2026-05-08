@@ -1,0 +1,475 @@
+% block3_crank_nicolson.tex
+%
+% Phase 3, Block 3: Crank-Nicolson, the theta-scheme, and Rannacher
+% time-stepping.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{remark}[proposition]{Remark}
+
+\title{Phase 3, Block 3:\\Crank--Nicolson, the $\theta$-scheme,\\and Rannacher time-stepping}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting and motivation}
+
+Blocks 1 (FTCS) and 2 (BTCS) are first-order in time: their local
+truncation error is $O(\Delta\tau) + O(\Delta x^2)$. To balance the
+spatial and temporal contributions one needs $\Delta\tau \sim
+\Delta x^2$, which forces $M \sim N^2$ and total cost $O(N^3)$ for
+both schemes (FTCS by CFL, BTCS by accuracy).
+
+This block implements \emph{Crank--Nicolson} (CN), the unique scheme
+in the convex family of FTCS and BTCS that is
+\emph{second-order in time}: $O(\Delta\tau^2) + O(\Delta x^2)$. With
+$M \sim N$, CN achieves $O(\Delta x^2)$ precision at $O(N^2)$ total
+cost --- a factor-$N$ improvement over FTCS/BTCS in the same
+precision regime. CN is the workhorse of finite-difference option
+pricers in production.
+
+The deliverable is a $\theta$-scheme infrastructure
+(\texttt{quantlib.theta\_scheme}) that subsumes FTCS, BTCS and CN as
+parameter choices, plus the CN pricer with Rannacher time-stepping
+(\texttt{quantlib.cn}) to suppress spurious oscillations near the
+strike kink.
+
+% =====================================================================
+\section{The $\theta$-family}
+% =====================================================================
+
+The three schemes of Phase 3 are particular cases of a single
+parametric family:
+\begin{equation}
+\frac{V_j^{n+1} - V_j^n}{\Delta\tau}
+\;=\;
+\theta\,\mathcal{L}_h V_j^{n+1} \,+\, (1-\theta)\,\mathcal{L}_h V_j^n,
+\qquad \theta \in [0, 1],
+\label{eq:theta-scheme}
+\end{equation}
+where $\mathcal{L}_h$ is the discrete spatial operator
+\[
+\mathcal{L}_h V_j
+\;=\; \frac{\sigma^2}{2}\,\frac{V_{j+1} - 2V_j + V_{j-1}}{\Delta x^2}
+   + \mu\,\frac{V_{j+1} - V_{j-1}}{2\Delta x}
+   - r\,V_j.
+\]
+The cases of interest are
+\begin{center}
+\begin{tabular}{ccccc}
+\hline
+$\theta$ & Name & Type & Stability & Time order \\
+\hline
+$0$    & FTCS & Explicit & Conditional ($\alpha \le 1/2$) & $O(\Delta\tau)$ \\
+$1/2$  & \textbf{Crank--Nicolson} & Implicit & Unconditional & $O(\Delta\tau^2)$ \\
+$1$    & BTCS & Implicit & Unconditional & $O(\Delta\tau)$ \\
+\hline
+\end{tabular}
+\end{center}
+The order jump at $\theta = 1/2$ is the central observation of this
+block. It is the pay-off of the symmetry between the new and old
+levels: when the right-hand side is the average of $\mathcal{L}_h V$
+at $\tau_n$ and $\tau_{n+1}$, the discrete equation is centred at the
+\emph{midpoint} $\tau_{n+1/2}$, and the midpoint rule is one order
+more accurate than the endpoint rules.
+
+% =====================================================================
+\section{Crank--Nicolson explicitly}
+% =====================================================================
+
+Setting $\theta = 1/2$ in \eqref{eq:theta-scheme}, expanding $\mathcal{L}_h$,
+and rearranging $V^{n+1}$ to the left, $V^n$ to the right:
+\begin{equation}
+\boxed{\;
+\beta_-\,V_{j-1}^{n+1} + \beta_0\,V_j^{n+1} + \beta_+\,V_{j+1}^{n+1}
+\;=\;
+\gamma_-\,V_{j-1}^n + \gamma_0\,V_j^n + \gamma_+\,V_{j+1}^n.
+\;}
+\label{eq:cn-stencil}
+\end{equation}
+With $\alpha = \frac{\sigma^2}{2}\,\Delta\tau/\Delta x^2$ and
+$\nu = \mu\,\Delta\tau/(2\Delta x)$ as before, the LHS coefficients
+are
+\[
+\beta_- = -\tfrac{1}{2}\alpha + \tfrac{1}{2}\nu, \quad
+\beta_0 = 1 + \alpha + \tfrac{1}{2}r\Delta\tau, \quad
+\beta_+ = -\tfrac{1}{2}\alpha - \tfrac{1}{2}\nu,
+\]
+and the RHS coefficients are
+\[
+\gamma_- = +\tfrac{1}{2}\alpha - \tfrac{1}{2}\nu, \quad
+\gamma_0 = 1 - \alpha - \tfrac{1}{2}r\Delta\tau, \quad
+\gamma_+ = +\tfrac{1}{2}\alpha + \tfrac{1}{2}\nu.
+\]
+Symmetry: $\beta_\pm = -\tfrac12(\text{the corresponding BTCS coefficient minus 1 on diagonal})$,
+$\gamma_\pm = +\tfrac12(\text{the corresponding FTCS coefficient minus 1 on diagonal})$.
+CN is, structurally, ``half BTCS plus half FTCS''.
+
+% =====================================================================
+\section{Why CN is second-order in time: the midpoint rule}
+\label{sec:second-order}
+% =====================================================================
+
+The non-trivial claim is that the local truncation error of
+\eqref{eq:cn-stencil} is $O(\Delta\tau^2) + O(\Delta x^2)$, despite
+the fact that the time difference $(V^{n+1} - V^n)/\Delta\tau$ looks
+like the same first-order forward Euler quotient that FTCS uses. The
+gain comes from \emph{which time level the equation is centred on}.
+
+Expand $V$ around the midpoint $\tau_{n+1/2} = \tau_n + \Delta\tau/2$:
+\begin{align*}
+V(\tau_{n+1}) &= V_* + \tfrac{1}{2}\Delta\tau\, V'_* + \tfrac{1}{8}\Delta\tau^2\, V''_*
++ \tfrac{1}{48}\Delta\tau^3\, V'''_* + O(\Delta\tau^4), \\
+V(\tau_n)     &= V_* - \tfrac{1}{2}\Delta\tau\, V'_* + \tfrac{1}{8}\Delta\tau^2\, V''_*
+- \tfrac{1}{48}\Delta\tau^3\, V'''_* + O(\Delta\tau^4),
+\end{align*}
+where $V_* := V(\tau_{n+1/2})$, $V'_* := V_\tau(\tau_{n+1/2})$, etc.
+Subtracting and dividing by $\Delta\tau$:
+\begin{equation}
+\frac{V(\tau_{n+1}) - V(\tau_n)}{\Delta\tau}
+\;=\; V_\tau(\tau_{n+1/2})
+\;+\; \frac{\Delta\tau^2}{24}\,V_{\tau\tau\tau}(\tau_{n+1/2})
+\;+\; O(\Delta\tau^4).
+\label{eq:midpoint-time}
+\end{equation}
+The $\Delta\tau$ term \emph{cancels by symmetry}: the quotient is a
+second-order approximation to $V_\tau$ at the midpoint.
+
+Analogously, adding the two expansions of $\mathcal{L}_h V$ (one at
+$\tau_n$, one at $\tau_{n+1}$) and dividing by 2:
+\begin{equation}
+\tfrac{1}{2}\!\left[\mathcal{L}_h V(\tau_{n+1}) + \mathcal{L}_h V(\tau_n)\right]
+\;=\;
+\mathcal{L}_h V(\tau_{n+1/2}) \,+\, O(\Delta\tau^2) \,+\, O(\Delta x^2),
+\label{eq:midpoint-space}
+\end{equation}
+where the $O(\Delta\tau^2)$ comes from the time interpolation (linear
+average of the endpoints) and the $O(\Delta x^2)$ is the spatial
+truncation of $\mathcal{L}_h$. Combining \eqref{eq:midpoint-time} and
+\eqref{eq:midpoint-space}, the CN equation
+$(V^{n+1} - V^n)/\Delta\tau = \frac12(\mathcal{L}_h V^{n+1} + \mathcal{L}_h V^n)$
+is the discretisation of the exact PDE $V_\tau = \mathcal{L} V$
+\emph{at the midpoint}, with truncation
+\[
+\tau_h = O(\Delta\tau^2) + O(\Delta x^2).
+\]
+FTCS and BTCS, by contrast, evaluate the right-hand side at $\tau_n$ or
+$\tau_{n+1}$ (not the midpoint); the time error there is $O(\Delta\tau)$.
+
+% =====================================================================
+\section{The linear system and matrix structure}
+% =====================================================================
+
+Equation \eqref{eq:cn-stencil} written for the interior nodes $j =
+1, \dots, N-1$ becomes
+\[
+A\,\mathbf{V}^{n+1}_{\mathrm{int}}
+\;=\; B\,\mathbf{V}^n_{\mathrm{int}}
+   + \mathbf{b}_{\mathrm{bnd}}^n,
+\]
+where $A$ and $B$ are tridiagonal $(N-1)\times(N-1)$ matrices with
+$(\beta_-, \beta_0, \beta_+)$ and $(\gamma_-, \gamma_0, \gamma_+)$ on
+their diagonals, and the boundary vector mixes both time levels:
+\begin{equation}
+\mathbf{b}_{\mathrm{bnd}}^n
+= \begin{pmatrix}
+\gamma_-\,V_0^n - \beta_-\,V_0^{n+1} \\
+0 \\
+\vdots \\
+0 \\
+\gamma_+\,V_N^n - \beta_+\,V_N^{n+1}
+\end{pmatrix}.
+\label{eq:bnd-cn}
+\end{equation}
+Both lateral coefficients of the stencils contribute to the boundary
+correction, in contrast to BTCS where only the LHS coefficients
+appeared.
+
+The per-step algorithm has three phases:
+\begin{enumerate}[leftmargin=2em]
+\item Apply the RHS stencil $B$ to $\mathbf{V}^n_{\mathrm{int}}$ as
+a three-point stencil sweep ($O(N)$, no need to assemble $B$
+explicitly).
+\item Add the boundary correction $\mathbf{b}_{\mathrm{bnd}}^n$
+($O(1)$: only two endpoints are non-zero).
+\item Solve $A\,\mathbf{V}^{n+1}_{\mathrm{int}} = (\text{result})$ by
+Thomas with the pre-factored $A$ ($O(N)$).
+\end{enumerate}
+Total cost per step: $O(N)$. Total cost: $O(N \cdot M)$, the same
+as BTCS.
+
+\paragraph{Pre-factoring $A$.} The matrix $A$ is constant in time
+(again thanks to the constant-coefficient form of the transformed
+PDE). Factoring $A$ once at setup and applying the factor at every
+step is the standard pattern, identical to BTCS.
+
+% =====================================================================
+\section{Stability of the $\theta$-scheme}
+% =====================================================================
+
+The von Neumann amplification factor of \eqref{eq:theta-scheme},
+ignoring the reactive term, is
+\begin{equation}
+g(\xi) = \frac{1 - 4\alpha(1-\theta)\sin^2(\xi/2) + i\,(1-\theta)\beta_C\sin\xi}
+              {1 + 4\alpha\theta\sin^2(\xi/2) - i\,\theta\beta_C\sin\xi},
+\label{eq:theta-amplification}
+\end{equation}
+with $\beta_C := \mu\Delta\tau/\Delta x$, $\xi \in [-\pi,\pi]$ the
+Fourier wavenumber.
+
+\begin{proposition}[Stability of the $\theta$-scheme]
+The $\theta$-scheme is unconditionally von Neumann stable if and only
+if $\theta \ge 1/2$. For $\theta < 1/2$, $|g| \le 1$ requires the
+conditional bound
+\[
+\alpha \;\le\; \frac{1}{2(1 - 2\theta)}.
+\]
+In particular, $\theta = 0$ gives $\alpha \le 1/2$ (the FTCS CFL
+condition), and $\theta = 1/2$ is the smallest $\theta$ for which the
+bound is vacuous.
+\end{proposition}
+
+\begin{proof}[Sketch]
+Set $s = \sin^2(\xi/2)$, $u = \sin\xi$, so $u^2 = 4s(1-s)$. Then
+$|g|^2 = N(s,u)/D(s,u)$ where both numerator and denominator are
+quadratic in $\alpha$. The condition $|g|^2 \le 1$ becomes $D - N \ge
+0$, which after expansion is
+\[
+8\alpha s\,\bigl[(2\theta - 1) + 4\alpha\theta(1-\theta)s\bigr]
+\,+\,(\text{terms vanishing when }\beta_C = 0)
+\,\ge\, 0.
+\]
+For $\theta \ge 1/2$, both bracketed terms are non-negative for any
+$\alpha \ge 0$, $s \in [0,1]$. For $\theta < 1/2$, the first term is
+negative and the bound becomes the stated inequality. (Full algebra
+in Strikwerda \S6.3, or \cite[\S4.5]{Smith1985}.) \qed
+\end{proof}
+
+CN at $\theta = 1/2$ is therefore \emph{exactly on the boundary}
+between conditional and unconditional stability. This is the structural
+reason why CN, although stable, has weaker damping properties than
+BTCS, as we now examine.
+
+% =====================================================================
+\section{The kink-induced oscillation problem}
+\label{sec:kink}
+% =====================================================================
+
+The amplification factor at the Nyquist wavenumber $\xi = \pi$
+(highest representable frequency on the grid, $\sin^2(\pi/2) = 1$,
+$\sin\pi = 0$) is
+\[
+g_\theta(\pi) = \frac{1 - 4\alpha(1-\theta)}{1 + 4\alpha\theta}.
+\]
+For BTCS ($\theta = 1$) and CN ($\theta = 1/2$):
+\[
+g_{\mathrm{BTCS}}(\pi) = \frac{1}{1 + 4\alpha}
+\xrightarrow{\alpha \to \infty} 0,
+\qquad
+g_{\mathrm{CN}}(\pi) = \frac{1 - 2\alpha}{1 + 2\alpha}
+\xrightarrow{\alpha \to \infty} -1.
+\]
+\textbf{BTCS damps the Nyquist mode exponentially; CN preserves it
+with a sign flip.} In the regime of interest for CN ($\Delta\tau \sim
+\Delta x$, so $\alpha \sim 1/\Delta x \to \infty$ as $N \to \infty$),
+$|g_{\mathrm{CN}}(\pi)|$ is essentially $1$, and the Nyquist mode is
+preserved indefinitely while alternating sign in time.
+
+This is harmless for smooth initial data: the Fourier coefficient of
+the Nyquist mode in the initial vector $V^0$ is exponentially small,
+and ``preserving exponentially small'' yields nothing visible.
+
+\paragraph{The payoff is not smooth.} A vanilla call payoff
+$\phi(x) = K(e^x - 1)^+$ has a kink at $x = 0$: $\phi$ is continuous
+but $\phi'$ has a jump. The Fourier expansion of a function with such
+a kink has coefficients decaying only as $1/k^2$, not exponentially.
+The Nyquist coefficient in $V^0$ is therefore $O(1/N^2)$ --- not
+exponentially small.
+
+\paragraph{Consequence.} An $O(1/N^2)$ amplitude at the Nyquist mode,
+preserved across $M$ time steps with sign flip $g \approx -1$ at each,
+produces a visible oscillation pattern in the computed $V^M$:
+\begin{itemize}[leftmargin=2em]
+\item Bounded ($|g| \le 1$, so the oscillation does not grow).
+\item Persistent (each step preserves the magnitude).
+\item Localised near the kink (where the kink-induced mode lives).
+\item Alternating sign at consecutive grid nodes (the spatial
+signature of $\xi = \pi$).
+\end{itemize}
+The visible artefact is a sawtooth of small amplitude near the
+strike, distinct from the explosive sawtooth of FTCS instability
+(Phase~3 numerical lesson 1) by being bounded but visible. It
+degrades local accuracy near the strike: the price has $O(\Delta x)$
+error there instead of $O(\Delta x^2)$, and the Greeks (gamma in
+particular) inherit the oscillation.
+
+% =====================================================================
+\section{Rannacher time-stepping}
+% =====================================================================
+
+The standard fix, due to Rannacher~\cite{Rannacher1984}, is to
+replace the first \emph{two} CN time steps by \emph{four}
+half-time-step BTCS steps, each of length $\Delta\tau/2$:
+\begin{equation}
+\underbrace{\mathrm{BTCS}_{\Delta\tau/2}\circ\mathrm{BTCS}_{\Delta\tau/2}\circ\mathrm{BTCS}_{\Delta\tau/2}\circ\mathrm{BTCS}_{\Delta\tau/2}}_{\text{4 half-steps, total time }2\Delta\tau}
+\;\circ\;
+\underbrace{\mathrm{CN}_{\Delta\tau} \circ \cdots \circ \mathrm{CN}_{\Delta\tau}}_{M-2\text{ full steps}}.
+\label{eq:rannacher}
+\end{equation}
+\paragraph{Why it works.} Each BTCS half-step damps the Nyquist mode
+by a factor $g_{\mathrm{BTCS},\Delta\tau/2}(\pi) = 1/(1 + 2\alpha)$
+($\alpha$ is the CN Fourier number; the half-step uses $\alpha/2$,
+giving $1/(1 + 2\alpha)$). After four half-steps the Nyquist mode is
+multiplied by $1/(1+2\alpha)^4$, which for $\alpha = O(N) \gg 1$ is
+$O(1/N^4)$ --- well below the $O(\Delta x^2) = O(1/N^2)$ floor of the
+discretisation. By the time CN takes over, the kink-induced
+high-frequency modes are damped to round-off, and CN proceeds with
+effectively smooth data.
+
+\paragraph{Why two full steps.} Giles \&
+Carter~\cite{GilesCarter2005} prove that this is the minimum number
+that recovers $O(\Delta\tau^2)$ convergence in $L^2$ globally. For
+pointwise $L^\infty$ convergence at the kink itself, four full steps
+of Rannacher would be needed; $L^2$ is sufficient for the price at
+any fixed spot, recovered by interpolation that smooths over the
+kink anyway.
+
+\paragraph{Why BTCS, not finer CN.} The artefact is not a function of
+$\Delta\tau$ being too large; it is the absence of damping. CN with
+arbitrarily small $\Delta\tau$ still has $|g_{\mathrm{CN}}(\pi)| =
+1$ in the limit (the bound is sharp). Only a dissipative scheme can
+remove the irregular high-frequency content, and BTCS is the natural
+choice because the same Thomas factorisation can be reused with the
+appropriate coefficients.
+
+\paragraph{Cost.} Four half-steps of BTCS cost as much as two full CN
+steps. For $M \ge 10$ the overhead is below 5\%; for $M \ge 100$
+below 0.5\%. Negligible compared to the convergence gain.
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+The block ships two modules:
+\begin{itemize}[leftmargin=2em]
+\item \texttt{quantlib.theta\_scheme} (Python) /
+\texttt{quant::pde::theta\_scheme\_*} (C++): a generic $\theta$-stepper
+parametrised by $\theta$. Internally pre-factors the LHS matrix and
+runs a configurable number of time steps. Reusable as scaffolding
+for Block 4 (where the LHS solve is replaced by PSOR).
+\item \texttt{quantlib.cn} (Python) /
+\texttt{quant::pde::cn\_*} (C++): the user-facing CN pricer for
+European options, with Rannacher smoothing enabled by default
+(\texttt{rannacher\_steps=2}). Setting \texttt{rannacher\_steps=0}
+gives vanilla CN, exposed to make the oscillation phenomenon
+testable.
+\end{itemize}
+
+The signature mirrors BTCS:
+\begin{verbatim}
+cn_european_call(S, K, r, sigma, T, *, N, M, n_sigma=4.0,
+                 rannacher_steps=2)
+\end{verbatim}
+
+The $\theta$-scheme module exposes a low-level kernel
+\texttt{theta\_march(grid, V0, theta, bc\_lower, bc\_upper)} that the
+CN pricer calls twice for the Rannacher protocol: once with
+$\theta = 1$ for the initial half-stepped BTCS warm-up, then with
+$\theta = 1/2$ for the rest.
+
+\paragraph{No replacement of FTCS/BTCS.} The FTCS and BTCS modules of
+Blocks 1 and 2 are unchanged. The $\theta$-scheme infrastructure is a
+parallel mechanism intended for CN and any future generalisations.
+The previous granular commits remain valid; this block adds, does not
+modify.
+
+% =====================================================================
+\section{Validation strategy}
+% =====================================================================
+
+Six tests certify the new pricer:
+\begin{enumerate}[leftmargin=2em]
+\item Cross-validation against Black--Scholes closed form on a
+parameter grid (the standard battery of Blocks 1--2).
+\item \textbf{Quadratic convergence in time:} halving $\Delta\tau$
+at fixed (small) $\Delta x$ should reduce the error by a factor of
+$\approx 4$, not $\approx 2$ as BTCS would. This is \emph{the} test
+of CN.
+\item \textbf{Balanced quadratic convergence:} doubling both $N$ and
+$M$ should reduce the error by $\approx 4$, vs the $\approx 2$
+expected for BTCS in the same configuration.
+\item \textbf{Vanilla CN (without Rannacher) has degraded convergence:}
+running the same problem with \texttt{rannacher\_steps=0} should show
+a noticeably worse convergence ratio. This is the empirical evidence
+of the kink-induced oscillation.
+\item Reproduction of BTCS via $\theta = 1$ in the $\theta$-scheme:
+verifies the generic stepper against the Block~2 pricer.
+\item Put-call parity, input validation, etc.
+\end{enumerate}
+
+The fourth test is the operational signature of Block~3's numerical
+lesson, analogous to the CFL-violation diagnostic of Block~1: a
+configuration that produces visibly degraded output, captured as a
+passing assertion to prevent regression.
+
+% =====================================================================
+\section*{References}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. \S3.3 (CN), \S3.5 (the $\theta$-scheme), \S6.3 (Rannacher
+and other smoothing techniques).
+
+\bibitem{Seydel2017}
+R. Seydel.
+\emph{Tools for Computational Finance.}
+6th ed., Springer, 2017. \S4.2.3 (CN), \S4.5.4 (kink and Rannacher in
+practice).
+
+\bibitem{Strikwerda2004}
+J.~C. Strikwerda.
+\emph{Finite Difference Schemes and Partial Differential Equations.}
+2nd ed., SIAM, 2004. \S6.3 (stability analysis of the $\theta$-method).
+
+\bibitem{Smith1985}
+G.~D. Smith.
+\emph{Numerical Solution of Partial Differential Equations:
+Finite Difference Methods.}
+3rd ed., OUP, 1985. \S1.13 (the $\theta$-family of schemes).
+
+\bibitem{Rannacher1984}
+R. Rannacher.
+\emph{Finite element solution of diffusion problems with irregular data.}
+Numerische Mathematik 43, 309--327, 1984. The original paper
+introducing the smoothing protocol.
+
+\bibitem{GilesCarter2005}
+M.~B. Giles and R. Carter.
+\emph{Convergence analysis of Crank-Nicolson and Rannacher
+time-marching.}
+Journal of Computational Finance 9(4), 89--112, 2005. Sharp results
+for option pricing: proves that two Rannacher steps suffice for
+$L^2$-recovery of $O(\Delta\tau^2)$ convergence.
+
+\end{thebibliography}
+
+\end{document}
