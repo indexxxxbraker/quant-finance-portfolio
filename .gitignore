@@ -54,3 +54,6 @@ Makefile
 .DS_Store
 Thumbs.db
 *.save
+# Phase 3 leftover debug scripts (kept locally, not versioned)
+python/preflight_phase3.py
+python/probe_signatures.py
