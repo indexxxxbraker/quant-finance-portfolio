@@ -1,0 +1,411 @@
+% block5_trinomial.tex
+%
+% Phase 3, Block 5: Trinomial tree of Kamrad-Ritchken.
+%
+% Self-contained writeup. Compiles standalone with pdflatex.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\newtheorem{remark}[proposition]{Remark}
+
+\title{Phase 3, Block 5:\\The Kamrad--Ritchken trinomial tree\\and its equivalence to FTCS}
+\author{Quant Finance Portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setting and motivation}
+
+Phase 2 Block 6 already implemented a CRR binomial tree for American
+options. Phase 3 has built four PDE-based pricers (FTCS, BTCS, CN,
+and CN-PSOR for American). What does the trinomial tree add?
+
+Not pricing capability: the binomial CRR already prices Americans;
+CN-PSOR already prices them more accurately. The contribution of
+Block 5 is conceptual --- it makes \emph{explicit the structural
+equivalence between lattice methods and finite-difference
+methods}. We have alluded to this equivalence in earlier blocks
+(``FTCS and the trinomial are the same calculation written in two
+languages''); Block 5 formalises it.
+
+Two additional benefits:
+\begin{itemize}[leftmargin=2em]
+\item Block 6 will benchmark all the project's pricers on the
+American put. The trinomial gives one more independent point of
+comparison.
+\item The trinomial of Kamrad and Ritchken~\cite{KR1991} introduces
+a stretching parameter $\lambda$ that does not exist in the
+binomial. This adds a tuning knob to the family of lattice methods
+which will reappear in Block~6's comparison.
+\end{itemize}
+
+% =====================================================================
+\section{Tree structure}
+% =====================================================================
+
+We work in log-coordinates $x = \ln(S/S_0)$, so the GBM
+$dS = rS\,dt + \sigma S\,dW$ becomes
+\[
+dX = \nu\,dt + \sigma\,dW, \qquad \nu = r - \tfrac{1}{2}\sigma^2.
+\]
+The trinomial tree discretises this process with time step $\Delta t = T/N$
+and space step $\Delta x$ (to be chosen). At each node, the next
+state branches three ways:
+\[
+x \;\longrightarrow\;
+\begin{cases}
+x + \Delta x & \text{with probability } p_u \\
+x           & \text{with probability } p_m \\
+x - \Delta x & \text{with probability } p_d
+\end{cases}
+\]
+with $p_u + p_m + p_d = 1$. The key structural features:
+\begin{itemize}[leftmargin=2em]
+\item \textbf{Recombining}: an up-then-down move arrives at the same
+state as a stay-then-stay move. After $n$ time steps, only $2n+1$
+distinct states are reachable (not $3^n$). This is what makes the
+backward induction tractable: $O(N^2)$ total work, not $O(3^N)$.
+\item \textbf{Symmetric in space}: the same $\Delta x$ for up and
+down. This simplifies the moment-matching algebra and makes the tree
+agree with the centred-difference FD scheme of Block~1, as we will
+see.
+\end{itemize}
+
+\paragraph{The Kamrad--Ritchken step size.} The KR specification picks
+\begin{equation}
+\Delta x = \sigma\sqrt{\lambda\,\Delta t}, \qquad \lambda \ge 1.
+\label{eq:kr-step}
+\end{equation}
+The parameter $\lambda$ is the \emph{stretching parameter}.
+Three values are commonly used:
+\begin{center}
+\begin{tabular}{ccc}
+\hline
+$\lambda$ & Tree type & $p_m$ \\
+\hline
+$1$ & Binomial-equivalent ($p_m = 0$) & $0$ \\
+$2$ & Conservative trinomial          & $1/2$ \\
+$3$ & Standard KR (``third-order'')   & $2/3$ \\
+\hline
+\end{tabular}
+\end{center}
+We will see in \S\ref{sec:equivalence} that $\lambda$ is structurally
+the inverse of the FTCS Fourier number: $\lambda = 1/(2\alpha)$.
+The constraint $\lambda \ge 1$ is exactly the FTCS CFL condition
+$\alpha \le 1/2$ written as a tree constraint.
+
+% =====================================================================
+\section{Probabilities by moment matching}
+% =====================================================================
+
+The probabilities $(p_u, p_m, p_d)$ are determined by matching
+the first two moments of the discrete one-step distribution to those
+of the continuous GBM:
+\begin{align}
+\mathbb{E}[\Delta X] \;&=\; p_u\,\Delta x - p_d\,\Delta x \;=\; \nu\,\Delta t,
+\label{eq:mom1}\\
+\mathbb{E}[(\Delta X)^2] \;&=\; (p_u + p_d)\,\Delta x^2 \;=\; \sigma^2\,\Delta t + O(\Delta t^2).
+\label{eq:mom2}
+\end{align}
+Combined with the normalisation $p_u + p_m + p_d = 1$, this is a
+linear $3 \times 3$ system. Substituting \eqref{eq:kr-step} and solving:
+\begin{equation}
+\boxed{\;\;
+p_u = \frac{1}{2\lambda} + \frac{\nu\sqrt{\Delta t}}{2\sigma\sqrt{\lambda}},
+\quad
+p_m = 1 - \frac{1}{\lambda},
+\quad
+p_d = \frac{1}{2\lambda} - \frac{\nu\sqrt{\Delta t}}{2\sigma\sqrt{\lambda}}.
+\;\;}
+\label{eq:probs}
+\end{equation}
+
+\paragraph{Reading.} The first term $1/(2\lambda)$ in $p_u$ and $p_d$
+encodes the variance of the step. The second term
+$\pm\nu\sqrt{\Delta t}/(2\sigma\sqrt{\lambda})$ is the asymmetry that
+accommodates the drift. The middle probability $p_m$ is determined
+purely by $\lambda$.
+
+\paragraph{Positivity constraints.}
+\begin{itemize}[leftmargin=2em]
+\item $p_m \ge 0 \iff \lambda \ge 1$.
+\item $p_d \ge 0 \iff \nu\sqrt{\Delta t} \le \sigma\sqrt{\lambda} \iff \dfrac{\nu^2\,\Delta t}{\sigma^2} \le \lambda$. For project parameters ($|\nu| \sim 0.03$, $\sigma = 0.20$, $\Delta t \le 0.02$) the LHS is $\le 1.5\times 10^{-4}$, far below any $\lambda \ge 1$.
+\item $p_u, p_m, p_d \le 1$ is then automatic.
+\end{itemize}
+For the project's parameters, all three probabilities lie comfortably in
+$(0, 1)$.
+
+% =====================================================================
+\section{Backward induction}
+% =====================================================================
+
+With probabilities fixed, the algorithm is standard.
+
+\paragraph{Initialisation at maturity ($n = N$).} The states at time
+$T$ are $S_j = S_0\,e^{j\,\Delta x}$ for $j \in \{-N, -N+1, \ldots, N\}$.
+For each, set $V_j^N = \phi(S_j)$ where $\phi$ is the payoff function
+($(K - S)^+$ for a put, $(S - K)^+$ for a call).
+
+\paragraph{Backward step ($n = N-1, \ldots, 0$).} For each
+$j \in \{-n, \ldots, n\}$,
+\begin{equation}
+V_j^n = e^{-r\Delta t}\bigl[\,p_u\,V_{j+1}^{n+1} + p_m\,V_j^{n+1} + p_d\,V_{j-1}^{n+1}\,\bigr]
+\label{eq:european-step}
+\end{equation}
+for the European option, or
+\begin{equation}
+V_j^n = \max\!\Bigl\{\,\phi(S_j),\;\;
+e^{-r\Delta t}\bigl[\,p_u\,V_{j+1}^{n+1} + p_m\,V_j^{n+1} + p_d\,V_{j-1}^{n+1}\,\bigr]\,\Bigr\}
+\label{eq:american-step}
+\end{equation}
+for the American option. The price is $V_0^0$.
+
+\paragraph{Cost.} At step $n$ there are $2n+1$ active nodes. Total
+work is $\sum_{n=0}^{N-1}(2n+1) = N^2$ multiply-add operations, i.e.\
+$O(N^2)$ time. With in-place overwrite of a single length-$(2N+1)$
+array, memory is $O(N)$. Identical to CRR.
+
+% =====================================================================
+\section{The equivalence with FTCS}
+\label{sec:equivalence}
+% =====================================================================
+
+This is the structural insight that motivates including the trinomial
+in Phase 3. The European backward step \eqref{eq:european-step} can
+be rewritten as
+\begin{equation}
+V_j^n = e^{-r\Delta t}p_u\,V_{j+1}^{n+1} + e^{-r\Delta t}p_m\,V_j^{n+1} + e^{-r\Delta t}p_d\,V_{j-1}^{n+1}.
+\label{eq:trinomial-rewritten}
+\end{equation}
+Compare with the FTCS update for the transformed BS PDE
+$V_\tau = (\sigma^2/2)V_{xx} + \nu V_x - rV$ (Block 1, with $\Delta\tau = \Delta t$):
+\begin{equation}
+V_j^{n+1} = (\alpha + \beta)V_{j+1}^n + (1 - 2\alpha - r\Delta t)V_j^n + (\alpha - \beta)V_{j-1}^n
+\label{eq:ftcs}
+\end{equation}
+where $\alpha = (\sigma^2/2)\Delta t/\Delta x^2$ and
+$\beta = \nu\Delta t/(2\Delta x)$.
+
+\paragraph{Note.} Equation \eqref{eq:ftcs} marches forward in $\tau$
+(and hence backward in $t$ since $\tau = T - t$), so the time index
+on the LHS is $n+1$ while the RHS uses $n$. Equation
+\eqref{eq:trinomial-rewritten} marches in calendar time, with the
+LHS at $n$ and RHS at $n+1$. Both schemes go from later to earlier in
+calendar time. The structural form is the same: a three-point linear
+combination of the values one time level away.
+
+\paragraph{Coefficient identification.} Substituting
+$\Delta x = \sigma\sqrt{\lambda\Delta t}$ into the FTCS coefficients:
+\begin{align*}
+\alpha \;&=\; \frac{\sigma^2 \Delta t/2}{\lambda\,\sigma^2\,\Delta t} \;=\; \frac{1}{2\lambda},\\
+\beta  \;&=\; \frac{\nu\,\Delta t}{2\,\sigma\sqrt{\lambda\,\Delta t}} \;=\; \frac{\nu\,\sqrt{\Delta t}}{2\,\sigma\,\sqrt{\lambda}}.
+\end{align*}
+Then the FTCS coefficients become
+\begin{align*}
+\alpha + \beta \;&=\; \frac{1}{2\lambda} + \frac{\nu\sqrt{\Delta t}}{2\sigma\sqrt{\lambda}} \;=\; p_u,\\
+\alpha - \beta \;&=\; \frac{1}{2\lambda} - \frac{\nu\sqrt{\Delta t}}{2\sigma\sqrt{\lambda}} \;=\; p_d,\\
+1 - 2\alpha - r\Delta t \;&=\; 1 - \frac{1}{\lambda} - r\Delta t \;=\; p_m - r\Delta t.
+\end{align*}
+The \emph{un-discounted} off-diagonal coefficients agree exactly:
+$p_u = \alpha + \beta$ and $p_d = \alpha - \beta$ as identities.
+The two schemes differ in \emph{how the discount factor is
+distributed} across the recurrence:
+\begin{itemize}[leftmargin=2em]
+\item Trinomial multiplies the entire bracketed expression by
+$e^{-r\Delta t}$, applying the discount to all three terms uniformly.
+\item FTCS embeds the discount only in the diagonal coefficient
+($1 - 2\alpha - r\Delta t = p_m - r\Delta t$), leaving the
+off-diagonals undiscounted.
+\end{itemize}
+The middle coefficient comparison:
+$e^{-r\Delta t}\,p_m \,-\, (p_m - r\Delta t) = r\Delta t / \lambda + O(\Delta t^2)$,
+which is $O(\Delta t)$. The off-diagonal comparison
+$e^{-r\Delta t}\,p_u - (\alpha + \beta) = -r\Delta t\,p_u + O(\Delta t^2)$
+is also $O(\Delta t)$. The two schemes therefore agree at the leading
+order $O(1)$ and differ at $O(\Delta t)$, which is the same order
+as the local truncation error of both schemes. They are equivalent
+in the sense that they share the same order of convergence and the
+same limiting solution, but their numerical outputs at finite
+$\Delta t$ differ by a small ($O(\Delta t)$) amount.
+
+\paragraph{Conclusion.}
+\begin{equation}
+\boxed{\;\;\text{Trinomial KR with stretching } \lambda \;\sim\; \text{FTCS with } \alpha = \tfrac{1}{2\lambda} \;\;}
+\label{eq:equivalence}
+\end{equation}
+in the asymptotic sense: both schemes have $O(\Delta t)$ local
+truncation error, both converge to the same BS solution at the same
+rate, and their numerical outputs differ by $O(\Delta t)$ (the same
+order as the error itself). The two methods are not literally
+identical, but they are structurally the same scheme written in two
+languages.
+
+\paragraph{The CFL constraint, in tree language.} Equation
+\eqref{eq:equivalence} also explains why $\lambda \ge 1$ is a hard
+constraint: $\lambda = 1$ corresponds to $\alpha = 1/2$, the FTCS
+stability boundary. Going below ($\lambda < 1 \iff \alpha > 1/2$)
+violates the CFL condition. In tree language this manifests as
+$p_m < 0$: a probability that is no longer a probability. The same
+phenomenon, two different symptoms.
+
+\paragraph{Why $\lambda = 3$ is called ``third-order accurate''.}
+With $\lambda = 3$, the probabilities are $(p_u, p_m, p_d) = (1/6, 2/3, 1/6) +
+O(\sqrt{\Delta t})$. These are the weights of \emph{Simpson's rule}
+for numerical integration. Simpson exactly integrates polynomials up
+to degree~$3$. As a consequence, the third moment of the discrete
+trinomial step matches the third moment of the GBM step (which is
+$3\sigma^2\nu\Delta t^2 + O(\Delta t^3)$). Schemes that match higher
+moments have smaller \emph{constants} in their error expansion, but
+the global convergence rate remains $O(\Delta t)$ because the
+non-smooth payoff (the kink at the strike) limits the achievable
+order regardless. ``Third-order'' refers to moment matching, not
+to global convergence.
+
+% =====================================================================
+\section{Convergence and comparison}
+% =====================================================================
+
+The trinomial converges to the BS price for European options, and
+to the true American price for American options, at rate
+$O(1/N)$ in the number of steps. This is the same rate as CRR
+binomial. The kink-related limitation discussed in Block~3 (the
+payoff is not $C^1$) caps both lattice methods at first order
+regardless of the underlying scheme accuracy.
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+Method & Cost (American) & Convergence \\
+\hline
+CRR binomial         & $O(N^2)$ & $O(1/N)$ \\
+Trinomial KR         & $O(N^2)$ & $O(1/N)$, smaller constant at $\lambda = 3$ \\
+CN-PSOR              & $O(N^3 \log\epsilon^{-1})$ & $O(1/N)$ near the kink \\
+\hline
+\end{tabular}
+\end{center}
+
+The binomial and trinomial have the same asymptotic order but
+trinomial typically gives slightly smaller errors at fixed $N$
+(thanks to the third-moment matching). CN-PSOR has the highest order
+but the highest cost. Block~6 will compare them numerically on a
+common American put benchmark.
+
+% =====================================================================
+\section{Implementation outline}
+% =====================================================================
+
+A single module is enough. \texttt{quantlib.trinomial} (Python) and
+\texttt{quant::pde::trinomial} (C++) provide:
+
+\begin{itemize}[leftmargin=2em]
+\item \texttt{trinomial\_european\_call(S, K, r, sigma, T, *, n\_steps, lambda\_param=3.0)}
+\item \texttt{trinomial\_european\_put(S, K, r, sigma, T, *, n\_steps, lambda\_param=3.0)}
+\item \texttt{trinomial\_american\_put(S, K, r, sigma, T, *, n\_steps, lambda\_param=3.0)}
+\end{itemize}
+
+Why no \texttt{trinomial\_american\_call}: for a stock with no
+dividends, the American call price equals the European call price
+(Merton 1973), so the function would duplicate the European version.
+
+The internal structure is a single helper function \texttt{\_trinomial\_backward}
+that performs the backward induction, parametrised by an option-type
+flag (\texttt{european\_call}, \texttt{european\_put}, \texttt{american\_put})
+that determines the terminal payoff and whether the early-exercise
+$\max\{\cdot, \phi\}$ check is applied at each step.
+
+% =====================================================================
+\section{Validation strategy}
+% =====================================================================
+
+Five tests:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Cross-validation (European)} against Black--Scholes
+closed form on a parameter grid. Tolerance $\sim 10^{-3}$ at
+$N = 2000$.
+
+\item \textbf{Cross-validation (American)} against an embedded
+CRR binomial reference (the same approach as Block~4's test). Tolerance
+$\sim 5 \times 10^{-3}$.
+
+\item \textbf{First-order convergence in $N$}: doubling $N$ should
+halve the error, distinguishing the trinomial from any
+hypothetical second-order scheme.
+
+\item \textbf{Lambda sweep}: at fixed $N$, varying $\lambda \in
+\{1.25, 2, 3, 5\}$ produces prices that all approach the BS limit
+as $N$ grows. The $\lambda = 1$ degenerate case (binomial-equivalent)
+agrees with the rest. This confirms that the choice of $\lambda$
+within the valid range $\lambda \ge 1$ is a tuning preference,
+not a correctness condition.
+
+\item \textbf{Input validation}: $\lambda < 1$ raises (it would
+violate $p_m \ge 0$); $n\_steps < 1$ raises; non-positive parameters
+raise.
+\end{enumerate}
+
+The fourth test is the operational confirmation that the
+$\lambda$-parameter is a tuning knob within a valid range, not a
+correctness-determining parameter.
+
+% =====================================================================
+\section*{References}
+% =====================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{KR1991}
+B. Kamrad and P. Ritchken.
+\emph{Multinomial approximating models for options with $k$ state variables.}
+Management Science 37(12), 1640--1652, 1991. The original paper
+introducing the $\lambda$-parametrised trinomial.
+
+\bibitem{Hull2018}
+J.~C. Hull.
+\emph{Options, Futures, and Other Derivatives.}
+10th ed., Pearson, 2018. Chapter 21: practitioner-oriented treatment
+of binomial and trinomial trees.
+
+\bibitem{Wilmott2006}
+P. Wilmott.
+\emph{Paul Wilmott on Quantitative Finance.}
+2nd ed., Wiley, 2006. Chapter 20 on tree methods, including
+implementation pseudocode.
+
+\bibitem{TavellaRandall2000}
+D. Tavella and C. Randall.
+\emph{Pricing Financial Instruments: The Finite Difference Method.}
+Wiley, 2000. Chapter 5 explicitly relates lattice methods to
+finite-difference schemes; the FTCS--trinomial equivalence is
+implicit in their treatment.
+
+\bibitem{BrennanSchwartz1978}
+M.~J. Brennan and E.~S. Schwartz.
+\emph{Finite difference methods and jump processes arising in the
+pricing of contingent claims: A synthesis.}
+Journal of Financial and Quantitative Analysis 13(3), 461--474, 1978.
+Historical reference for the equivalence between FD methods and
+tree methods.
+
+\bibitem{Merton1973}
+R.~C. Merton.
+\emph{Theory of rational option pricing.}
+Bell Journal of Economics and Management Science 4(1), 141--183, 1973.
+Includes the result that the American call equals the European call
+for non-dividend-paying stocks.
+
+\end{thebibliography}
+
+\end{document}
