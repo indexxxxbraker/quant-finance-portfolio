@@ -1,0 +1,18 @@
+case,option_type,method,category,price,reference,abs_error,rel_error_pct,half_width,elapsed_ms
+short_T,european_call,BS closed form,closed_form,2.773654,2.773654,0.000000e+00,0.0000,,0.54
+short_T,european_call,MC exact (terminal),mc_vanilla,2.766848,2.773654,6.805799e-03,0.2454,1.107533e-02,73.15
+short_T,european_call,MC Euler (n_steps=20),mc_vanilla,2.769428,2.773654,4.225927e-03,0.1524,1.104568e-02,337.60
+short_T,european_call,MC Milstein (n_steps=20),mc_vanilla,2.768855,2.773654,4.799395e-03,0.1730,1.106491e-02,343.80
+short_T,european_call,MC + antithetic variates,mc_vr,2.772891,2.773654,7.636057e-04,0.0275,5.645450e-03,46.11
+short_T,european_call,MC + CV (underlying),mc_vr,2.773111,2.773654,5.429566e-04,0.0196,5.243261e-03,48.49
+short_T,european_call,MC + CV (asset-or-nothing),mc_vr,2.770838,2.773654,2.816544e-03,0.1015,7.812961e-03,53.90
+short_T,european_call,Sobol QMC (deterministic),qmc,2.774449,2.773654,7.947709e-04,0.0287,,575.85
+short_T,european_call,Sobol RQMC (randomised),qmc,2.773210,2.773654,4.441040e-04,0.0160,1.510132e-03,651.47
+short_T,european_call,Trinomial KR (lambda=3),lattice,2.773024,2.773654,6.301547e-04,0.0227,,7.67
+short_T,european_call,FTCS,pde,2.773630,2.773654,2.409954e-05,0.0009,,21.01
+short_T,european_call,BTCS,pde,2.771951,2.773654,1.702822e-03,0.0614,,62.55
+short_T,european_call,Crank-Nicolson,pde,2.773523,2.773654,1.309969e-04,0.0047,,61.08
+short_T,american_put,CRR binomial American,lattice,2.312208,2.312537,3.289210e-04,0.0142,,18.88
+short_T,american_put,Trinomial KR American,lattice,2.311999,2.312537,5.375360e-04,0.0232,,20.73
+short_T,american_put,CN-PSOR,pde,2.312200,2.312537,3.362026e-04,0.0145,,1473.58
+short_T,american_put,LSM (Longstaff-Schwartz),mc,2.306504,2.312537,6.032983e-03,0.2609,7.952753e-03,3813.56
