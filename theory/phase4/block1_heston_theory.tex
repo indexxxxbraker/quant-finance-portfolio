@@ -1,0 +1,463 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!50!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Phase 4, Block 1\\[0.3em]\Large The Heston Model and the CIR Variance Process}
+\author{Quant Finance Portfolio}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+%============================================================
+\section{Introduction}
+%============================================================
+
+The Black--Scholes--Merton model assumes the underlying asset \(S\) follows a geometric Brownian motion with constant volatility \(\sigma\). This single-parameter model has the virtue of admitting a closed-form pricing formula for European vanilla options, but it is empirically falsified in three important ways.
+
+\paragraph{The volatility smile.}
+If we invert market prices of vanilla options through the Black--Scholes formula we obtain implied volatilities. Were the model correct, those implied volatilities would equal the (single) realized volatility of \(S\) and be flat across strikes and maturities. They are not. Equity-index options exhibit a downward-sloping \emph{skew}: out-of-the-money puts trade richer than at-the-money options. FX and equity single-name options often show a U-shaped \emph{smile}. The implied-volatility surface reflects information about the joint distribution of returns that BS cannot capture.
+
+\paragraph{The leverage effect.}
+Empirically, returns of an equity index and changes in its volatility are negatively correlated. When the market falls, volatility rises (the well-known VIX inverse relationship). A constant-volatility model has zero correlation by construction.
+
+\paragraph{Volatility clustering.}
+Realized volatility itself shows persistence: high-volatility periods are followed by high-volatility periods. The natural fix is to make \(\sigma\) a stochastic process with mean-reverting dynamics.
+
+The Heston model \cite{Heston1993} is the simplest stochastic-volatility model that captures all three phenomena: random instantaneous variance, negative correlation with the underlying, and mean reversion. Crucially, it admits a semi-closed-form characteristic function, which makes Fourier-based pricing and calibration tractable. This combination of empirical realism and computational tractability is what made it the industry workhorse and what justifies the depth of treatment we give it in this Phase.
+
+The aim of this block is to lay the mathematical foundations:
+\begin{itemize}[topsep=2pt]
+    \item the SDE system itself, and the precise meaning of working under the risk-neutral measure;
+    \item the Cox--Ingersoll--Ross (CIR) variance process, including existence and uniqueness despite a non-Lipschitz diffusion coefficient, the Feller boundary classification, the transition density, and the conditional moments;
+    \item the coupled \((S, v)\) system and the Cholesky construction of the correlation;
+    \item the affine structure of the model, which underpins the Fourier pricing methods of Block 2.
+\end{itemize}
+No code is written in this block. All concepts introduced here are used in every subsequent block.
+
+%============================================================
+\section{The Heston SDE system}
+%============================================================
+
+Under the risk-neutral measure \(\mathbb{Q}\), the Heston model is the system of stochastic differential equations
+\begin{align}
+    dS_t &= r\,S_t\,dt + \sqrt{v_t}\,S_t\,dW^1_t,                                       \label{eq:heston-S} \\
+    dv_t &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^2_t,                        \label{eq:heston-v} \\
+    d\langle W^1, W^2\rangle_t &= \rho\,dt,                                             \label{eq:heston-rho}
+\end{align}
+where
+\begin{itemize}[topsep=2pt]
+    \item \(S_t > 0\) is the underlying asset price; \(v_t \geq 0\) is its instantaneous variance;
+    \item \(r\) is the (constant) risk-free rate;
+    \item \(\kappa > 0\) is the speed of mean reversion of the variance;
+    \item \(\theta > 0\) is the long-run variance: \(\mathbb{E}[v_t] \to \theta\) as \(t \to \infty\);
+    \item \(\sigma > 0\) is the volatility of variance (``vol of vol'');
+    \item \(\rho \in [-1, 1]\) is the instantaneous correlation between asset and variance shocks;
+    \item \(v_0 \geq 0\) is the initial variance.
+\end{itemize}
+
+The instantaneous volatility of \(S\) is \(\sqrt{v_t}\). The leverage effect is captured by \(\rho < 0\). The mean-reverting drift in \(v\) produces volatility clustering. The vol-of-vol \(\sigma\) controls the magnitude of variance fluctuations and, through it, the curvature of the smile. We will see throughout the Phase how each parameter controls a distinct feature of the implied-volatility surface.
+
+We will spend the rest of this section discussing what \eqref{eq:heston-S}--\eqref{eq:heston-rho} mean as written under the risk-neutral measure, since it is not entirely obvious that all five parameters can be specified there freely.
+
+\subsection*{Aside: the change of measure \texorpdfstring{$\mathbb{P} \to \mathbb{Q}$}{P -> Q} and the market price of variance risk}
+
+A subtle point not always emphasized in implementations: the parameters \(\kappa, \theta, \sigma, \rho, v_0\) are model parameters \emph{under} \(\mathbb{Q}\), and they are not, in general, equal to the corresponding parameters under the physical measure \(\mathbb{P}\).
+
+Suppose under \(\mathbb{P}\) the dynamics are
+\begin{align*}
+    dS_t &= \mu\,S_t\,dt + \sqrt{v_t}\,S_t\,dB^1_t, \\
+    dv_t &= \alpha(\bar{\theta} - v_t)\,dt + \sigma\sqrt{v_t}\,dB^2_t, \qquad d\langle B^1, B^2\rangle_t = \rho\,dt,
+\end{align*}
+with \(B^1, B^2\) Brownian motions under \(\mathbb{P}\) with correlation \(\rho\). Two sources of risk drive the system. To pass to a risk-neutral measure \(\mathbb{Q}\) we apply Girsanov's theorem with kernels \((\eta_1, \eta_2)\):
+\[
+    W^1_t = B^1_t + \int_0^t \eta_1(u)\,du, \qquad W^2_t = B^2_t + \int_0^t \eta_2(u)\,du.
+\]
+The kernel \(\eta_1\) is determined by the requirement that the discounted asset price \(e^{-rt}S_t\) be a \(\mathbb{Q}\)-martingale; this forces
+\[
+    \eta_1(t) \;=\; \frac{\mu - r}{\sqrt{v_t}}.
+\]
+This is the standard \emph{market price of equity risk}, generalized to a stochastic-volatility setting.
+
+The kernel \(\eta_2\), however, is \emph{not} pinned down by no-arbitrage. The variance \(v_t\) is not the price of a tradeable asset, so the absence of arbitrage in the underlying market gives no constraint on the change of measure for \(W^2\). This is precisely the statement that stochastic-volatility markets are \emph{incomplete}: there are infinitely many equivalent martingale measures, parameterized by the choice of \(\eta_2\).
+
+Heston \cite{Heston1993} assumes
+\[
+    \eta_2(t) \;=\; \frac{\lambda\sqrt{v_t}}{\sigma}
+\]
+for some constant \(\lambda\), the \emph{market price of variance risk}. With this choice the variance dynamics under \(\mathbb{Q}\) become
+\begin{align*}
+    dv_t &= \alpha(\bar{\theta} - v_t)\,dt - \sigma\sqrt{v_t}\,\eta_2(t)\,dt + \sigma\sqrt{v_t}\,dW^2_t \\
+        &= \bigl(\alpha\bar{\theta} - (\alpha + \lambda)v_t\bigr)\,dt + \sigma\sqrt{v_t}\,dW^2_t \\
+        &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^2_t,
+\end{align*}
+where
+\[
+    \kappa \;=\; \alpha + \lambda, \qquad \theta \;=\; \frac{\alpha\,\bar{\theta}}{\alpha + \lambda}.
+\]
+So both the speed of reversion \emph{and} the long-run mean of the variance change under the measure change, in a way that depends on \(\lambda\). The functional form \(\eta_2 \propto \sqrt{v_t}\) was chosen so that the structure of the SDE (linear drift, square-root diffusion) is preserved; that is what makes Heston tractable.
+
+In practice, \(\lambda\) is unobservable: nobody calibrates it directly. Calibration to market option prices fixes \(\kappa\) and \(\theta\) under \(\mathbb{Q}\) (and \(\sigma, \rho, v_0\), which do not change between measures since they enter the diffusion or the correlation, both of which are invariant under Girsanov). For the rest of this Phase we work directly under \(\mathbb{Q}\) and treat \((\kappa, \theta, \sigma, \rho, v_0)\) as the parameters to be calibrated. The discussion above is included so that the conceptual situation is clear: this is not a notational convenience, it is a substantive modeling choice rooted in market incompleteness.
+
+%============================================================
+\section{The CIR variance process}
+%============================================================
+
+The variance process \eqref{eq:heston-v}, considered in isolation, is the SDE used by Cox, Ingersoll and Ross \cite{CIR1985} to model interest rates, predating Heston. We refer to it as the \emph{CIR process} or the \emph{square-root process}. Almost all the mathematical subtleties of the Heston model live in the CIR process; once we understand it, the coupled system is straightforward.
+
+We study
+\begin{equation}
+    dv_t = \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW_t, \qquad v_0 \geq 0,             \label{eq:cir}
+\end{equation}
+with \(\kappa, \theta, \sigma > 0\) and a single Brownian motion \(W\). Throughout this section we use the dimensionless parameter
+\[
+    \nu \;:=\; \frac{2\kappa\theta}{\sigma^2},
+\]
+which controls the boundary behaviour at zero.
+
+%-----------------------------------------------------------
+\subsection{Existence and pathwise uniqueness}
+%-----------------------------------------------------------
+
+The classical strong existence and uniqueness theorem for SDEs (Itô) requires globally Lipschitz coefficients. For \eqref{eq:cir} the drift \(b(v) = \kappa(\theta - v)\) is Lipschitz, but the diffusion \(\sigma_d(v) = \sigma\sqrt{v}\) is only Hölder continuous of order \(1/2\) at \(v = 0\). The standard inequality
+\begin{equation}
+    \bigl|\sqrt{x} - \sqrt{y}\bigr| \;\leq\; \sqrt{\,|x - y|\,}, \qquad x, y \geq 0,            \label{eq:sqrt-holder}
+\end{equation}
+is saturated as \(y \to 0\), so the square-root diffusion fails to be Lipschitz on any neighbourhood of zero. The standard Itô existence theorem does not apply, and we need a finer tool.
+
+The required result is the Yamada--Watanabe theorem.
+
+\begin{theorem}[Yamada--Watanabe \cite{YamadaWatanabe1971}]\label{thm:YW}
+    Consider the one-dimensional SDE
+    \[
+        dX_t = b(X_t)\,dt + \sigma_d(X_t)\,dW_t, \qquad X_0 = x_0.
+    \]
+    Suppose:
+    \begin{enumerate}[label=(\roman*),topsep=2pt]
+        \item \(b: \mathbb{R} \to \mathbb{R}\) is Lipschitz;
+        \item \(\sigma_d: \mathbb{R} \to \mathbb{R}\) is continuous and there exists a strictly increasing function \(\rho: [0, \infty) \to [0, \infty)\) with \(\rho(0) = 0\) and
+        \[
+            \int_{(0,\,\varepsilon)} \rho(u)^{-2}\,du \;=\; +\infty \quad \text{for all } \varepsilon > 0,
+        \]
+        such that \(|\sigma_d(x) - \sigma_d(y)| \leq \rho(|x - y|)\) for all \(x, y\).
+    \end{enumerate}
+    Then pathwise uniqueness holds for the SDE.
+\end{theorem}
+
+A celebrated companion result of the same authors is that pathwise uniqueness plus weak existence implies strong existence and uniqueness. Weak existence for \eqref{eq:cir} is obtained by standard methods (e.g.\ Skorokhod's construction; see \cite{KaratzasShreve1991} \S5.3). The proof of Theorem~\ref{thm:YW} goes through a delicate localization argument and a smooth approximation of the function \(|x|\) near the origin; we omit it and refer the reader to \cite{KaratzasShreve1991} \S5.2.
+
+\begin{proposition}\label{prop:cir-existence}
+    The CIR SDE \eqref{eq:cir} admits a unique strong, non-negative solution.
+\end{proposition}
+
+\begin{proof}
+    The drift \(\kappa(\theta - v)\) is Lipschitz with constant \(\kappa\). For the diffusion, \eqref{eq:sqrt-holder} gives
+    \[
+        |\sigma\sqrt{x} - \sigma\sqrt{y}| \;\leq\; \sigma\sqrt{|x - y|},
+    \]
+    so we may take \(\rho(u) = \sigma\sqrt{u}\). Then \(\rho\) is strictly increasing, \(\rho(0) = 0\), and
+    \[
+        \int_0^\varepsilon \rho(u)^{-2}\,du \;=\; \int_0^\varepsilon \frac{1}{\sigma^2 u}\,du \;=\; +\infty.
+    \]
+    The hypotheses of Theorem~\ref{thm:YW} are satisfied, hence pathwise uniqueness. Combined with weak existence we obtain a unique strong solution. Non-negativity of the solution will follow from the boundary analysis of \S\ref{sec:cir-boundary}: when \(v\) approaches \(0\) the diffusion vanishes and the strictly positive drift \(\kappa\theta\) prevents the process from leaving \([0, \infty)\).
+\end{proof}
+
+\begin{remark}
+    The verification looks slightly miraculous: \(\rho(u) = \sigma\sqrt{u}\) exactly hits the integrability condition (one more derivative would fail). This is not a coincidence. The square-root diffusion is the borderline case: for \(\sigma_d(v) = \sigma\,v^\gamma\) with \(\gamma < 1/2\), pathwise uniqueness can fail; for \(\gamma > 1/2\), standard Itô applies. The CIR process sits exactly at the critical exponent.
+\end{remark}
+
+%-----------------------------------------------------------
+\subsection{Boundary behaviour at zero: Feller's classification}
+\label{sec:cir-boundary}
+%-----------------------------------------------------------
+
+We have a unique solution living in \([0, \infty)\). The next question is how the process behaves at the boundary \(v = 0\). Can it reach zero in finite time? If it does, what happens there? The answer depends on \(\kappa, \theta, \sigma\), and the framework that classifies the possibilities is Feller's boundary classification \cite{Feller1951}.
+
+\paragraph{Scale function.}
+For a one-dimensional time-homogeneous diffusion
+\[
+    dX_t = b(X_t)\,dt + \sigma_d(X_t)\,dW_t
+\]
+on an open interval \((\ell, r)\), define the \emph{scale density} relative to a reference point \(x_0 \in (\ell, r)\),
+\[
+    s(x) \;=\; \exp\!\left(-\int_{x_0}^{x} \frac{2 b(z)}{\sigma_d^2(z)}\,dz\right),
+\]
+and the \emph{scale function}
+\[
+    S(x) \;=\; \int_{x_0}^{x} s(y)\,dy.
+\]
+A direct application of Itô's formula shows that under the change of variable \(Y_t = S(X_t)\), the drift of \(Y\) vanishes; \(Y\) is a local martingale, in fact a time-changed Brownian motion. The scale function is the change of coordinates that ``straightens'' the diffusion into a martingale.
+
+The geometric content of the scale function for boundary analysis is the following. The process \(X_t\) hits the left boundary \(\ell\) in finite time with positive probability if and only if \(\ell\) is at finite scale distance from \(x_0\); equivalently, if and only if
+\[
+    \int_\ell^{x_0} s(y)\,dy \;<\; +\infty.
+\]
+This is one of \emph{Feller's tests} for boundary attainability; see \cite{KaratzasShreve1991} \S5.5 or \cite{KarlinTaylor1981} \S15.6. The intuition is clean: \(S(X_t)\) is a martingale, so it hits the value \(S(\ell)\) iff that value is finite (a Brownian motion or martingale on a bounded interval reaches its endpoints with positive probability; on an unbounded interval, one endpoint is unattainable).
+
+\paragraph{Application to CIR.}
+For \eqref{eq:cir} on the interval \((0, \infty)\), \(b(z) = \kappa(\theta - z)\), \(\sigma_d^2(z) = \sigma^2 z\). Take the reference point \(v_0 = 1\) for definiteness (any positive choice rescales \(s\) by a constant, which does not affect integrability). Then
+\[
+    \frac{2 b(z)}{\sigma_d^2(z)} \;=\; \frac{2\kappa(\theta - z)}{\sigma^2 z} \;=\; \frac{2\kappa\theta}{\sigma^2 z} - \frac{2\kappa}{\sigma^2}.
+\]
+Integrating from \(1\) to \(y\):
+\[
+    \int_1^y \frac{2 b(z)}{\sigma_d^2(z)}\,dz \;=\; \frac{2\kappa\theta}{\sigma^2}\,\ln y - \frac{2\kappa}{\sigma^2}(y - 1) \;=\; \nu \ln y - \frac{2\kappa}{\sigma^2}(y - 1).
+\]
+Hence
+\begin{equation}
+    s(y) \;=\; y^{-\nu}\,\exp\!\left(\frac{2\kappa(y - 1)}{\sigma^2}\right).                          \label{eq:cir-scale-density}
+\end{equation}
+Near \(y \to 0^+\) the exponential factor is bounded, so
+\[
+    s(y) \;\sim\; y^{-\nu} \cdot e^{-2\kappa/\sigma^2} \quad \text{as } y \to 0^+.
+\]
+The integrability of \(s\) on \((0, 1]\) is therefore controlled entirely by the power \(y^{-\nu}\):
+\[
+    \int_0^1 s(y)\,dy \;<\; +\infty \quad \iff \quad \nu < 1.
+\]
+This translates immediately into the classification of the boundary at zero:
+
+\begin{theorem}[Feller condition for CIR]\label{thm:feller}
+    Let \(v\) be the unique strong solution of \eqref{eq:cir} with \(v_0 \geq 0\). Then:
+    \begin{itemize}[topsep=2pt]
+        \item If \(\nu = 2\kappa\theta/\sigma^2 \geq 1\), the boundary \(v = 0\) is at infinite scale distance and is therefore \emph{unattainable}: \(\mathbb{P}(v_t > 0\ \forall t > 0) = 1\).
+        \item If \(\nu < 1\), the boundary \(v = 0\) is at finite scale distance and is \emph{attainable}: \(\mathbb{P}(v_t = 0 \text{ for some } t > 0) > 0\). The natural specification, consistent with the SDE viewed as a strong-solution problem, makes the boundary \emph{instantaneously reflecting}.
+    \end{itemize}
+\end{theorem}
+
+The condition \(2\kappa\theta \geq \sigma^2\) is universally called the \emph{Feller condition}.
+
+\paragraph{Discussion: reflecting, not absorbing.}
+When the Feller condition fails, the process can hit zero, but it does not stay there. Two facts make this concrete.
+
+First, the drift evaluated at zero, \(\kappa(\theta - 0) = \kappa\theta\), is strictly positive. The diffusion at zero, \(\sigma\sqrt{0} = 0\), vanishes. So infinitesimally at \(v = 0\) the process feels a deterministic upward push and there is no random kick that could take it negative. This is why the strong solution constructed via Yamada--Watanabe automatically lives in \([0, \infty)\) without any boundary condition having to be imposed by hand.
+
+Second, the time the process spends at the boundary is Lebesgue-null: the occupation measure of \(\{0\}\) is zero almost surely. This means the boundary is \emph{instantaneously reflecting}, not \emph{absorbing}. The process can touch the boundary but bounces off immediately.
+
+The numerical implication is direct: when running an Euler discretization, negative excursions of \(\hat v_t\) are an artifact of the discretization, not of the model. Schemes such as full-truncation Euler (Block 3), which project \(\hat v_t \mapsto \max(\hat v_t, 0)\) before computing \(\sqrt{\hat v_t}\), are not modifying the model; they are correcting a discretization error.
+
+\paragraph{Discussion: numerical examples.}
+For typical equity-index calibrations one finds parameters such as \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), giving \(\nu = 2(2)(0.04)/0.09 \approx 1.78 \geq 1\). Feller is satisfied. For FX or short-dated equity calibrations the vol-of-vol can be much larger: \(\kappa = 1\), \(\theta = 0.04\), \(\sigma = 0.5\) gives \(\nu = 2(1)(0.04)/0.25 = 0.32 < 1\). Feller is violated. We will see calibrated examples of both regimes in Block 6.
+
+%-----------------------------------------------------------
+\subsection{Transition density: non-central chi-squared}
+%-----------------------------------------------------------
+
+We now describe the conditional distribution of \(v_t\) given \(v_s\) for \(0 \leq s < t\). The result is classical:
+
+\begin{theorem}[CIR transition density]\label{thm:cir-density}
+    Let \(v\) solve \eqref{eq:cir}. For \(0 \leq s < t\),
+    \[
+        v_t \;\overset{d}{=}\; \frac{\sigma^2(1 - e^{-\kappa(t - s)})}{4\kappa}\;\chi'^2_d\!\bigl(\lambda(v_s, t - s)\bigr) \;\Big|\; v_s,
+    \]
+    where \(\chi'^2_d(\lambda)\) denotes a non-central chi-squared random variable with degrees of freedom and non-centrality parameter
+    \[
+        d \;=\; \frac{4\kappa\theta}{\sigma^2} \;=\; 2\nu, \qquad
+        \lambda(v_s, \Delta t) \;=\; \frac{4\kappa\,e^{-\kappa\Delta t}}{\sigma^2(1 - e^{-\kappa\Delta t})}\,v_s.
+    \]
+\end{theorem}
+
+A proof is given by integrating the Fokker--Planck equation associated with \eqref{eq:cir}; see \cite{CIR1985} for the original derivation, or \cite{Glasserman2004} \S3.4 for a presentation aimed at simulation.
+
+Recall the structure of the non-central \(\chi'^2\) distribution. If \(Y \sim \chi'^2_d(\lambda)\), then for integer \(d\), \(Y = \sum_{i=1}^d X_i^2\) where \(X_1 \sim \mathcal{N}(\sqrt{\lambda}, 1)\) and \(X_2, \dots, X_d \sim \mathcal{N}(0, 1)\) are independent. For non-integer \(d > 0\) one extends by the Poisson-mixture representation
+\begin{equation}
+    \chi'^2_d(\lambda) \;\overset{d}{=}\; \chi^2_{d + 2K} \quad \text{where } K \sim \mathrm{Poisson}(\lambda/2),                       \label{eq:ncchi-poisson-mixture}
+\end{equation}
+the chi-squared and Poisson being independent. Representation~\eqref{eq:ncchi-poisson-mixture} is what Broadie and Kaya \cite{BroadieKaya2006} use for exact simulation of \(v_t\) given \(v_s\): sample \(K\), then sample \(\chi^2_{d + 2K}\), then rescale.
+
+\begin{remark}[Feller condition reread]
+    Theorem~\ref{thm:cir-density} re-encodes the boundary classification in distributional language. The Feller condition \(\nu \geq 1\) becomes \(d \geq 2\); the marginal density of a \(\chi^2_d\) random variable with \(d \geq 2\) is bounded near zero, while for \(d < 2\) the density diverges as \(y^{d/2 - 1}\) at the origin. The latter regime corresponds to attainable boundary: there is significant probability mass concentrated near zero. In neither regime does the marginal distribution have an atom at zero, which is consistent with the process having Lebesgue-null occupation time at \(\{0\}\).
+\end{remark}
+
+\begin{remark}[Why exact simulation is expensive]
+    The transition density is known in closed form, so in principle one could simulate \(v_t\) exactly, without time-stepping. The catch is that sampling from a non-central chi-squared with non-integer \(d\) requires either (i) sampling a Poisson, then a chi-squared with random degrees of freedom, or (ii) inverting a hypergeometric-series CDF. Both are far slower than evaluating an Euler step, by orders of magnitude. Andersen's QE scheme \cite{Andersen2008} (Block 4) gets around this by matching only the first two moments of \(v_t \mid v_s\), sacrificing exact distributional matching for a 100\(\times\) speedup. The exact result, Theorem~\ref{thm:cir-density}, remains the conceptual reference point against which all discretization schemes are measured.
+\end{remark}
+
+%-----------------------------------------------------------
+\subsection{Conditional moments}
+%-----------------------------------------------------------
+
+The first two conditional moments follow from \(\mathbb{E}[\chi'^2_d(\lambda)] = d + \lambda\) and \(\mathrm{Var}[\chi'^2_d(\lambda)] = 2(d + 2\lambda)\), together with Theorem~\ref{thm:cir-density}. Writing \(\Delta t = t - s\):
+
+\begin{proposition}[Conditional moments of CIR]\label{prop:cir-moments}
+    For the CIR process \eqref{eq:cir},
+    \begin{align}
+        \mathbb{E}[v_t \mid v_s]   &= \theta + (v_s - \theta)\,e^{-\kappa\Delta t},                                                        \label{eq:cir-mean}\\
+        \mathrm{Var}(v_t \mid v_s) &= \frac{\sigma^2}{\kappa}\!\left[\,v_s\,e^{-\kappa\Delta t}\bigl(1 - e^{-\kappa\Delta t}\bigr) + \frac{\theta}{2}\bigl(1 - e^{-\kappa\Delta t}\bigr)^2\,\right].   \label{eq:cir-var}
+    \end{align}
+\end{proposition}
+
+\begin{proof}
+    Direct substitution of \(d = 4\kappa\theta/\sigma^2\), \(\lambda = 4\kappa e^{-\kappa\Delta t} v_s/[\sigma^2(1 - e^{-\kappa\Delta t})]\) and the scale factor \(\sigma^2(1 - e^{-\kappa\Delta t})/(4\kappa)\) into the moment formulas, followed by simplification.
+\end{proof}
+
+These two formulas are at the heart of Andersen's QE scheme. The mean has a clean interpretation: an exponential interpolation between \(v_s\) and \(\theta\) with rate \(\kappa\). As \(\Delta t \to 0\),
+\[
+    \mathbb{E}[v_t \mid v_s] \to v_s, \qquad \mathrm{Var}(v_t \mid v_s) \to \sigma^2 v_s\,\Delta t,
+\]
+recovering the local Brownian behaviour. As \(\Delta t \to \infty\),
+\[
+    \mathbb{E}[v_t \mid v_s] \to \theta, \qquad \mathrm{Var}(v_t \mid v_s) \to \frac{\sigma^2 \theta}{2\kappa},
+\]
+the stationary moments. We will use \eqref{eq:cir-mean}--\eqref{eq:cir-var} in Block 4 to construct moment-matched approximations to the conditional distribution of \(v_t\).
+
+%============================================================
+\section{The coupled Heston system}
+%============================================================
+
+We return to the joint system \eqref{eq:heston-S}--\eqref{eq:heston-rho}.
+
+\subsection{Existence and uniqueness}
+
+Existence and uniqueness of the joint system follow from those of the variance process plus a routine argument on the stock price. Conditional on a path of \(v\), the SDE for \(S\) becomes
+\[
+    dS_t = r\,S_t\,dt + \sqrt{v_t}\,S_t\,dW^1_t,
+\]
+a linear SDE in \(S\) with time-varying coefficients. Its unique solution is
+\[
+    S_t \;=\; S_0\,\exp\!\left(\int_0^t \!\bigl(r - \tfrac12 v_u\bigr)\,du \;+\; \int_0^t \!\sqrt{v_u}\,dW^1_u\right),
+\]
+where the stochastic integral is well-defined provided \(\int_0^t v_u\,du < \infty\) almost surely. This follows from \(\mathbb{E}\!\left[\int_0^t v_u\,du\right] = \int_0^t \mathbb{E}[v_u]\,du < \infty\) via Proposition~\ref{prop:cir-moments}.
+
+\subsection{Log-transform}
+
+In simulation and PDE work, it is convenient to work with the log-price \(X_t = \log S_t\). By Itô's formula,
+\begin{equation}
+    dX_t \;=\; \left(r - \tfrac12 v_t\right)\,dt + \sqrt{v_t}\,dW^1_t.                          \label{eq:heston-X}
+\end{equation}
+The drift in \(X\) is \(r - v_t/2\); the \(-v_t/2\) is the Itô correction that accounts for the convexity of the exponential. The system \((X, v)\) is what we will work with in Block 2 (the affine structure is naturally expressed in \(X\), not in \(S\)) and in Block 5 (the Heston PDE is more numerically stable in log-price, both because the spatial domain becomes \(\mathbb{R}\) and because the diffusion coefficient becomes uniformly Lipschitz in \(X\) at fixed \(v\)).
+
+\subsection{Correlation via Cholesky}
+
+For simulation it is helpful to express the correlated Brownian motions \((W^1, W^2)\) in terms of independent ones. Let \(Z^1, Z^2\) be independent standard Brownian motions. Set
+\begin{equation}
+    W^1_t = Z^1_t, \qquad W^2_t = \rho\,Z^1_t + \sqrt{1 - \rho^2}\,Z^2_t.                       \label{eq:cholesky}
+\end{equation}
+Then \(W^1, W^2\) are standard Brownian motions with \(d\langle W^1, W^2\rangle_t = \rho\,dt\), as required. This is the \(2 \times 2\) Cholesky decomposition of the correlation matrix
+\[
+    \begin{pmatrix} 1 & \rho \\ \rho & 1 \end{pmatrix} = L L^\top, \qquad
+    L = \begin{pmatrix} 1 & 0 \\ \rho & \sqrt{1 - \rho^2} \end{pmatrix}.
+\]
+In a discretized scheme, on each timestep we sample \(\Delta Z^1, \Delta Z^2 \sim \mathcal{N}(0, \Delta t)\) independently and form
+\[
+    \Delta W^1 = \Delta Z^1, \qquad \Delta W^2 = \rho\,\Delta Z^1 + \sqrt{1 - \rho^2}\,\Delta Z^2.
+\]
+We will use this construction throughout Blocks 3 and 4.
+
+%============================================================
+\section{Affine structure and preview of Fourier pricing}
+%============================================================
+
+The final piece of theory we set up in this block is the \emph{affine} structure of the Heston model. This will be the engine of Block 2.
+
+\begin{definition}[Affine diffusion, after \cite{DPS2000}]
+    A Markov diffusion \(X_t \in \mathbb{R}^n\) with drift \(\mu(x)\) and instantaneous covariance \(\Sigma(x) \in \mathbb{R}^{n \times n}\) is called \emph{affine} if both functions are affine in the state variable:
+    \[
+        \mu(x) = K_0 + K_1 x, \qquad \Sigma(x) = H_0 + \sum_{i=1}^{n} H_1^{(i)}\,x_i,
+    \]
+    for constant vectors and matrices \(K_0, K_1, H_0, H_1^{(i)}\).
+\end{definition}
+
+The fundamental result that motivates the definition is:
+
+\begin{theorem}[Duffie--Pan--Singleton \cite{DPS2000}, specialized to diffusions]\label{thm:DPS}
+    Let \(X\) be an affine diffusion. Then for \(u \in \mathbb{C}^n\) in a suitable domain there exist functions \(\alpha(t, T; u) \in \mathbb{C}\) and \(\beta(t, T; u) \in \mathbb{C}^n\) such that
+    \[
+        \mathbb{E}\!\left[\,e^{i\,u\cdot X_T}\,\Big|\,\mathcal{F}_t\,\right] \;=\; \exp\!\bigl(\alpha(t, T; u) + \beta(t, T; u)\cdot X_t\bigr).
+    \]
+    The functions \(\alpha, \beta\) satisfy a system of (generalized) Riccati ODEs with terminal conditions \(\alpha(T, T; u) = 0\), \(\beta(T, T; u) = i\,u\), derivable from the generator of \(X\).
+\end{theorem}
+
+The conclusion is striking: although the joint distribution of \(X_T\) typically has no closed form, its conditional characteristic function does, up to solving a small system of ODEs.
+
+\paragraph{Heston is affine.}
+We verify the definition for \(X = (\log S, v)\). From \eqref{eq:heston-X} and \eqref{eq:heston-v},
+\[
+    \mu(x, v) \;=\; \begin{pmatrix} r - v/2 \\ \kappa(\theta - v) \end{pmatrix}
+            \;=\; \underbrace{\begin{pmatrix} r \\ \kappa\theta \end{pmatrix}}_{K_0}
+                \;+\; \underbrace{\begin{pmatrix} 0 & -1/2 \\ 0 & -\kappa \end{pmatrix}}_{K_1}\!\begin{pmatrix} x \\ v \end{pmatrix}.
+\]
+The drift is affine. The instantaneous covariance, computed from \eqref{eq:heston-X}, \eqref{eq:heston-v} and \(d\langle W^1, W^2\rangle = \rho\,dt\), is
+\[
+    \Sigma(x, v) \;=\; v\,\begin{pmatrix} 1 & \rho\sigma \\ \rho\sigma & \sigma^2 \end{pmatrix}
+                \;=\; \underbrace{\mathbf{0}_{2\times 2}}_{H_0} \;+\; v\,\underbrace{\begin{pmatrix} 1 & \rho\sigma \\ \rho\sigma & \sigma^2 \end{pmatrix}}_{H_1^{(2)}}.
+\]
+The off-diagonal term \(\rho\sigma\,v\) is the cross-variation \(d\langle X, v\rangle/dt\) computed via \(d\langle W^1, W^2\rangle_t = \rho\,dt\). The covariance is affine in \((x, v)\); in fact, affine in \(v\) alone. Heston is affine.
+
+\paragraph{Form of the Heston characteristic function.}
+By Theorem~\ref{thm:DPS}, the joint characteristic function takes the form
+\[
+    \mathbb{E}\!\left[\,e^{i u_1 X_T + i u_2 v_T}\,\Big|\,\mathcal{F}_t\,\right] \;=\; \exp\!\bigl(A(t, T; u) + B(t, T; u)\,v_t + i u_1\,X_t\bigr),
+\]
+where the dependence on \(X_t\) is exactly \(i u_1 X_t\). The reason: the drift of \(X\) depends only on \(v\), so the coefficient of \(X\) in the exponent of the characteristic function is conserved along \(t\), equal to its terminal value \(i u_1\). For pricing European-style options on \(S_T\) we only need the marginal of \(X_T\), obtained by setting \(u_2 = 0\):
+\begin{equation}
+    \phi_X(u; t, T) \;:=\; \mathbb{E}\!\left[\,e^{i u X_T}\,\Big|\,\mathcal{F}_t\,\right] \;=\; \exp\!\bigl(A(t, T; u) + B(t, T; u)\,v_t + i u\,X_t\bigr).
+                                                                                                                            \label{eq:heston-cf-form}
+\end{equation}
+The functions \(A(t, T; u)\) and \(B(t, T; u)\) are determined by a system of two ODEs (one Riccati, one quadrature) with explicit solutions in terms of elementary functions. The derivation, the explicit formulas, the well-known branch-cut issue (the ``Heston trap'') and its remedy à la \cite{AMSS2007}, and the Fourier-inversion machinery that turns \eqref{eq:heston-cf-form} into option prices are the content of Block 2.
+
+The takeaway from Block 1 is structural: the entire reason Heston admits semi-closed-form European pricing is the affine property, which is itself a consequence of the linear drift and square-root diffusion of the variance process. Both the analytical tractability and the numerical subtleties (Feller, the boundary, Yamada--Watanabe) flow from the same source.
+
+%============================================================
+\section{Bibliographical notes}
+%============================================================
+
+The original sources to consult, with brief commentary:
+
+\begin{itemize}[topsep=2pt]
+    \item Heston (1993) \cite{Heston1993} introduces the model and derives the characteristic-function pricing formula. The original paper has the famous branch-cut bug; this is corrected in \cite{AMSS2007}.
+    \item Cox, Ingersoll, Ross (1985) \cite{CIR1985} introduces the variance process in the context of interest-rate modeling. Most modern presentations of CIR build on this.
+    \item Feller (1951) \cite{Feller1951} on boundary classification of one-dimensional diffusions. Unusually readable for a foundational paper.
+    \item Yamada and Watanabe (1971) \cite{YamadaWatanabe1971} for pathwise uniqueness under non-Lipschitz diffusion. The proof of Theorem~\ref{thm:YW} is in Karatzas and Shreve \cite{KaratzasShreve1991} \S5.2.
+    \item Karlin and Taylor (1981) \cite{KarlinTaylor1981} \S15 contains a clean exposition of Feller's classification, including the integrability tests we used. Karatzas and Shreve \cite{KaratzasShreve1991} \S5.5 covers the same material with a focus on Itô-style boundary classification.
+    \item Duffie, Pan and Singleton (2000) \cite{DPS2000} is the modern reference for affine processes, going far beyond the diffusion case (jumps, regime switching, etc.) but specializing cleanly to Heston.
+    \item Glasserman (2004) \cite{Glasserman2004} \S3.4 covers CIR from a Monte Carlo perspective; useful for Block 3.
+    \item Andersen (2008) \cite{Andersen2008} for the QE scheme; required reading before Block 4.
+    \item Rouah (2013) \cite{Rouah2013} is a thorough computational treatment of the model and a useful sanity-check reference for everything we will implement.
+\end{itemize}
+
+%============================================================
+\begin{thebibliography}{99}
+%============================================================
+    \bibitem{AMSS2007}      Albrecher, H.; Mayer, P.; Schoutens, W.; Tistaert, J. (2007). \emph{The little Heston trap}. Wilmott Magazine, 83--92.
+    \bibitem{Andersen2008}  Andersen, L. (2008). \emph{Simple and efficient simulation of the Heston stochastic volatility model}. Journal of Computational Finance, 11(3), 1--42.
+    \bibitem{BroadieKaya2006} Broadie, M.; Kaya, Ö. (2006). \emph{Exact simulation of stochastic volatility and other affine jump-diffusion processes}. Operations Research, 54(2), 217--231.
+    \bibitem{CIR1985}       Cox, J.~C.; Ingersoll, J.~E.; Ross, S.~A. (1985). \emph{A theory of the term structure of interest rates}. Econometrica, 53(2), 385--407.
+    \bibitem{DPS2000}       Duffie, D.; Pan, J.; Singleton, K. (2000). \emph{Transform analysis and asset pricing for affine jump-diffusions}. Econometrica, 68(6), 1343--1376.
+    \bibitem{Feller1951}    Feller, W. (1951). \emph{Two singular diffusion problems}. Annals of Mathematics, 54(1), 173--182.
+    \bibitem{Glasserman2004} Glasserman, P. (2004). \emph{Monte Carlo Methods in Financial Engineering}. Springer.
+    \bibitem{Heston1993}    Heston, S.~L. (1993). \emph{A closed-form solution for options with stochastic volatility with applications to bond and currency options}. Review of Financial Studies, 6(2), 327--343.
+    \bibitem{KaratzasShreve1991} Karatzas, I.; Shreve, S.~E. (1991). \emph{Brownian Motion and Stochastic Calculus}. Springer, 2nd edition.
+    \bibitem{KarlinTaylor1981} Karlin, S.; Taylor, H.~M. (1981). \emph{A Second Course in Stochastic Processes}. Academic Press.
+    \bibitem{Rouah2013}     Rouah, F.~D. (2013). \emph{The Heston Model and Its Extensions in Matlab and C\#}. Wiley.
+    \bibitem{YamadaWatanabe1971} Yamada, T.; Watanabe, S. (1971). \emph{On the uniqueness of solutions of stochastic differential equations}. Journal of Mathematics of Kyoto University, 11, 155--167.
+\end{thebibliography}
+
+\end{document}
