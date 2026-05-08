@@ -28,6 +28,8 @@ add_library(quant_lib
     src/btcs.cpp
     src/theta_scheme.cpp
     src/cn.cpp
+    src/psor.cpp
+    src/cn_american.cpp
 )
 
 # QMC needs to know the path to the Joe-Kuo direction-numbers file.
@@ -73,6 +75,8 @@ add_executable(quant_tests
     tests/test_btcs.cpp
     tests/test_theta_scheme.cpp
     tests/test_cn.cpp
+    tests/test_psor.cpp
+    tests/test_cn_american.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 
