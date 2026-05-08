@@ -30,6 +30,7 @@ add_library(quant_lib
     src/cn.cpp
     src/psor.cpp
     src/cn_american.cpp
+    src/trinomial.cpp
 )
 
 # QMC needs to know the path to the Joe-Kuo direction-numbers file.
@@ -77,6 +78,7 @@ add_executable(quant_tests
     tests/test_cn.cpp
     tests/test_psor.cpp
     tests/test_cn_american.cpp
+    tests/test_trinomial.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 
