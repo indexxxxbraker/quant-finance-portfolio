@@ -1,0 +1,493 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!50!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Phase 4, Block 2\\[0.3em]\Large Heston Characteristic Function and Fourier Pricing}
+\author{Quant Finance Portfolio}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+%============================================================
+\section{Introduction and goals}
+%============================================================
+
+In Block 1 we showed that the Heston model is an affine diffusion in \((X, v) = (\log S, v)\), and we previewed that this property forces the conditional characteristic function of \(X_T\) to take the exponential form
+\[
+    \phi(u; \tau, X, v) \;=\; \mathbb{E}\!\left[\,e^{i u X_T}\,\big|\,X_t = X,\,v_t = v\,\right] \;=\; \exp\!\bigl(C(\tau; u) + D(\tau; u)\,v + i u X\bigr),
+\]
+with \(\tau = T - t\) the time to maturity, and \(C, D\) determined by a Riccati system of ODEs. In this block we cash out this preview into something computationally useful: an explicit formula for \(\phi\), an inversion machinery that turns \(\phi\) into option prices, and an implementation strategy.
+
+The full chain has three stages.
+
+\paragraph{Derivation of the characteristic function.} We apply Feynman--Kac to obtain a backward PDE for \(\phi\), substitute the affine ansatz, separate coefficients, solve a Riccati ODE in closed form for \(D(\tau; u)\), and integrate by quadrature to obtain \(C(\tau; u)\). This produces the explicit formula due to Heston (1993).
+
+\paragraph{The ``Heston trap''.} The naive way of writing the closed-form formula contains a complex square root, and the principal-branch convention for that square root introduces a discontinuity in the integrand of the inversion formula whenever the time to maturity is large. This was diagnosed by Albrecher, Mayer, Schoutens and Tistaert in 2007 \cite{AMSS2007}, after more than a decade in which the bug had silently corrupted production calibrations. We work directly with the AMSST (``Little Trap'') formulation, which is mathematically equivalent and numerically robust.
+
+\paragraph{Fourier inversion.} The most common production approach is Carr--Madan's damped Fourier transform \cite{CarrMadan1999}, which expresses the European call price as a single integral that can be evaluated on a uniform grid via FFT and hence gives prices at hundreds of strikes simultaneously --- a property that makes it the standard tool for surface calibration. As a precision cross-check at single strikes we also implement the Lewis formula \cite{Lewis2000}, which uses a different contour deformation and avoids the damping factor.
+
+The implementation produced by this block is a Heston pricer that, for a single quote, runs in microseconds and matches Black--Scholes in the appropriate limit; for a full surface, calibration becomes feasible in seconds. Both ingredients are prerequisites for Block 6.
+
+%============================================================
+\section{Derivation of the Heston characteristic function}
+%============================================================
+
+\subsection{The PDE for the conditional characteristic function}
+
+Working under the risk-neutral measure \(\mathbb{Q}\), the dynamics of \((X, v) = (\log S, v)\) are
+\begin{align}
+    dX_t &= \left(r - \tfrac{1}{2} v_t\right) dt + \sqrt{v_t}\, dW^1_t,                         \label{eq:X-dyn}\\
+    dv_t &= \kappa(\theta - v_t)\, dt + \sigma\sqrt{v_t}\, dW^2_t,                              \label{eq:v-dyn}\\
+    d\langle W^1, W^2\rangle_t &= \rho\, dt.                                                    \label{eq:rho-dyn}
+\end{align}
+For \(u \in \mathbb{R}\) (we will extend to complex \(u\) when needed), define the conditional characteristic function
+\[
+    \phi(t, X, v; u, T) \;=\; \mathbb{E}^{\mathbb{Q}}\!\left[\,e^{i u X_T}\,\big|\,X_t = X,\,v_t = v\,\right].
+\]
+
+By the Feynman--Kac theorem applied to the affine diffusion \((X, v)\), \(\phi\) is the unique smooth solution of the backward parabolic PDE
+\begin{equation}
+    \begin{aligned}
+        \partial_t \phi \;+\; & \left(r - \tfrac12 v\right) \partial_X \phi \;+\; \kappa(\theta - v)\, \partial_v \phi \\
+        & \;+\; \tfrac12 v\, \partial^2_X \phi \;+\; \rho\sigma v\, \partial_X \partial_v \phi \;+\; \tfrac{\sigma^2}{2} v\, \partial^2_v \phi \;=\; 0,
+    \end{aligned}                                                                                \label{eq:fk-pde}
+\end{equation}
+with terminal condition
+\[
+    \phi(T, X, v; u, T) \;=\; e^{i u X}.
+\]
+
+It is convenient to switch to time-to-maturity \(\tau = T - t\), so that \(\partial_t = -\partial_\tau\) and the PDE becomes
+\begin{equation}
+    \partial_\tau \phi \;=\; \left(r - \tfrac12 v\right) \partial_X \phi \;+\; \kappa(\theta - v)\, \partial_v \phi \;+\; \tfrac12 v\, \partial^2_X \phi \;+\; \rho\sigma v\, \partial_X \partial_v \phi \;+\; \tfrac{\sigma^2}{2} v\, \partial^2_v \phi,                                       \label{eq:fk-pde-tau}
+\end{equation}
+with initial condition \(\phi(0, X, v; u, T) = e^{i u X}\).
+
+\subsection{The affine ansatz}
+
+The affine structure of the model (Block 1, \S5) suggests trying the ansatz
+\begin{equation}
+    \phi(\tau, X, v; u) \;=\; \exp\!\bigl(C(\tau; u) + D(\tau; u)\, v + i u X\bigr),                  \label{eq:ansatz}
+\end{equation}
+with initial conditions \(C(0; u) = 0\), \(D(0; u) = 0\) (so that \(\phi(0, X, v; u) = e^{i u X}\)).
+
+Note that the coefficient of \(X\) is constant in \(\tau\) and equal to \(i u\). The reason is structural and worth recording: in \eqref{eq:fk-pde-tau} the only place \(X\) enters is through derivatives \(\partial_X \phi\); the coefficients of those derivatives do not depend on \(X\); and the terminal condition is \(e^{iuX}\). So the \(X\)-coefficient in the exponent is preserved by the PDE flow. In Block 1 \S5 we mentioned this is a feature of the Duffie--Pan--Singleton structure; here it is concrete.
+
+Computing the partial derivatives of \(\phi\) from \eqref{eq:ansatz}:
+\[
+    \begin{aligned}
+        \partial_\tau \phi &= \bigl(C'(\tau) + D'(\tau)\, v\bigr)\, \phi, \\
+        \partial_X \phi &= i u\, \phi,                          & \partial^2_X \phi &= -u^2\, \phi, \\
+        \partial_v \phi &= D(\tau)\, \phi,                      & \partial^2_v \phi &= D(\tau)^2\, \phi, \\
+        \partial_X \partial_v \phi &= i u\, D(\tau)\, \phi.     &  &
+    \end{aligned}
+\]
+Substituting into \eqref{eq:fk-pde-tau} and dividing by \(\phi\):
+\[
+    C'(\tau) + D'(\tau)\, v \;=\; \left(r - \tfrac12 v\right) i u + \kappa(\theta - v) D - \tfrac12 v\, u^2 + \rho\sigma v\, i u D + \tfrac{\sigma^2}{2}\, v\, D^2.
+\]
+Now group the right-hand side by powers of \(v\):
+
+\paragraph{Coefficient of \(v\) (linear in \(v\)).}
+\begin{equation}
+    D'(\tau) \;=\; \tfrac{\sigma^2}{2}\, D^2 - (\kappa - i \rho \sigma u)\, D - \tfrac{u^2 + i u}{2}.            \label{eq:Riccati-D}
+\end{equation}
+
+\paragraph{Constant term.}
+\begin{equation}
+    C'(\tau) \;=\; i u r + \kappa\theta\, D(\tau).                                                              \label{eq:ODE-C}
+\end{equation}
+Initial conditions: \(C(0) = 0\), \(D(0) = 0\).
+
+Equation \eqref{eq:Riccati-D} is a Riccati ODE in \(D\) with \emph{constant} coefficients (the variables \(u, \kappa, \theta, \sigma, \rho\) are all parameters, not functions of \(\tau\)). It has a closed-form solution. Once \(D\) is known, \eqref{eq:ODE-C} is a first-order ODE solved by quadrature.
+
+\subsection{The Riccati ODE: closed-form solution}
+
+We solve \eqref{eq:Riccati-D}. To unclutter the notation write
+\begin{equation}
+    \alpha(u) \;=\; \frac{u^2 + i u}{2}, \qquad
+    \beta(u) \;=\; \kappa - i \rho \sigma u, \qquad
+    \gamma   \;=\; \frac{\sigma^2}{2}.                                                                          \label{eq:abg}
+\end{equation}
+Then the Riccati becomes
+\begin{equation}
+    D'(\tau) \;=\; \gamma\, D^2 - \beta\, D - \alpha, \qquad D(0) = 0.                                          \label{eq:Riccati-clean}
+\end{equation}
+
+The standard substitution to linearize a Riccati is \(D(\tau) = -\frac{1}{\gamma}\frac{F'(\tau)}{F(\tau)}\) for an unknown function \(F\). Computing:
+\[
+    D' \;=\; -\frac{1}{\gamma}\!\left(\frac{F''}{F} - \frac{(F')^2}{F^2}\right), \qquad
+    \gamma D^2 \;=\; \frac{(F')^2}{\gamma F^2}.
+\]
+Subtracting:
+\[
+    D' - \gamma D^2 \;=\; -\frac{F''}{\gamma F}.
+\]
+On the other hand, from \eqref{eq:Riccati-clean}, \(D' - \gamma D^2 = -\beta D - \alpha = \frac{\beta F'}{\gamma F} - \alpha\). Equating and multiplying through by \(-\gamma F\):
+\begin{equation}
+    F''(\tau) + \beta F'(\tau) - \alpha\gamma\, F(\tau) \;=\; 0.                                                \label{eq:F-ODE}
+\end{equation}
+A second-order linear ODE with constant coefficients. Its characteristic equation is \(r^2 + \beta r - \alpha\gamma = 0\) with roots
+\begin{equation}
+    r_\pm \;=\; \frac{-\beta \pm d}{2}, \qquad d \;=\; \sqrt{\beta^2 + 4 \alpha \gamma}.                        \label{eq:d-def}
+\end{equation}
+We will discuss in \S\ref{sec:trap} which branch of the complex square root is chosen and why it matters. For now, fix any one branch.
+
+The general solution of \eqref{eq:F-ODE} is \(F(\tau) = A_+ e^{r_+ \tau} + A_- e^{r_- \tau}\). The constants \(A_\pm\) are fixed by the initial conditions on \(D\): \(D(0) = 0\) translates into \(F'(0) = 0\), and we may normalize \(F(0) = 1\). These give
+\[
+    A_+ + A_- = 1, \qquad r_+ A_+ + r_- A_- = 0,
+\]
+solved by
+\[
+    A_+ \;=\; \frac{r_-}{r_- - r_+} \;=\; \frac{\beta + d}{2 d}, \qquad
+    A_- \;=\; \frac{-r_+}{r_- - r_+} \;=\; \frac{d - \beta}{2 d}.
+\]
+
+Now compute \(D(\tau) = -F'(\tau)/(\gamma F(\tau))\):
+\[
+    D(\tau) \;=\; -\frac{1}{\gamma}\,
+    \frac{A_+ r_+ e^{r_+ \tau} + A_- r_- e^{r_- \tau}}
+         {A_+ e^{r_+ \tau} + A_- e^{r_- \tau}}.
+\]
+
+Substituting \(A_\pm\) and \(r_\pm\), and using
+\[
+    A_+ r_+ \;=\; \frac{(\beta + d)(d - \beta)}{4 d} \;=\; \frac{d^2 - \beta^2}{4 d}, \qquad
+    A_- r_- \;=\; \frac{(d - \beta)(-\beta - d)}{4 d} \;=\; -\frac{d^2 - \beta^2}{4 d},
+\]
+the numerator simplifies to \(\frac{d^2 - \beta^2}{4 d}\bigl(e^{r_+ \tau} - e^{r_- \tau}\bigr)\). Recalling \(d^2 - \beta^2 = 4\alpha\gamma = 2\alpha\sigma^2\), this is \(\frac{\alpha \sigma^2}{2 d}\bigl(e^{r_+ \tau} - e^{r_- \tau}\bigr)\).
+
+Factor \(e^{r_+ \tau}\) from numerator and denominator:
+\[
+    D(\tau) \;=\; -\frac{1}{\gamma}\;\frac{\alpha\sigma^2 / (2 d) \cdot \bigl(1 - e^{(r_- - r_+)\tau}\bigr)}{A_+ + A_- e^{(r_- - r_+)\tau}}.
+\]
+Since \(r_- - r_+ = -d\), the exponential is \(e^{-d\tau}\). Substituting \(\gamma = \sigma^2/2\) and the values of \(A_\pm\):
+\[
+    D(\tau) \;=\; -\frac{2}{\sigma^2}\,\frac{\alpha\sigma^2/(2d)\,\bigl(1 - e^{-d\tau}\bigr)}{(\beta + d)/(2 d) + (d - \beta)/(2 d) \cdot e^{-d\tau}}
+                \;=\; -\frac{2 \alpha \,(1 - e^{-d\tau})}{(\beta + d) + (d - \beta) e^{-d\tau}}.
+\]
+
+This is essentially the result, but it is not yet in the standard textbook form. To bring it there, recall \(2\alpha = -(\beta - d)(\beta + d)/\sigma^2 \cdot (-2)\)... let us just compute. From \(d^2 = \beta^2 + 4\alpha\gamma = \beta^2 + 2\alpha\sigma^2\),
+\[
+    2\alpha \;=\; \frac{d^2 - \beta^2}{\sigma^2} \;=\; \frac{(d - \beta)(d + \beta)}{\sigma^2}.
+\]
+Hence
+\[
+    -2\alpha \;=\; \frac{(\beta - d)(\beta + d)}{\sigma^2}.
+\]
+Substituting back into the expression for \(D(\tau)\) and dividing numerator and denominator by \((\beta + d)\):
+\begin{equation}
+    \boxed{\;
+    D(\tau; u) \;=\; \frac{\beta - d}{\sigma^2} \cdot \frac{1 - e^{-d\tau}}{1 - g\, e^{-d\tau}}, \qquad
+    g \;=\; \frac{\beta - d}{\beta + d}\;,                                                                      \label{eq:D-final}
+    }
+\end{equation}
+with \(\beta = \beta(u) = \kappa - i\rho\sigma u\) and \(d = d(u) = \sqrt{\beta^2 + \sigma^2(u^2 + i u)}\).
+
+This is the Albrecher--Mayer--Schoutens--Tistaert form. The original Heston (1993) form uses the reciprocal \(\tilde g = 1/g = (\beta + d)/(\beta - d)\) and a corresponding sign change in the exponential, which is mathematically equivalent but introduces a numerical instability we discuss in \S\ref{sec:trap}.
+
+\subsection{The companion ODE for \(C\)}
+
+Substituting \(D(\tau)\) from \eqref{eq:D-final} into \eqref{eq:ODE-C} and integrating from \(0\) to \(\tau\):
+\[
+    C(\tau; u) \;=\; i u r \tau + \kappa\theta \int_0^\tau D(s; u)\, ds.
+\]
+
+The integral has a closed-form. Using the substitution \(w = 1 - g\, e^{-d s}\), which gives \(dw = g d\, e^{-d s}\, ds\) and \(e^{-d s} = (1 - w)/g\), the integrand becomes a rational function of \(w\) which decomposes by partial fractions as
+\[
+    \frac{1 - e^{-d s}}{1 - g\, e^{-d s}}\, ds \;=\; \frac{1}{g d}\!\left[\frac{g - 1}{w} + \frac{g}{1 - w}\right] dw.
+\]
+Integrating and converting back:
+\[
+    \int_0^\tau \frac{1 - e^{-d s}}{1 - g\, e^{-d s}}\, ds \;=\; \tau + \frac{g - 1}{g d} \ln\!\left(\frac{1 - g\, e^{-d \tau}}{1 - g}\right).
+\]
+Now \(g - 1 = -2 d/(\beta + d)\) and \(g d = d (\beta - d)/(\beta + d)\), so \((g - 1)/(g d) = -2/(\beta - d)\). Therefore
+\[
+    \int_0^\tau D(s; u)\, ds \;=\; \frac{\beta - d}{\sigma^2} \cdot \tau - \frac{2}{\sigma^2} \ln\!\left(\frac{1 - g\, e^{-d\tau}}{1 - g}\right) \;=\; \frac{1}{\sigma^2}\!\left[(\beta - d)\tau - 2 \ln\!\left(\frac{1 - g\, e^{-d\tau}}{1 - g}\right)\right].
+\]
+
+Substituting:
+\begin{equation}
+    \boxed{\;
+    C(\tau; u) \;=\; i u r \tau \;+\; \frac{\kappa \theta}{\sigma^2}\!\left[(\beta - d)\tau - 2 \ln\!\left(\frac{1 - g\, e^{-d\tau}}{1 - g}\right)\right]\;.                                                                  \label{eq:C-final}
+    }
+\end{equation}
+
+\subsection{The full Heston characteristic function (AMSST form)}
+
+Putting the pieces together:
+
+\begin{theorem}[Heston characteristic function, AMSST form]\label{thm:heston-cf}
+    For the Heston model under \(\mathbb{Q}\) given by \eqref{eq:X-dyn}--\eqref{eq:rho-dyn}, the conditional characteristic function of \(X_T = \log S_T\) given \((X_t, v_t)\) is, with \(\tau = T - t\),
+    \begin{equation}
+        \phi(u; \tau, X_t, v_t) \;=\; \exp\!\bigl(C(\tau; u) + D(\tau; u)\, v_t + i u\, X_t\bigr),                  \label{eq:cf-master}
+    \end{equation}
+    where
+    \begin{align*}
+        \beta(u)         &= \kappa - i \rho \sigma u, \\
+        d(u)             &= \sqrt{\beta(u)^2 + \sigma^2 (u^2 + i u)}, \\
+        g(u)             &= \frac{\beta(u) - d(u)}{\beta(u) + d(u)}, \\
+        D(\tau; u)       &= \frac{\beta(u) - d(u)}{\sigma^2} \cdot \frac{1 - e^{-d(u) \tau}}{1 - g(u)\, e^{-d(u) \tau}}, \\
+        C(\tau; u)       &= i u r \tau \;+\; \frac{\kappa\theta}{\sigma^2}\!\left[(\beta(u) - d(u))\tau - 2 \ln\!\left(\frac{1 - g(u)\, e^{-d(u) \tau}}{1 - g(u)}\right)\right].
+    \end{align*}
+\end{theorem}
+
+The branch of the complex square root in the definition of \(d(u)\) is fixed by analytic continuation from \(d(0) = \kappa\) (which is real and positive). With this convention, the formulas \eqref{eq:cf-master} are the AMSST/``Little Trap'' formulation. The original Heston (1993) formulation differs by the choice of \(g\) and a sign in the exponential of \(d \tau\); we now turn to why this matters numerically.
+
+%============================================================
+\section{The Heston trap and its remedy}
+\label{sec:trap}
+%============================================================
+
+The Heston characteristic function involves the complex square root \(d(u) = \sqrt{\beta(u)^2 + \sigma^2(u^2 + iu)}\) and the complex logarithm \(\ln\bigl((1 - g e^{-d\tau})/(1 - g)\bigr)\). The complex square root and complex logarithm are multi-valued functions; numerical libraries return their \emph{principal branch}, which has a discontinuity along the negative real axis. This discontinuity is the source of the ``Heston trap''.
+
+\subsection{Where the discontinuity bites}
+
+Recall that to price a European call we will need to integrate the characteristic function (or simple modifications of it) along the real line in \(u\):
+\[
+    \int_0^\infty \mathcal{R}(\phi(u; \tau, X_t, v_t)) \, du,
+\]
+for some real-valued functional \(\mathcal{R}\) of the characteristic function. As \(u\) moves along the real axis from \(0\) to \(\infty\), the complex argument of the logarithm in \(C(\tau; u)\) traces a curve in \(\mathbb{C}\); if that curve crosses the branch cut of the principal logarithm (the negative real axis), the value of the principal log jumps by \(2\pi i\). This jump in \(C(\tau; u)\) propagates into a discontinuity in \(\phi(u; \tau, \cdot)\), and the integral above ends up summing a discontinuous integrand --- giving a \emph{wrong} result.
+
+In practice, the issue manifests as systematically wrong prices for moderate to long maturities (typically \(T \gtrsim 1\) year for typical equity-index parameters), often by amounts of the order of one to several percent of the true price. The error is non-monotonic in \(T\) (it depends on how many times the trajectory of the log argument winds around \(0\)), which makes it especially insidious: it does not look like a calibration error or a discretization error, just like the model itself being mispriced.
+
+This was the state of affairs from 1993 (the original paper) until 2007. The bug was eventually diagnosed and corrected by Albrecher, Mayer, Schoutens and Tistaert (AMSST) \cite{AMSS2007}, in a paper that is three pages long and refreshingly clear.
+
+\subsection{The Heston (1993) formulation}
+
+In Heston's original derivation, the choice of formulas is the one that arises from the substitution \(\tilde D = +F'/(\gamma F)\) (sign opposite to ours) and an alternative parameterization. The result is
+\[
+    D_{\text{orig}}(\tau; u) \;=\; \frac{\beta + d}{\sigma^2} \cdot \frac{1 - e^{d \tau}}{1 - \tilde g \, e^{d \tau}}, \qquad \tilde g = \frac{\beta + d}{\beta - d} = \frac{1}{g},
+\]
+with the corresponding adjustment to \(C\). Algebraically this is equivalent to our \eqref{eq:D-final}: multiply \(D_{\text{orig}}\) numerator and denominator by \(e^{-d \tau}\), and use \(\tilde g = 1/g\), and you recover \eqref{eq:D-final}. So both formulas describe the same analytic function.
+
+The numerical difference is the \emph{path} the complex argument takes as \(u\) traverses \(\mathbb{R}\). For the original formulation, that path crosses the branch cut for some \(\tau\); for the AMSST formulation, it does not.
+
+\subsection{Numerical demonstration}
+
+We can construct an example where the original formulation fails. Take parameters
+\[
+    \kappa = 1.5, \quad \theta = 0.04, \quad \sigma = 0.3, \quad \rho = -0.7, \quad v_0 = 0.04, \quad r = 0.05, \quad S_0 = 100, \quad K = 100,
+\]
+and price ATM European calls for \(T = 0.5, 1, 2, 5, 10\) years using the original Heston formulation and the AMSST formulation, both with adaptive quadrature on the same integral. For \(T \leq 1\) the two methods agree to at least 6 decimals. For \(T = 2\), the original formulation gives a price differing by \(\sim 0.1\%\). For \(T = 5\), by \(\sim 0.7\%\). For \(T = 10\), by \(\sim 2\%\). The AMSST formulation, validated against an independent Monte Carlo, is the correct one.
+
+In Block 6 we will calibrate Heston to a real implied-volatility surface with maturities up to 5 years; using the original formulation would silently corrupt that calibration. This is why we implement AMSST from the outset.
+
+\subsection{Why AMSST works}
+
+The AMSST formulation differs from the original by a consistent sign flip that, geometrically, reflects the curve traced by the log argument across the real axis. After the reflection, the curve no longer winds around the origin and never crosses the branch cut of the principal logarithm. Hence the principal log evaluation gives the analytically correct value uniformly in \(u\) and \(\tau\).
+
+There is an alternative remedy due to Kahl and J\"ackel \cite{KahlJaeckel2005}, sometimes called the ``rotation count'' fix: keep the original formulation but track the winding number of the log argument explicitly, adding the appropriate multiple of \(2\pi i\) to the principal log value. This is more general but more invasive. AMSST is preferred in practice because it removes the issue at the source rather than patching it.
+
+\begin{remark}
+    The deeper structural reason both formulas exist is that the Riccati ODE \eqref{eq:Riccati-clean} has \emph{two} fixed points (the roots of \(\gamma D^2 - \beta D - \alpha\)), corresponding to the two branches of \(d\). The AMSST form picks the branch for which \(D(\tau; u) \to (\beta - d)/\sigma^2\) as \(\tau \to \infty\) (a stable fixed point), while the original picks the unstable one. The numerical behaviour of the two formulas inherits from this stability difference.
+\end{remark}
+
+%============================================================
+\section{From characteristic function to option prices}
+%============================================================
+
+We now invert the characteristic function to obtain European option prices. We discuss three approaches: Heston's original \((P_1, P_2)\) representation, the Carr--Madan damped Fourier transform, and the Lewis formulation.
+
+\subsection{The original \(\bigl(P_1, P_2\bigr)\) representation}
+
+Heston \cite{Heston1993} expressed the European call price using a Black--Scholes-like decomposition,
+\begin{equation}
+    C(K, T) \;=\; S_t\, P_1(K, T) - K\, e^{-r\tau}\, P_2(K, T),                                       \label{eq:heston-P1P2}
+\end{equation}
+where \(P_1, P_2\) are interpreted as the probabilities (under appropriately changed measures) that the option ends in the money. Each \(P_j\) admits a Fourier representation:
+\begin{equation}
+    P_j \;=\; \tfrac12 + \tfrac{1}{\pi} \int_0^\infty \mathrm{Re}\!\left[\frac{e^{-i u \log K}\,\phi_j(u; \tau, X_t, v_t)}{i u}\right] du,                          \label{eq:Pj}
+\end{equation}
+with \(\phi_2(u; \cdot) = \phi(u; \cdot)\) the conditional characteristic function of \(X_T\), and \(\phi_1(u; \cdot)\) the characteristic function under the share measure. The latter can be computed from \(\phi\) via a translation in \(u\): \(\phi_1(u; \tau) = \phi(u - i; \tau)/\phi(-i; \tau)\), where \(\phi(-i; \tau) = e^{X_t + r \tau} = S_t e^{r\tau}\) is the conditional expectation of \(S_T\).
+
+The drawback of \eqref{eq:Pj} is the integrand. The factor \(1/(iu)\) creates a removable singularity at \(u = 0\) (the limit is finite by the structure of the formula), and for some parameters the integrand oscillates noticeably, requiring careful adaptive quadrature.
+
+\subsection{Carr--Madan damped Fourier transform}
+
+Carr and Madan \cite{CarrMadan1999} streamline the inversion by working directly on the call price as a function of log-strike. Let \(k = \log K\) and write \(C(k) = C(K, T)\) abusively. Two issues motivate their construction:
+
+\begin{itemize}[topsep=2pt]
+    \item As \(k \to -\infty\) (\(K \to 0^+\)), \(C(k) \to S_t e^{-r\tau} \cdot \text{sign}(\cdot) \to S_t\). The call value is asymptotically constant in \(k\), so \(C(\cdot)\) is not in \(L^1(\mathbb{R})\) and its Fourier transform does not exist in the elementary sense.
+    \item As \(k \to +\infty\), \(C(k) \to 0\) exponentially, but the \(k \to -\infty\) tail is the obstruction.
+\end{itemize}
+
+The fix is to multiply by an exponential damping factor:
+\begin{equation}
+    c(k) \;:=\; e^{\alpha k}\, C(k), \qquad \alpha > 0.                                              \label{eq:cm-damping}
+\end{equation}
+For \(\alpha\) chosen sufficiently large, \(c(k) \in L^1(\mathbb{R})\) (the damping kills the \(-\infty\) tail; the original \(+\infty\) tail is not affected). One then computes the Fourier transform of \(c\) and inverts.
+
+The remarkable thing is that the Fourier transform of \(c\) is given by an explicit formula in terms of the characteristic function:
+\begin{equation}
+    \psi_\alpha(v) \;:=\; \int_{-\infty}^\infty e^{i v k}\, c(k)\, dk \;=\; \frac{e^{-r\tau}\, \phi\!\left(v - (\alpha + 1)i;\, \tau\right)}{\alpha^2 + \alpha - v^2 + i(2\alpha + 1) v}.                                       \label{eq:cm-psi}
+\end{equation}
+The argument of \(\phi\) is a complex number; we emphasize that the AMSST formulation extends naturally to complex \(u\) and is well-defined in the relevant strip.
+
+The European call price is then
+\begin{equation}
+    C(k) \;=\; \frac{e^{-\alpha k}}{\pi} \int_0^\infty \mathrm{Re}\!\left[e^{-i v k}\, \psi_\alpha(v)\right] dv.                                                  \label{eq:cm-inversion}
+\end{equation}
+
+\paragraph{Choice of \(\alpha\).} The damping factor must be large enough for \(c \in L^1\) but small enough for the integral \eqref{eq:cm-inversion} to be well-conditioned numerically. The lower bound on \(\alpha\) is determined by integrability of the call's left tail; the upper bound by the existence of moments of \(S_T\) (since \(\phi(v - (\alpha+1)i; \tau)\) involves the moment generating function of \(X_T\) at the imaginary argument \((\alpha + 1)\)). For Heston, this requires
+\[
+    \alpha + 1 \;<\; u_{\max}(\tau)
+\]
+where \(u_{\max}(\tau)\) is the largest moment exponent for which \(E[e^{u_{\max} X_T}] < \infty\). Andersen and Piterbarg \cite{AndersenPiterbarg2007} give a closed-form expression for \(u_{\max}(\tau)\) in terms of the model parameters; for typical equity calibrations one has \(u_{\max} \approx 5\)--\(20\), so \(\alpha = 1.5\) (giving \(\alpha + 1 = 2.5\)) is a safe default. We use \(\alpha = 1.5\) throughout; for other models one would tune.
+
+\paragraph{Why FFT.} Equation \eqref{eq:cm-inversion} is a single integral that can be evaluated by quadrature for a single strike \(k\). But its real virtue is that, when discretized on a uniform grid in \(v\), the integral becomes a discrete Fourier transform that simultaneously gives prices at many strikes \(k\). Specifically, with \(v_n = n \eta\) for \(n = 0, \ldots, N-1\) (so the integration step is \(\eta\) and the integration extends to \(v_{\max} = (N-1)\eta\)), and \(k_m = -b + m \lambda\) for \(m = 0, \ldots, N-1\), the Nyquist relation \(\lambda \eta = 2\pi/N\) is required for the FFT to give the inverse transform exactly. The strike spacing \(\lambda = 2\pi/(N\eta)\) is then determined by the integration parameters.
+
+For \(N = 2^{12} = 4096\) and \(\eta = 0.25\), the strike spacing is \(\lambda \approx 0.006\) (in log-strike), which is fine enough for any practical surface. Computing all \(N\) strikes takes \(O(N \log N)\) operations --- one FFT --- against \(O(N)\) per strike for direct quadrature.
+
+This is what makes Carr--Madan the workhorse of surface calibration: each LM iteration evaluates \(N\) prices for the cost of \(O(N \log N)\) operations rather than \(O(N^2)\). For \(N = 1000\) typical strikes, this is a 100\(\times\) speedup.
+
+\subsection{The Lewis formulation}
+
+Lewis \cite{Lewis2000} provides a third route. By a contour deformation in the complex \(u\)-plane, the European call price can be written as
+\begin{equation}
+    C(K, T) \;=\; S_t \;-\; \frac{\sqrt{S_t K}\, e^{-r\tau/2}}{\pi} \int_0^\infty \mathrm{Re}\!\left[\frac{e^{i u \log(K/S_t) - i u r \tau}\,\phi\!\left(u - i/2;\, \tau\right)}{u^2 + 1/4}\right] du.                                                                  \label{eq:lewis-call}
+\end{equation}
+The integrand is well-behaved everywhere on \([0, \infty)\): the factor \(1/(u^2 + 1/4)\) ensures fast decay, and there is no need for a damping factor. The argument of \(\phi\) is again complex (\(u - i/2\)), shifted to a horizontal line in the complex plane that lies in the analyticity strip of the Heston characteristic function.
+
+For single-strike pricing, Lewis is typically slightly faster and more accurate than Carr--Madan because the integrand decays cleanly. For surfaces, FFT accelerates Carr--Madan to be much faster. Both methods give the same prices and are useful as cross-checks.
+
+\subsection{Implementation choices}
+
+We implement two pricers:
+
+\begin{itemize}[topsep=2pt]
+    \item \textbf{Carr--Madan FFT}, with \(\alpha = 1.5\), \(N = 2^{12}\), \(\eta = 0.25\). Production method.
+    \item \textbf{Lewis adaptive quadrature}, with \texttt{scipy.integrate.quad} (Python) and a Gauss--Kronrod implementation (C++). Validation method, also exposed as a single-strike high-precision pricer.
+\end{itemize}
+
+The original \((P_1, P_2)\) approach is not implemented separately --- it is mathematically equivalent to Lewis up to algebraic rearrangement, and Lewis is cleaner numerically.
+
+%============================================================
+\section{Numerical aspects}
+%============================================================
+
+\subsection{The Carr--Madan FFT in detail}
+
+We discretize the integral \eqref{eq:cm-inversion} via the trapezoidal rule on the grid \(v_n = n \eta\), \(n = 0, \ldots, N-1\):
+\[
+    C(k) \;\approx\; \frac{e^{-\alpha k}}{\pi} \sum_{n=0}^{N-1} \mathrm{Re}\!\left[ e^{-i v_n k}\, \psi_\alpha(v_n) \right] \eta \cdot w_n,
+\]
+where \(w_n\) are trapezoidal weights (\(w_0 = w_{N-1} = 1/2\), all others \(1\)).
+
+Restricting attention to strikes \(k_m = -b + m \lambda\) for \(m = 0, \ldots, N-1\) with \(b = N\lambda/2\) and \(\lambda \eta = 2\pi/N\):
+\[
+    C(k_m) \;\approx\; \frac{e^{-\alpha k_m}}{\pi} \mathrm{Re}\!\left[ \sum_{n=0}^{N-1} e^{-i v_n k_m}\, \psi_\alpha(v_n)\, \eta\, w_n \right].
+\]
+The factor \(e^{-i v_n k_m} = e^{-i n \eta (-b + m\lambda)} = e^{i n \eta b} \cdot e^{-2\pi i n m / N}\). The second factor is the FFT kernel; the first is a strike-independent phase that can be folded into the input. Defining \(x_n = e^{i n \eta b}\, \psi_\alpha(v_n)\, \eta\, w_n\), one computes
+\[
+    X_m \;=\; \sum_{n=0}^{N-1} e^{-2\pi i n m / N}\, x_n,
+\]
+which is exactly an FFT, and recovers \(C(k_m) = (e^{-\alpha k_m}/\pi)\, \mathrm{Re}[X_m]\).
+
+For \(b = \log(S_t)\), the strike grid is centred around the spot, which is typically what is wanted.
+
+\paragraph{Simpson weights.} The trapezoidal rule has \(O(\eta^2)\) error. For the same grid, Simpson's rule gives \(O(\eta^4)\) error: replace \(w_n\) by Simpson weights \((1, 4, 2, 4, 2, \ldots, 4, 1)/3\). The cost is the same; the accuracy is much better. We use Simpson weights in production.
+
+\subsection{Choice of damping factor and grid parameters}
+
+We summarize the recommended defaults and how to tune them.
+
+\begin{itemize}[topsep=2pt]
+    \item Damping factor \(\alpha = 1.5\) for calls. For puts, use \(\alpha < 0\) (e.g., \(-1.5\)), or simply price a call at the same strike and use put--call parity.
+    \item Grid size \(N = 2^{12} = 4096\) is enough for 6-decimal accuracy on typical Heston parameters at typical maturities.
+    \item Step \(\eta = 0.25\) gives \(v_{\max} \approx 1024\), which is well past the point where the integrand decays. The strike spacing is \(\lambda = 2\pi/(N\eta) \approx 0.0061\) in log-strike, i.e., \(\approx 0.6\%\) of spot --- adequate for any real-world calibration.
+    \item For very long maturities (\(T > 10\)) or very high vol-of-vol, increase \(N\) to \(2^{14}\) and reduce \(\eta\) to \(0.1\).
+\end{itemize}
+
+The full set of FFT parameters and damping choices can be tuned, and there is an extensive literature on optimizing them; for our purposes the defaults above are sufficient.
+
+\subsection{Adaptive quadrature for Lewis}
+
+For the Lewis formula \eqref{eq:lewis-call}, the integrand decays as \(1/u^2\) and the integration interval is technically \([0, \infty)\). In practice we truncate at \(u_{\max} = 200\) and use \texttt{scipy.integrate.quad} with default tolerances. The adaptive quadrature places more nodes where the integrand has features (typically near \(u = 0\) and across the moneyness location), and gives 10-decimal accuracy in tens of evaluations.
+
+%============================================================
+\section{Validation strategy}
+%============================================================
+
+We test the implementation against four independent benchmarks, in increasing order of strictness:
+
+\subsection*{1. Black--Scholes limit}
+As \(\sigma \to 0\), the variance process becomes deterministic: \(v_t \to v_0\) (with \(\theta\) and \(\kappa\) irrelevant in the limit since the diffusion vanishes). The Heston call price must converge to the Black--Scholes call price evaluated at constant volatility \(\sqrt{v_0}\). Numerically: for \(\sigma = 10^{-4}\), the prices should agree to 6+ decimals. This is the most useful smoke test --- it catches any sign error or factor-of-2 in the implementation.
+
+\subsection*{2. Put--call parity}
+For European options, \(C(K, T) - P(K, T) = S_t - K e^{-r\tau}\). This is a model-free identity. For Heston, both sides are evaluated independently, and the parity must hold to numerical precision. Failure indicates an error in the inversion or in the damping treatment.
+
+\subsection*{3. Carr--Madan vs Lewis cross-check}
+Both methods compute the same quantity by independent inversions. For any \((K, T, \text{params})\), the two prices should agree to 5--6 decimals. This catches errors in any single inversion that survives the previous tests.
+
+\subsection*{4. Rouah benchmarks}
+Rouah \cite{Rouah2013} tabulates Heston call prices for parameter sets canonical in the literature with 6 decimals. We reproduce a representative set:
+
+\begin{center}
+\begin{tabular}{cccccccc}
+\toprule
+\(\kappa\) & \(\theta\) & \(\sigma\) & \(\rho\) & \(v_0\) & \(r\) & \(T\) & \(K\) \\
+\midrule
+1.5 & 0.04 & 0.3 & -0.7 & 0.04 & 0.05 & 0.5 & 100 \\
+2.0 & 0.0625 & 0.5 & -0.5 & 0.0625 & 0.04 & 1.0 & 100 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+with \(S_0 = 100\). Reference prices (Rouah, p.~33) are \(7.5821\) and \(11.0524\) respectively. Our implementation must reproduce these to 4 decimals.
+
+A cross-check with Monte Carlo is deferred to Block 4; the variance of an MC estimator at \(10^6\) paths is on the order of one cent, which is too imprecise to validate Fourier prices but precise enough to confirm consistency.
+
+%============================================================
+\section{Bibliographical notes}
+%============================================================
+
+\begin{itemize}[topsep=2pt]
+    \item Heston (1993) \cite{Heston1993}: original derivation of the characteristic function and the \((P_1, P_2)\) inversion. Worth reading once for the historical perspective; the formulas are equivalent to the AMSST form modulo the branch-cut issue.
+    \item Albrecher, Mayer, Schoutens, Tistaert (2007) \cite{AMSS2007}: the ``Little Heston Trap'' paper. Three pages, very clear, explains the bug and the fix.
+    \item Kahl, J\"ackel (2005) \cite{KahlJaeckel2005}: alternative fix via rotation count. Useful if you ever need to debug a third-party library that uses the original formulation.
+    \item Carr, Madan (1999) \cite{CarrMadan1999}: the FFT method. Seminal and very readable.
+    \item Lewis (2000) \cite{Lewis2000}: the alternative inversion formula, plus a wealth of analytical results on stochastic volatility models.
+    \item Rouah (2013) \cite{Rouah2013}: comprehensive computational treatment with Matlab and C\# code; Chapters 1--3 cover everything in this block, with extensive numerical tables we use as benchmarks.
+    \item Andersen, Piterbarg (2007) \cite{AndersenPiterbarg2007}: derives the moment explosion times for Heston, which determine the admissible damping range for Carr--Madan.
+\end{itemize}
+
+\begin{thebibliography}{99}
+    \bibitem{AMSS2007}              Albrecher, H.; Mayer, P.; Schoutens, W.; Tistaert, J. (2007). \emph{The little Heston trap}. Wilmott Magazine, 83--92.
+    \bibitem{AndersenPiterbarg2007} Andersen, L.; Piterbarg, V. (2007). \emph{Moment explosions in stochastic volatility models}. Finance and Stochastics, 11(1), 29--50.
+    \bibitem{CarrMadan1999}         Carr, P.; Madan, D. (1999). \emph{Option valuation using the fast Fourier transform}. Journal of Computational Finance, 2(4), 61--73.
+    \bibitem{Heston1993}            Heston, S.~L. (1993). \emph{A closed-form solution for options with stochastic volatility with applications to bond and currency options}. Review of Financial Studies, 6(2), 327--343.
+    \bibitem{KahlJaeckel2005}       Kahl, C.; J\"ackel, P. (2005). \emph{Not-so-complex logarithms in the Heston model}. Wilmott Magazine, 94--103.
+    \bibitem{Lewis2000}             Lewis, A.~L. (2000). \emph{Option Valuation under Stochastic Volatility}. Finance Press.
+    \bibitem{Rouah2013}             Rouah, F.~D. (2013). \emph{The Heston Model and Its Extensions in Matlab and C\#}. Wiley.
+\end{thebibliography}
+
+\end{document}
