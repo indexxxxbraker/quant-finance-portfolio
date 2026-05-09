@@ -86,6 +86,7 @@ add_executable(quant_tests
     tests/test_heston_fourier.cpp
     tests/test_heston_mc.cpp
     tests/test_heston_qe.cpp
+    tests/test_heston_pde.cpp
 )
 target_link_libraries(quant_tests PRIVATE quant_lib Catch2::Catch2WithMain)
 
