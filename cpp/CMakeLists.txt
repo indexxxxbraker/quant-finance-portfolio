@@ -34,6 +34,7 @@ add_library(quant_lib
     src/heston_fourier.cpp
     src/heston_mc.cpp
     src/heston_qe.cpp
+    src/heston_pde.cpp
 )
 
 # QMC needs to know the path to the Joe-Kuo direction-numbers file.
