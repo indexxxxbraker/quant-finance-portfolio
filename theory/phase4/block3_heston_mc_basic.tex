@@ -1,0 +1,385 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!50!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Phase 4, Block 3 \\[0.3em]\Large Heston model: Monte Carlo simulation with full-truncation Euler}
+\author{Quant Finance Portfolio}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+%============================================================
+\section{Introduction and goals}
+%============================================================
+
+In Block 2 we built a Fourier-based pricer for European options under the Heston model. That pricer is fast, accurate, and effectively bias-free, but it is restricted to European-style payoffs whose Fourier inversion is tractable. For more general payoffs --- path-dependent contracts (Asian, lookback, barrier), early-exercise contracts (American, Bermudan), or any structure depending on the joint trajectory of $(S, v)$ --- we need Monte Carlo simulation.
+
+The first non-trivial step of any Heston MC implementation is the discretisation of the variance process. The square-root diffusion of the CIR process,
+\[
+    dv_t = \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^2_t,
+\]
+has a diffusion coefficient that fails to be Lipschitz at $v = 0$. As a consequence, naive discretisations can produce sample paths $\hat v_n < 0$ even though the continuous process is non-negative; subsequent evaluations of $\sqrt{\hat v_n}$ become ill-defined and the simulation breaks. Several remedies have been proposed; the cleanest, given its simplicity and performance, is the \emph{full-truncation} Euler scheme of Lord, Koekkoek and van Dijk (2010), which is the focus of this block.
+
+This block has four goals.
+
+\paragraph{Theoretical foundations.} We discuss why naive Euler-Maruyama on the CIR process fails, what kinds of bias and error each remedy introduces, and why the full-truncation choice gives the smallest weak bias among the family of ``fix-up'' schemes.
+
+\paragraph{The full-truncation Euler scheme.} We derive its update rules for the Heston system, including the discretisation of the log-spot $\log S$ (Cholesky-correlated with the variance Brownian motion) and the proper handling of the non-negative variance.
+
+\paragraph{Convergence theory.} We discuss the weak and strong convergence rates of full-truncation Euler. The non-Lipschitz coefficient prevents the standard Itô-Taylor analysis from applying directly, and the rate is degraded relative to the Lipschitz case --- a fact that motivates the Andersen quadratic-exponential scheme of Block 4.
+
+\paragraph{Validation and use.} We design a validation strategy that uses the Fourier pricer of Block 2 as ground truth, characterise the bias-variance tradeoff of the MC estimator, and lay out the implementation pipeline for both Python and C++.
+
+%============================================================
+\section{The discretisation problem}
+%============================================================
+
+\subsection{Setup}
+
+Under the risk-neutral measure $\mathbb{Q}$, the Heston model is the system
+\begin{align}
+    dS_t &= r S_t\,dt + \sqrt{v_t}\, S_t\,dW^1_t,                                \label{eq:heston-S}\\
+    dv_t &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^2_t,                 \label{eq:heston-v}\\
+    d\langle W^1, W^2\rangle_t &= \rho\,dt,                                      \label{eq:heston-corr}
+\end{align}
+with parameters $\kappa > 0$, $\theta > 0$, $\sigma > 0$, $\rho \in [-1, 1]$ and initial condition $(S_0, v_0)$ with $S_0 > 0$, $v_0 \geq 0$.
+
+For Monte Carlo simulation, we partition the interval $[0, T]$ into $N$ time steps,
+\[
+    0 = t_0 < t_1 < \cdots < t_N = T, \qquad \Delta t_n := t_{n+1} - t_n,
+\]
+and seek to construct discrete-time processes $\hat S_n$, $\hat v_n$ that approximate the continuous $S_{t_n}$, $v_{t_n}$. Throughout we assume a \emph{uniform} mesh $\Delta t_n = \Delta t = T/N$; the extension to non-uniform meshes is straightforward but complicates the notation without adding insight.
+
+The two sources of error in the resulting MC estimator
+\[
+    \widehat C := \frac{e^{-rT}}{M} \sum_{m=1}^M f(\hat S^{(m)}_N)
+\]
+of $C := e^{-rT}\mathbb{E}[f(S_T)]$ are:
+\begin{itemize}[topsep=2pt]
+    \item the \textbf{discretisation bias} $\mathbb{E}[\widehat C] - C$, due to using $\hat S_N$ in place of $S_T$;
+    \item the \textbf{statistical error} $\mathrm{Var}(\widehat C)^{1/2} = O(M^{-1/2})$, due to averaging finitely many paths.
+\end{itemize}
+Reducing the bias requires finer time meshes (smaller $\Delta t$); reducing the statistical error requires more paths (larger $M$). Choosing a discretisation scheme is, in essence, a choice about how the bias scales with $\Delta t$ at fixed cost.
+
+\subsection{Why naive Euler fails on the CIR process}
+
+The standard Euler--Maruyama discretisation of \eqref{eq:heston-v} reads
+\begin{equation}
+    \hat v_{n+1} = \hat v_n + \kappa(\theta - \hat v_n)\,\Delta t + \sigma\sqrt{\hat v_n}\,\Delta W^2_n,                                                  \label{eq:naive-euler-v}
+\end{equation}
+where $\Delta W^2_n \sim \mathcal{N}(0, \Delta t)$. This has two related defects.
+
+\paragraph{Negative variance with positive probability.} For any $\hat v_n > 0$, the increment $\Delta W^2_n$ is unbounded below, so the right-hand side of \eqref{eq:naive-euler-v} is unbounded below. Hence $\mathbb{P}(\hat v_{n+1} < 0 \mid \hat v_n > 0) > 0$. Concretely, $\hat v_{n+1}$ becomes negative whenever $\Delta W^2_n < -\bigl(\hat v_n + \kappa(\theta - \hat v_n)\Delta t\bigr)/(\sigma\sqrt{\hat v_n})$, an event whose probability is non-negligible when $\hat v_n$ is small and $\sigma$ is moderate.
+
+\paragraph{The next step is undefined.} Once $\hat v_n < 0$, the term $\sqrt{\hat v_n}$ in \eqref{eq:naive-euler-v} produces a complex number (or a NaN, depending on the implementation). The simulation breaks and the path must either be discarded (which biases the average towards optimistic outcomes) or somehow ``rescued'', which is precisely the question we now turn to.
+
+\subsection{The family of fix-up schemes}
+
+A fix-up scheme is a modification of \eqref{eq:naive-euler-v} that ensures $\hat v_{n+1}$ remains in some workable region (typically $[0, \infty)$) regardless of the realised $\Delta W^2_n$. The literature contains several:
+\begin{itemize}[topsep=2pt]
+    \item \textbf{Reflection}: replace $\hat v_{n+1}$ by $|\hat v_{n+1}|$ if it goes negative.
+    \item \textbf{Absorption}: replace $\hat v_{n+1}$ by $\max(\hat v_{n+1}, 0)$.
+    \item \textbf{Partial truncation}: use $\sqrt{\max(\hat v_n, 0)}$ in the diffusion, but keep $\hat v_n$ untruncated in the drift.
+    \item \textbf{Full truncation}: use $\max(\hat v_n, 0)$ throughout (both drift and diffusion), but track an unconstrained $\hat v_n$ between updates.
+\end{itemize}
+
+Each of these recovers a usable scheme, but they introduce \emph{distinct biases}. Lord, Koekkoek and van Dijk (2010) carried out a systematic empirical comparison of the variants, and their conclusion is unambiguous: full truncation has the smallest weak bias for typical Heston parameter ranges. We adopt full truncation throughout.
+
+%============================================================
+\section{The full-truncation Euler scheme}
+%============================================================
+
+\subsection{Update rules}
+
+Define
+\[
+    v_n^+ := \max(\hat v_n, 0).
+\]
+The full-truncation Euler scheme for the variance process is
+\begin{equation}
+    \hat v_{n+1} = \hat v_n + \kappa(\theta - v_n^+)\,\Delta t + \sigma \sqrt{v_n^+}\,\Delta W^2_n,                          \label{eq:ft-v}
+\end{equation}
+with $\hat v_0 = v_0$. The key feature is that \emph{both} the drift and the diffusion coefficients use $v_n^+$ rather than $\hat v_n$, while $\hat v_n$ itself is allowed to be negative and is propagated as such.
+
+The interpretation is that $\hat v_n$ is the value used for \emph{updating}, while $v_n^+$ is the ``physical'' value used to define the coefficients. When $\hat v_n \geq 0$, the two coincide. When $\hat v_n < 0$, the coefficients are evaluated as if $\hat v_n = 0$: zero diffusion, drift $\kappa\theta\Delta t$ pulling towards $\theta$. This guarantees the next update is well-defined and pushes the process back towards positive territory in expectation.
+
+For the spot, we use the log-spot SDE,
+\begin{equation}
+    d \log S_t = \left(r - \tfrac12 v_t\right) dt + \sqrt{v_t}\,dW^1_t,         \label{eq:logS}
+\end{equation}
+which follows from Itô's lemma applied to $\log$. Discretising in the same fashion:
+\begin{equation}
+    \log \hat S_{n+1} = \log \hat S_n + \left(r - \tfrac12 v_n^+\right) \Delta t + \sqrt{v_n^+}\,\Delta W^1_n,   \label{eq:ft-S}
+\end{equation}
+with $\hat S_0 = S_0$.
+
+\paragraph{Why log-spot, not spot directly.} A naive Euler discretisation of \eqref{eq:heston-S} would read $\hat S_{n+1} = \hat S_n(1 + r\Delta t + \sqrt{v_n^+}\,\Delta W^1_n)$, which can produce $\hat S_{n+1} < 0$ for the same reason the variance can go negative. Working in log-space sidesteps this entirely: $\log \hat S_n$ is unconstrained in sign, and the recovered $\hat S_n = \exp(\log \hat S_n) > 0$ automatically. Working in log-space also makes the moments of $\hat S_T$ (under the assumption that $v$ is constant) coincide with the GBM moments, which is the analytically correct limit when $\sigma \to 0$.
+
+\subsection{Correlated Brownian increments}
+
+The Brownian increments $\Delta W^1_n$ and $\Delta W^2_n$ at each step must be jointly normal with mean zero, marginal variance $\Delta t$, and correlation $\rho$. The standard construction is via Cholesky factorisation of the $2\times 2$ correlation matrix
+\[
+    \Sigma := \begin{pmatrix} 1 & \rho \\ \rho & 1 \end{pmatrix}.
+\]
+The Cholesky factor $L$ such that $\Sigma = L L^\top$ is
+\[
+    L = \begin{pmatrix} 1 & 0 \\ \rho & \sqrt{1 - \rho^2} \end{pmatrix}.
+\]
+Sampling two independent standard normals $Z^1_n, Z^2_n$ and setting
+\begin{equation}
+    \begin{pmatrix} \Delta W^1_n / \sqrt{\Delta t} \\ \Delta W^2_n / \sqrt{\Delta t} \end{pmatrix} = L \begin{pmatrix} Z^1_n \\ Z^2_n \end{pmatrix} = \begin{pmatrix} Z^1_n \\ \rho Z^1_n + \sqrt{1 - \rho^2}\, Z^2_n \end{pmatrix}                       \label{eq:cholesky}
+\end{equation}
+gives the desired joint distribution.
+
+A subtle but important consequence: \emph{the same} $Z^1_n$ enters both Brownian increments. This implies that at each step $n$ we need exactly two independent standard normal draws per path. In the QMC extension of Phase 2 Block 3, this means each step consumes two coordinates of the low-discrepancy sequence; over $N$ steps and $M$ paths, the total dimension is $2N$.
+
+\subsection{The full discretisation}
+
+Putting \eqref{eq:ft-v}, \eqref{eq:ft-S}, \eqref{eq:cholesky} together, one step of the full-truncation Euler scheme reads:
+\begin{align}
+    Z^1_n, Z^2_n &\stackrel{\mathrm{i.i.d.}}{\sim} \mathcal{N}(0, 1),                                \notag \\
+    \Delta W^1_n &= \sqrt{\Delta t}\, Z^1_n,                                                       \notag \\
+    \Delta W^2_n &= \sqrt{\Delta t}\, \bigl(\rho Z^1_n + \sqrt{1 - \rho^2}\, Z^2_n\bigr),         \notag \\
+    v_n^+ &= \max(\hat v_n, 0),                                                                    \notag \\
+    \hat v_{n+1} &= \hat v_n + \kappa(\theta - v_n^+)\,\Delta t + \sigma\sqrt{v_n^+}\,\Delta W^2_n,           \label{eq:ft-step-v}\\
+    \log \hat S_{n+1} &= \log \hat S_n + \left(r - \tfrac12 v_n^+\right) \Delta t + \sqrt{v_n^+}\,\Delta W^1_n.                          \label{eq:ft-step-S}
+\end{align}
+
+\begin{remark}[Vectorisation]
+The scheme is fully vectorisable in the path dimension. Generate $Z^1, Z^2 \in \mathbb{R}^{N \times M}$ in one call, then iterate over the time index $n = 0, \ldots, N-1$, applying \eqref{eq:ft-step-v}--\eqref{eq:ft-step-S} as elementwise operations on length-$M$ arrays. The inner time loop is unavoidable (the SDE is sequential by construction), but the cross-path operations are all SIMD-friendly. In Python, the loop runs in NumPy-vectorised form; in C++, the inner loop sits over a contiguous \texttt{std::vector<double>}.
+\end{remark}
+
+\subsection{Probability of $\hat v_n < 0$ at typical parameters}
+
+It is instructive to estimate how often the truncation $v_n^+ = \max(\hat v_n, 0)$ actually fires. Conditional on $\hat v_n > 0$, the probability of $\hat v_{n+1} < 0$ is
+\[
+    \mathbb{P}\bigl(\hat v_{n+1} < 0 \mid \hat v_n\bigr) = \Phi\!\left(-\frac{\hat v_n + \kappa(\theta - \hat v_n)\Delta t}{\sigma\sqrt{\hat v_n \Delta t}}\right),
+\]
+where $\Phi$ is the standard normal CDF. For typical equity calibrations ($\kappa \sim 1.5$, $\theta \sim 0.04$, $\sigma \sim 0.3$, $\hat v_n \sim 0.04$) and $\Delta t = 0.01$, this is
+\[
+    \Phi\!\left(-\frac{0.04 + 1.5 \cdot 0 \cdot 0.01}{0.3\sqrt{0.04 \cdot 0.01}}\right) = \Phi(-6.67) \approx 10^{-11},
+\]
+i.e., truncation almost never fires when $v$ is at typical levels. However, at small $v$ (say $\hat v_n = \theta/10 = 0.004$):
+\[
+    \Phi\!\left(-\frac{0.004}{0.3\sqrt{0.004 \cdot 0.01}}\right) = \Phi(-2.11) \approx 0.017,
+\]
+about 2\% per step. Over $T = 1$ year with $\Delta t = 0.01$ (i.e., $N = 100$ steps), the per-path probability of \emph{at least one} truncation event becomes appreciable. The truncation is genuinely a remedy for low-variance regimes, not a placeholder for ``shouldn't happen but just in case''.
+
+\paragraph{Implication for parameter regimes.} The truncation bias becomes significant when the simulation spends meaningful time near $v = 0$. This happens when (a) the Feller parameter $\nu = 2\kappa\theta/\sigma^2$ is small (process spends time at the lower boundary), (b) when $v_0 \ll \theta$ (initial transient through low-variance region), or (c) when paths happen to fluctuate close to zero due to the noise. Andersen's quadratic-exponential scheme of Block 4 is designed precisely to handle these regimes more accurately.
+
+%============================================================
+\section{Convergence theory}
+%============================================================
+
+We now examine the rate at which $\hat S_N \to S_T$ as $\Delta t \to 0$. The classical theory of weak and strong convergence for Euler--Maruyama assumes Lipschitz drift and diffusion coefficients; the CIR process violates the latter, and the rate degrades.
+
+\subsection{Strong vs weak convergence}
+
+Two notions of convergence are relevant for Monte Carlo. Let $X_t$ be the continuous SDE solution and $\hat X_n$ the discrete approximation at time $t_n$.
+
+\paragraph{Strong convergence.} The scheme converges \emph{strongly with order $\alpha$} if
+\[
+    \mathbb{E}\bigl[\bigl|\hat X_N - X_T\bigr|\bigr] = O(\Delta t^\alpha) \qquad \text{as } \Delta t \to 0.
+\]
+Strong convergence is path-by-path: it controls the discrepancy between simulated and true trajectories on a typical realisation.
+
+\paragraph{Weak convergence.} The scheme converges \emph{weakly with order $\beta$} if
+\[
+    \bigl|\mathbb{E}[f(\hat X_N)] - \mathbb{E}[f(X_T)]\bigr| = O(\Delta t^\beta) \qquad \text{as } \Delta t \to 0,
+\]
+for sufficiently smooth $f$. Weak convergence concerns only distributional moments, not pathwise behaviour.
+
+For Monte Carlo pricing, weak convergence is what matters: the bias $\mathbb{E}[\widehat C] - C$ is precisely the weak error at $f(\cdot) = e^{-rT}(\cdot - K)^+$ (modulo regularity issues with the indicator at the strike).
+
+\subsection{The Lipschitz benchmark}
+
+For SDEs $dX_t = b(X_t)dt + \sigma(X_t)dW_t$ with globally Lipschitz $b, \sigma$ and bounded second derivatives, the classical theorem (Kloeden--Platen, Theorem 10.2.2) says: Euler--Maruyama is strongly convergent of order $1/2$ and weakly convergent of order $1$. Concretely:
+\[
+    \mathbb{E}\bigl[|\hat X_N - X_T|\bigr] = O(\Delta t^{1/2}), \qquad \bigl|\mathbb{E}[f(\hat X_N)] - \mathbb{E}[f(X_T)]\bigr| = O(\Delta t).
+\]
+The factor of two between weak and strong rates is structural: weak convergence ``averages out'' the per-step random sign, while strong convergence retains it.
+
+\subsection{Non-Lipschitz coefficients: what changes}
+
+For the CIR process the diffusion $\sigma(v) = \sigma\sqrt{v}$ is only locally H\"older-$1/2$ at $v = 0$, not Lipschitz. Two things go wrong with the standard analysis:
+
+\paragraph{Strong convergence rate degrades.} Yamada (1976) and Yamada--Watanabe pathwise uniqueness theory establish that for $\sigma(\cdot)$ H\"older-$\alpha$ with $\alpha \geq 1/2$, the strong convergence rate of Euler is $\alpha$, i.e., $1/2$ for $\sigma$ exactly H\"older-$1/2$ as in CIR. Higher-order H\"older smoothness would give $\Delta t^\alpha$; the square-root coefficient sits exactly at the boundary.
+
+For the full-truncation Euler scheme on the actual CIR (not just abstract H\"older-$1/2$), Berkaoui, Bossy and Diop (2008) and Cozma--Reisinger (2018) have proved strong convergence of order $1/2$ \emph{provided} the Feller parameter $\nu = 2\kappa\theta/\sigma^2$ is sufficiently large; for small $\nu$ the rate degrades further.
+
+\paragraph{Weak convergence rate is preserved (mostly).} It is proved in Higham, Mao, Stuart (2002) and in subsequent refinements that, despite the strong rate degradation, the \emph{weak} rate of full-truncation Euler on Heston is still $O(\Delta t)$ in many parameter ranges --- specifically, for parameters where the Feller boundary is sufficiently regular and the test function $f$ is smooth enough.
+
+\paragraph{Implication for practice.} For European call options in typical equity calibrations (large enough $\nu$, smooth enough payoff once one accounts for the smearing introduced by the discount and the expectation), the bias scales linearly in $\Delta t$:
+\[
+    \mathrm{Bias}(\widehat C; \Delta t) \approx c \cdot \Delta t,
+\]
+with $c$ a problem-dependent constant. We will verify this empirically in the validation section.
+
+For short-maturity options, parameters with small Feller parameter $\nu$, or for digital and indicator-type payoffs, the bias may scale more slowly than $\Delta t$ --- and this is precisely the regime where the Andersen QE scheme of Block 4 will offer a clean improvement.
+
+\subsection{The bias-variance budget}
+
+For a Monte Carlo estimator with $M$ paths and $N$ steps, the mean squared error decomposes as
+\[
+    \mathrm{MSE}(\widehat C) = \underbrace{\mathrm{Bias}^2}_{O(\Delta t^2)} + \underbrace{\mathrm{Var}/M}_{O(1/M)}.
+\]
+For weak rate $1$ this is
+\[
+    \mathrm{MSE}(\widehat C) = O(N^{-2}) + O(M^{-1}).
+\]
+The two terms are equal when $M \asymp N^2$, i.e., when the work is balanced. The total work of the simulation scales as $W \asymp M N$, giving $W \asymp N^3$ at the optimal balance. To halve the RMSE, one quadruples the work --- the same scaling as plain Monte Carlo, but with the additional discretisation overhead.
+
+This calculus is implicit in the Block 6 calibration but worth recording: the runtime of an MC pricer is essentially set by the bias requirement, not the variance requirement, once you start asking for high accuracy. This is one of the structural reasons exotic-options calibration via plain MC is expensive.
+
+%============================================================
+\section{Variance reduction}
+%============================================================
+
+The plain MC estimator
+\[
+    \widehat C_{\mathrm{plain}} = \frac{e^{-rT}}{M} \sum_{m=1}^M (\hat S^{(m)}_N - K)^+
+\]
+has variance $\mathrm{Var}(e^{-rT}(\hat S_N - K)^+)/M$, which can be reduced by standard variance-reduction techniques without changing the bias. Two are particularly natural for Heston.
+
+\subsection{Antithetic variates}
+
+For each path generated with normal increments $(Z^{1,(m)}, Z^{2,(m)})$, generate a paired ``antithetic'' path with $(-Z^{1,(m)}, -Z^{2,(m)})$. The two paths are coupled through the same underlying RNG, but with opposite signs. Average the two payoffs:
+\[
+    Y^{(m)}_{\mathrm{anti}} = \tfrac12 \bigl(f(\hat S^{(m)}_N) + f(\hat S^{(m), -}_N)\bigr),
+\]
+where $\hat S^{(m), -}_N$ is the antithetic terminal value.
+
+The variance of $Y^{(m)}_{\mathrm{anti}}$ is
+\[
+    \mathrm{Var}(Y_{\mathrm{anti}}) = \tfrac12 \mathrm{Var}(f) + \tfrac12 \mathrm{Cov}(f, f^-),
+\]
+which is smaller than $\mathrm{Var}(f)$ when $\mathrm{Cov}(f, f^-) < \mathrm{Var}(f)$, i.e., when the antithetic payoffs are negatively correlated. For monotone payoffs (calls, puts) this is automatic. The reduction can be a factor of 2 to 5 depending on parameters and moneyness.
+
+The cost is one extra simulation per pair (so $M_{\mathrm{anti}} = M/2$ pairs for the same total path count $M$), plus the bookkeeping of generating two normal samples and using both signs.
+
+\subsection{Control variates}
+
+A control variate is a random variable $V$ correlated with the payoff $f(\hat S_N)$, whose expectation is known analytically. The estimator
+\[
+    \widehat C_{\mathrm{cv}} = \widehat C_{\mathrm{plain}} - \beta\bigl(\widehat V - \mathbb{E}[V]\bigr)
+\]
+is unbiased and has variance
+\[
+    \mathrm{Var}(\widehat C_{\mathrm{cv}}) = \mathrm{Var}(\widehat C_{\mathrm{plain}})\,(1 - \rho^2_{f, V})
+\]
+when $\beta = \mathrm{Cov}(f, V)/\mathrm{Var}(V)$ is the optimal coefficient.
+
+For Heston, a natural control variate is the European call under \emph{constant-volatility GBM} with $\sigma = \sqrt{\bar v}$, where $\bar v$ is some average of $v_t$ over the path. The control's expectation is the Black--Scholes price, available in closed form. The correlation between Heston and GBM payoffs is typically very high (in the 0.9--0.99 range for at-the-money options), giving variance reductions of 25--100$\times$.
+
+In Phase 2 Block 1.4 we built an end-to-end variance-reduction harness for plain GBM. The harness extends to Heston with minor modifications; we use it in this block for sanity-checking the convergence of the MC estimator.
+
+%============================================================
+\section{Validation strategy}
+%============================================================
+
+The Fourier pricer of Block 2 is bias-free (modulo numerical quadrature error, which is below $10^{-6}$ for typical parameters and well below typical MC statistical errors). Hence we use it as ground truth.
+
+\subsection{The four-pillar validation}
+
+\paragraph{1. Reduction to GBM as $\sigma \to 0$.} As we saw in Block 2, the Heston variance becomes deterministic in this limit. The MC pricer should then reduce to GBM Monte Carlo, and the call price should converge to Black--Scholes. This is the cheapest sanity check: if the MC pricer fails this, there is a structural bug.
+
+\paragraph{2. Convergence study at fixed $M$.} Fix the number of paths $M = 10^5$ (or higher). Vary the number of steps $N \in \{50, 100, 200, 400, 800, 1600\}$. For each $N$, compute the MC estimate $\widehat C(N)$ and its 95\% confidence half-width. The Fourier reference $C_{\mathrm{ref}}$ is fixed. Plot $|\widehat C(N) - C_{\mathrm{ref}}|$ vs $N$. The expected behaviour is:
+\[
+    |\widehat C(N) - C_{\mathrm{ref}}| \approx \mathrm{Bias}(\Delta t) + \mathrm{StatError}(M).
+\]
+For small $N$ (large $\Delta t$), bias dominates and the curve decreases as $\Delta t \propto N^{-1}$, i.e., the log-log slope is $-1$. For large $N$, statistical error dominates and the curve flattens at $O(M^{-1/2})$.
+
+\paragraph{3. Convergence study at fixed $N$.} Conversely, fix $N$ at a value where the bias is small (say $N = 200$ for $T = 0.5$), and vary $M \in \{10^3, 10^4, 10^5, 10^6\}$. The 95\% confidence half-width should scale as $M^{-1/2}$. The estimate should sit within the half-width of the reference (modulo any residual bias).
+
+\paragraph{4. Variance reduction validation.} Generate the same paths with and without antithetic variates. The estimates should be statistically consistent (within their respective half-widths), and the antithetic estimator's variance should be smaller for monotone payoffs.
+
+\subsection{Parameter ranges to test}
+
+\paragraph{Standard equity case:} $\kappa = 1.5$, $\theta = 0.04$, $\sigma = 0.3$, $\rho = -0.7$, $v_0 = 0.04$. Feller parameter $\nu = 2 \cdot 1.5 \cdot 0.04 / 0.09 \approx 1.33$. Variance has a regular boundary at zero but spends little time there in finite horizons.
+
+\paragraph{Aggressive equity case:} $\kappa = 0.5$, $\theta = 0.04$, $\sigma = 1.0$, $\rho = -0.9$, $v_0 = 0.04$. Feller parameter $\nu \approx 0.04$, very small. Process spends measurable time at low variance; full-truncation will fire often. Bias is expected to be larger; this stresses the scheme.
+
+For each case, we compute the call price at $K = S_0$ (ATM) and check against Fourier.
+
+%============================================================
+\section{Implementation outline}
+%============================================================
+
+\subsection{Python}
+
+The module \texttt{quantlib.heston\_mc} exposes:
+
+\begin{itemize}[topsep=2pt]
+    \item \texttt{simulate\_heston\_paths(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, seed=None, rng=None, antithetic=False)}: generate $M$ paths of $(\log \hat S, \hat v)$ on a grid of $N$ steps. Returns a tuple of arrays of shape $(N+1, M)$ each. Reuses \texttt{\_resolve\_rng} and the inversion-based normal generator from \texttt{quantlib.monte\_carlo} for QMC compatibility.
+    \item \texttt{simulate\_terminal\_heston(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: convenience that returns only the terminal $\hat S_N$ values. Internally calls the path simulator and returns the last row.
+    \item \texttt{mc\_european\_call\_heston(S0, K, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: high-level pricer that orchestrates the simulator, the discounted call payoff, and \texttt{mc\_estimator} from Block 2's reused infrastructure. Returns an \texttt{MCResult}.
+\end{itemize}
+
+The validation script \texttt{validate\_heston\_mc.py} runs all four pillars and reports pass/fail with tolerances tied to the half-widths. The cross-method check against the Fourier pricer is the strongest pillar and serves as the entry point of the script.
+
+\subsection{C++}
+
+The C++ implementation in \texttt{cpp/include/quant/heston\_mc.hpp} and \texttt{cpp/src/heston\_mc.cpp} mirrors the Python interface but adapts to C++ conventions:
+\begin{itemize}[topsep=2pt]
+    \item Reuses the existing \texttt{HestonParams} struct from Block 2.
+    \item Uses \texttt{std::mt19937\_64} as the RNG, with explicit seed control.
+    \item The path simulator returns a \texttt{std::vector<double>} flattened in column-major order (paths contiguous), matching the Python \texttt{ndarray} layout.
+    \item The high-level pricer returns a \texttt{MCResult} struct (point estimate, half-width, sample variance, $M$).
+\end{itemize}
+
+The Catch2 tests in \texttt{cpp/tests/test\_heston\_mc.cpp} verify the four pillars at reduced sample size (so the suite runs in seconds), with snapshot comparisons against Python reference values to catch language-level discrepancies.
+
+%============================================================
+\section{Bibliographical notes}
+%============================================================
+
+\begin{itemize}[topsep=2pt]
+    \item Glasserman, \emph{Monte Carlo Methods in Financial Engineering} (2004) \cite{Glasserman2004}: comprehensive reference for the MC framework, Chapter 3 on SDE discretisation, Chapter 6 on stochastic volatility.
+    \item Lord, Koekkoek, van Dijk (2010) \cite{LKvD2010}: definitive empirical comparison of fix-up schemes; full truncation wins.
+    \item Higham, Mao, Stuart (2002) \cite{HighamMaoStuart2002}: rigorous strong convergence analysis under non-Lipschitz coefficients.
+    \item Berkaoui, Bossy, Diop (2008) \cite{BerkaouiBossyDiop2008}: strong convergence of Euler for CIR, including the full Feller-parameter dependence.
+    \item Kloeden, Platen (1992) \cite{KloedenPlaten1992}: classical reference for SDE discretisation theory under Lipschitz assumptions.
+    \item Yamada (1976) \cite{Yamada1976}: foundational work on H\"older-$1/2$ uniqueness, which underlies the convergence theory for CIR.
+    \item Andersen (2008) \cite{Andersen2008}: the QE scheme of Block 4, which improves on full-truncation Euler in low-Feller regimes.
+\end{itemize}
+
+\begin{thebibliography}{99}
+    \bibitem{Andersen2008}            Andersen, L. (2008). \emph{Simple and efficient simulation of the Heston stochastic volatility model}. Journal of Computational Finance, 11(3), 1--42.
+    \bibitem{BerkaouiBossyDiop2008}   Berkaoui, A.; Bossy, M.; Diop, A. (2008). \emph{Euler scheme for SDEs with non-Lipschitz diffusion coefficient: strong convergence}. ESAIM: Probability and Statistics, 12, 1--11.
+    \bibitem{Glasserman2004}          Glasserman, P. (2004). \emph{Monte Carlo Methods in Financial Engineering}. Springer.
+    \bibitem{HighamMaoStuart2002}     Higham, D.; Mao, X.; Stuart, A. (2002). \emph{Strong convergence of Euler-type methods for nonlinear stochastic differential equations}. SIAM Journal on Numerical Analysis, 40(3), 1041--1063.
+    \bibitem{KloedenPlaten1992}       Kloeden, P.; Platen, E. (1992). \emph{Numerical Solution of Stochastic Differential Equations}. Springer.
+    \bibitem{LKvD2010}                Lord, R.; Koekkoek, R.; van Dijk, D. (2010). \emph{A comparison of biased simulation schemes for stochastic volatility models}. Quantitative Finance, 10(2), 177--194.
+    \bibitem{Yamada1976}              Yamada, T. (1976). \emph{Sur l'approximation des \'equations diff\'erentielles stochastiques}. Z. Wahrscheinlichkeitstheorie verw. Geb., 36, 153--164.
+\end{thebibliography}
+
+\end{document}
