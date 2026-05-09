@@ -1,0 +1,353 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!50!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Phase 4, Block 5 \\[0.3em]\Large Heston model: 2D PDE pricing via Alternating Direction Implicit (ADI) schemes}
+\author{Quant Finance Portfolio}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+%============================================================
+\section{Introduction and goals}
+%============================================================
+
+Blocks 2--4 gave us three independent pricing methods for European options under Heston: Fourier inversion (Block 2, semi-analytic, fast and accurate but limited to specific payoffs), full-truncation Euler MC (Block 3, robust but biased), and Andersen QE MC (Block 4, less biased but still statistical). We now add a fourth: deterministic PDE pricing on a 2D grid in $(S, v)$.
+
+PDE pricing has structural advantages over Monte Carlo for this problem:
+\begin{itemize}[topsep=2pt]
+    \item Deterministic: no statistical error, only discretisation error in space and time. The error decreases predictably with grid refinement.
+    \item Greeks for free: derivatives of the price with respect to underlyings ($\Delta, \Gamma, \mathrm{vega}$) are extracted directly from the grid by finite differences, with no extra simulation cost.
+    \item Natural fit for early exercise: American-style payoffs are handled by adding a free-boundary projection (PSOR or similar) to the time-stepping. We saw the 1D version of this in Phase 3 Block 5.
+\end{itemize}
+The cost is implementation complexity. The Heston PDE is two-dimensional, with a non-trivial cross-derivative term coupling the two spatial directions. A naive explicit time-stepping is severely constrained by stability (the CFL condition forces $\Delta t = O(\Delta x^2 \Delta v^2 / \cdots)$, which in two dimensions kills runtime). The remedy is implicit time-stepping, but a fully implicit 2D solver requires inverting a large sparse matrix at every step. The compromise that wins in practice is \emph{Alternating Direction Implicit} (ADI): split the implicit operator into directional pieces, each tridiagonal, and solve the directions sequentially. The Thomas solver from Phase 3 Block 4 is the workhorse.
+
+This block has four goals:
+
+\paragraph{The Heston PDE.} Derive the pricing PDE in $(S, v)$ via Feynman-Kac, transform to log-spot $(X, v)$ for grid efficiency, and analyse the boundary conditions including the delicate behaviour at $v = 0$.
+
+\paragraph{ADI schemes.} Present the Douglas, Craig-Sneyd, and Hundsdorfer-Verwer methods, with emphasis on how each handles the mixed derivative term that appears in Heston (and in any 2D parabolic PDE with correlation structure). We commit to Douglas in the implementation because it captures all the ADI ideas in their simplest form; CS and HV are upgrades available if precision demands it.
+
+\paragraph{Stability and convergence.} Brief von Neumann analysis to motivate the implicit treatment, plus the discrete convergence rates: $O(\Delta x^2 + \Delta v^2)$ in space, $O(\Delta t)$ for Douglas, $O(\Delta t^2)$ for CS/HV.
+
+\paragraph{Validation.} Cross-check against the Fourier reference (Block 2). PDE precision should match Fourier to 4-5 decimals at production grid sizes.
+
+%============================================================
+\section{The Heston PDE for European options}
+%============================================================
+
+\subsection{Derivation via Feynman-Kac}
+
+Let $V(t, S, v)$ denote the price at time $t$ of a European-style derivative paying $f(S_T)$ at maturity $T$. By the Feynman-Kac theorem applied to the Heston dynamics under $\mathbb{Q}$ (Block 1, equations 4.1-4.3), $V$ satisfies the parabolic PDE
+\begin{equation}
+    \partial_t V + r S \partial_S V + \kappa(\theta - v)\, \partial_v V + \tfrac12 v S^2 \partial^2_S V + \rho \sigma v S\, \partial_S \partial_v V + \tfrac{\sigma^2}{2} v\, \partial^2_v V - r V = 0,                                  \label{eq:heston-pde-S}
+\end{equation}
+on the domain $(t, S, v) \in [0, T) \times (0, \infty) \times [0, \infty)$, with terminal condition $V(T, S, v) = f(S)$.
+
+The structure is parabolic in $t$, with a 2D second-order operator in $(S, v)$. The terms in this operator are:
+\begin{itemize}[topsep=2pt]
+    \item Pure second derivatives: $\tfrac12 v S^2 \partial^2_S V$ (variance-of-spot) and $\tfrac{\sigma^2}{2} v\, \partial^2_v V$ (variance-of-variance).
+    \item \textbf{Mixed derivative}: $\rho \sigma v S\, \partial_S \partial_v V$. This is the term that makes the problem genuinely 2D and that ADI schemes must handle with care.
+    \item First derivatives: $r S \partial_S V$ and $\kappa(\theta - v)\, \partial_v V$.
+    \item Reaction: $-r V$.
+\end{itemize}
+For $\rho = 0$ the cross term vanishes and the problem decouples into two 1D problems coupled only through the source. For $\rho \neq 0$ (the financially interesting case), the cross term is essential and is what motivates the careful ADI construction.
+
+\subsection{Change of variables: log-spot}
+
+The PDE \eqref{eq:heston-pde-S} has coefficients that depend on $S$ (specifically, $S^2$ in the diffusion and $S$ in the drift), which makes uniform grids in $S$ poorly suited for the operator. The fix is the log-spot transformation $X = \log S$, $V(t, S, v) = U(t, X, v)$ where $U(t, X, v) := V(t, e^X, v)$. By the chain rule:
+\[
+    \partial_S V = \tfrac{1}{S} \partial_X U, \qquad
+    \partial^2_S V = \tfrac{1}{S^2} (\partial^2_X U - \partial_X U), \qquad
+    \partial_S \partial_v V = \tfrac{1}{S} \partial_X \partial_v U.
+\]
+Substituting into \eqref{eq:heston-pde-S} and simplifying:
+\begin{equation}
+    \partial_t U + (r - \tfrac12 v) \partial_X U + \kappa(\theta - v) \partial_v U + \tfrac12 v\, \partial^2_X U + \rho\sigma v\, \partial_X \partial_v U + \tfrac{\sigma^2}{2} v\, \partial^2_v U - r U = 0,                            \label{eq:heston-pde-X}
+\end{equation}
+on $(t, X, v) \in [0, T) \times \mathbb{R} \times [0, \infty)$, with terminal condition $U(T, X, v) = f(e^X)$.
+
+Now \emph{the coefficients of the operator do not depend on $X$ at all}; they depend only on $v$. This means the discrete operator in $X$ has constant coefficients and can be applied identically at every $v$-level. Uniform grids in $X$ are now natural.
+
+\subsection{The reaction term and the discount factor trick}
+
+The reaction term $-r U$ in \eqref{eq:heston-pde-X} is a nuisance for ADI: it doesn't fit cleanly into either a pure $X$ or pure $v$ direction. The clean solution is to remove it via the substitution
+\[
+    \tilde U(t, X, v) := e^{r(T - t)} U(t, X, v),
+\]
+which absorbs the discount into the function. Then $\partial_t \tilde U = e^{r(T - t)} (\partial_t U - r U)$, and the reaction term is gone:
+\begin{equation}
+    \partial_t \tilde U + (r - \tfrac12 v) \partial_X \tilde U + \kappa(\theta - v) \partial_v \tilde U + \tfrac12 v\, \partial^2_X \tilde U + \rho\sigma v\, \partial_X \partial_v \tilde U + \tfrac{\sigma^2}{2} v\, \partial^2_v \tilde U = 0,                                                                                                                      \label{eq:heston-pde-clean}
+\end{equation}
+with terminal condition $\tilde U(T, X, v) = f(e^X)$. This is the form we will discretise. After solving for $\tilde U$, the original price is recovered as $V(t, e^X, v) = e^{-r(T - t)} \tilde U(t, X, v)$.
+
+\subsection{Time reversal}
+
+The PDE \eqref{eq:heston-pde-clean} is parabolic with terminal condition; for numerical purposes it's cleaner to reverse time, defining $\tau := T - t$ and $W(\tau, X, v) := \tilde U(T - \tau, X, v)$. Then $\partial_t = -\partial_\tau$, the equation is forward in $\tau$:
+\begin{equation}
+    \partial_\tau W = (r - \tfrac12 v) \partial_X W + \kappa(\theta - v) \partial_v W + \tfrac12 v\, \partial^2_X W + \rho\sigma v\, \partial_X \partial_v W + \tfrac{\sigma^2}{2} v\, \partial^2_v W,                                  \label{eq:heston-pde-tau}
+\end{equation}
+on $(\tau, X, v) \in (0, T] \times \mathbb{R} \times [0, \infty)$, with \emph{initial} condition $W(0, X, v) = f(e^X)$. This is the form we discretise: a forward parabolic problem with explicit initial data, identical in structure to the heat equation modulo coefficient values.
+
+%============================================================
+\section{Computational domain and boundary conditions}
+%============================================================
+
+\subsection{Truncation of the unbounded domain}
+
+The mathematical domain $\mathbb{R} \times [0, \infty)$ must be truncated to a bounded box $[X_{\min}, X_{\max}] \times [0, v_{\max}]$ for numerical work. The truncation introduces \emph{numerical} boundary conditions which approximate the true behaviour of the solution at infinity.
+
+Practical choices:
+\begin{itemize}[topsep=2pt]
+    \item $X_{\min} = \log S_0 - 4 \sqrt{v_{\max} T}$, $X_{\max} = \log S_0 + 4 \sqrt{v_{\max} T}$. This places the spot grid roughly $\pm 4 \sigma$-equivalents from the at-the-money region, which captures essentially all the option's nonlinearity. Tighter truncation introduces noticeable boundary errors near the strike.
+    \item $v_{\max} = 5 \theta$ or larger. The variance is mean-reverting to $\theta$ and rarely exceeds a few times $\theta$, but the tail matters for option pricing. $5 \theta$ is conservative for typical equity calibrations; for high vol-of-vol regimes ($\sigma$ large), enlarge.
+\end{itemize}
+
+\subsection{Boundary conditions in $X$}
+
+At $X = X_{\min}$ (deep out-of-the-money for a call, deep in-the-money for a put), and $X = X_{\max}$ (the symmetric direction), we use \emph{Neumann-like} conditions reflecting the asymptotic linearity of the option price in $X$:
+\begin{align*}
+    \partial^2_X W \bigr|_{X = X_{\min}} &= 0, & \partial^2_X W \bigr|_{X = X_{\max}} &= 0.
+\end{align*}
+For a call, this is exact in the limit $X \to -\infty$ (the price tends to zero linearly in $S$, hence $W$ has no second derivative at infinity in $X$) and approximately exact at $X \to +\infty$ (the price tends to $S - K e^{-r\tau}$, which is linear in $S$, hence the second derivative is zero). At the truncation boundary, this means we treat the second-derivative term in the PDE as zero on the boundary cells, which simplifies the discretisation.
+
+The first-derivative boundary contribution is handled implicitly by one-sided finite differences at the boundary cells.
+
+\subsection{Boundary condition at $v = 0$}
+
+The boundary at $v = 0$ requires careful analysis. From the PDE \eqref{eq:heston-pde-tau}, at $v = 0$ all the second derivatives in $v$ and the cross derivative vanish (their coefficients are proportional to $v$), and the variance-of-spot term $\tfrac12 v \partial^2_X W$ also vanishes. The PDE \emph{at} $v = 0$ degenerates to:
+\begin{equation}
+    \partial_\tau W \bigr|_{v=0} = r \partial_X W \bigr|_{v=0} + \kappa\theta\, \partial_v W \bigr|_{v=0}.                                                                                                              \label{eq:heston-pde-v0}
+\end{equation}
+This is a first-order PDE in $(\tau, X, v)$ at the boundary $v = 0$. The drift $\kappa \theta$ in $v$ is positive (assuming $\kappa, \theta > 0$), so the boundary $v = 0$ is \emph{outflow}: information flows away from $v = 0$ into the interior. By the theory of first-order PDEs, no boundary condition is needed at an outflow boundary; the equation \eqref{eq:heston-pde-v0} \emph{is} the boundary condition, and we discretise it directly using upwind differencing in $v$.
+
+This is a feature, not a bug: the variance process tends to mean-revert away from zero, and the PDE captures this without requiring us to specify an additional boundary value. Compare this with the more delicate treatment required for, e.g., the SABR PDE.
+
+\subsection{Boundary condition at $v = v_{\max}$}
+
+At $v = v_{\max}$ (truncation of the unbounded $v$-direction), we again use a Neumann-like condition $\partial^2_v W \bigr|_{v = v_{\max}} = 0$, which is exact in the limit $v \to \infty$ (the price grows linearly in $\sqrt{v}$, with vanishing second derivative). The first-derivative drift $\kappa(\theta - v_{\max})$ is negative since $v_{\max} > \theta$ in our setup, meaning information flows out of the interior into the boundary; this is \emph{inflow} from the perspective of the boundary, and standard second-derivative-zero handling is consistent.
+
+\subsection{Initial condition}
+
+For a European call with strike $K$, the terminal payoff is $f(S) = \max(S - K, 0)$, so
+\[
+    W(0, X, v) = \max(e^X - K, 0).
+\]
+This is independent of $v$, which is intuitive: at maturity, only the spot matters. This initial condition has a non-smooth corner at $X = \log K$ (the strike), which propagates a known oscillation in the numerical solution unless smoothed. For Block 5 we use the unsmoothed payoff and let the smoothing happen via the discrete operator's diffusion; in production calibration one would replace it with a $C^2$ smoothed version near the strike.
+
+%============================================================
+\section{Spatial discretisation}
+%============================================================
+
+\subsection{Grids}
+
+Uniform grids in both directions:
+\begin{align*}
+    X_i &= X_{\min} + i\, \Delta X, \quad i = 0, \ldots, N_X, \quad \Delta X = (X_{\max} - X_{\min}) / N_X, \\
+    v_j &= j\, \Delta v, \qquad\quad\;\, j = 0, \ldots, N_v, \quad \Delta v = v_{\max} / N_v.
+\end{align*}
+The grid has $(N_X + 1)(N_v + 1)$ nodes. We denote the discrete approximation $W^n_{ij} \approx W(\tau_n, X_i, v_j)$, where $\tau_n = n \Delta\tau$.
+
+A non-uniform grid in $v$ (with concentration near $v_0$ and near $v = 0$) gives noticeably better accuracy at fixed $N_v$, since the option payoff is most sensitive to variance values near $v_0$. We start with uniform grids for clarity; non-uniform grids are an Block 6 refinement.
+
+\subsection{Finite difference operators}
+
+For the second derivatives we use centred differences (standard $O(\Delta^2)$ accuracy):
+\[
+    \partial^2_X W \bigr|_{ij} \approx \frac{W_{i+1,j} - 2 W_{ij} + W_{i-1,j}}{\Delta X^2}, \qquad
+    \partial^2_v W \bigr|_{ij} \approx \frac{W_{i,j+1} - 2 W_{ij} + W_{i,j-1}}{\Delta v^2}.
+\]
+For the first derivatives we again use centred differences in the interior, but switch to upwind one-sided differences near the boundaries to maintain stability.
+
+The cross-derivative is approximated by:
+\[
+    \partial_X \partial_v W \bigr|_{ij} \approx \frac{W_{i+1,j+1} - W_{i+1,j-1} - W_{i-1,j+1} + W_{i-1,j-1}}{4 \Delta X \Delta v},
+\]
+which is centred and $O(\Delta^2)$. This is a 9-point stencil in $(X, v)$.
+
+\subsection{Operator decomposition}
+
+Following In't Hout \& Foulon (2010), we decompose the discrete operator $L$ into three parts:
+\begin{equation}
+    L = L_X + L_v + L_{Xv}.                                                                                  \label{eq:operator-split}
+\end{equation}
+where:
+\begin{itemize}[topsep=2pt]
+    \item $L_X$ contains all derivatives in $X$ only (and their coefficients): $(r - \tfrac12 v) \partial_X + \tfrac12 v \partial^2_X$.
+    \item $L_v$ contains all derivatives in $v$ only: $\kappa(\theta - v) \partial_v + \tfrac{\sigma^2}{2} v\, \partial^2_v$.
+    \item $L_{Xv}$ is the cross term: $\rho\sigma v\, \partial_X \partial_v$.
+\end{itemize}
+This decomposition is the basis for ADI schemes: $L_X$ and $L_v$ are tridiagonal in their respective directions when written as matrices, while $L_{Xv}$ couples both directions but is treated explicitly.
+
+%============================================================
+\section{ADI schemes}
+%============================================================
+
+\subsection{The challenge}
+
+A fully implicit time step from $W^n$ to $W^{n+1}$ would solve $W^{n+1} - \Delta\tau\, L W^{n+1} = W^n$, where $L$ is the full 2D operator. The matrix $I - \Delta\tau L$ is sparse but \emph{not} tridiagonal in any direction; inverting it directly costs $O((N_X N_v)^{1.5})$ or more.
+
+ADI splits the implicit step into directional pieces, each of which is tridiagonal and solvable by Thomas in $O(N_X N_v)$. The trick is how to handle $L_{Xv}$, which couples both directions.
+
+\subsection{Douglas scheme}
+
+The Douglas scheme (also called ``Fractional Step'' or ``Predictor-Corrector ADI'') is the simplest. One step from $\tau_n$ to $\tau_{n+1}$:
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{Predictor (explicit Euler with full operator)}:
+    \[
+        Y_0 = W^n + \Delta\tau\, L\, W^n.
+    \]
+    \item \textbf{Implicit correction in $X$}:
+    \[
+        Y_1 - \theta \Delta\tau\, L_X (Y_1 - W^n) = Y_0,
+    \]
+    or equivalently $Y_1 = Y_0 + \theta \Delta\tau\, L_X (Y_1 - W^n)$. This is solvable as a tridiagonal system in $X$ at each $j$.
+    \item \textbf{Implicit correction in $v$}:
+    \[
+        Y_2 - \theta \Delta\tau\, L_v (Y_2 - W^n) = Y_1.
+    \]
+    Tridiagonal in $v$ at each $i$.
+    \item Set $W^{n+1} = Y_2$.
+\end{enumerate}
+Here $\theta$ is the implicitness parameter; $\theta = 1/2$ gives Crank-Nicolson-like behaviour and $\theta = 1$ is fully implicit. For Heston, $\theta = 1/2$ is the standard choice.
+
+The cross term $L_{Xv}$ enters only the explicit predictor stage; it is never inverted. This is the central insight of Douglas ADI: \emph{the directional pieces are inverted; the cross piece is treated explicitly}.
+
+\paragraph{Order.} Douglas is first-order accurate in $\tau$, $O(\Delta\tau)$, regardless of $\theta$. The explicit treatment of $L_{Xv}$ is what limits the temporal order; if all three pieces were implicit (fully implicit ADI), the order would be $O(\Delta\tau^2)$ but at much higher cost.
+
+\subsection{Craig-Sneyd (CS) scheme}
+
+The Craig-Sneyd scheme adds a second-order correction. After computing $Y_2$ as in Douglas, one performs additional explicit and implicit correction stages that combine to give $O(\Delta\tau^2)$ accuracy. The full CS scheme has 5 stages per time step (vs Douglas's 3), and is approximately twice as expensive per step, but converges with second-order rate.
+
+\subsection{Hundsdorfer-Verwer (HV) scheme}
+
+HV is a further refinement of CS that improves stability for stiff problems. It is the In't Hout \& Foulon recommendation for Heston. Like CS it is $O(\Delta\tau^2)$, with similar cost structure; the difference is in the placement of the $\theta$ parameter and the structure of the corrector stages, which give HV better stability properties at large $\Delta\tau$.
+
+\subsection{Implementation choice}
+
+We implement \textbf{Douglas} as the production scheme for Block 5. Reasons:
+\begin{itemize}[topsep=2pt]
+    \item It illustrates all the ADI ideas (operator splitting, tridiagonal sweeps, explicit cross term) in their simplest form.
+    \item $O(\Delta\tau)$ in time is acceptable when paired with reasonable space discretisation: at production grid sizes ($N_X \times N_v \times N_\tau \sim 100 \times 50 \times 100$), the Douglas error is dominated by the spatial $O(\Delta x^2 + \Delta v^2)$ rather than the temporal $O(\Delta\tau)$.
+    \item Upgrading to CS or HV is mechanical: the discrete operators $L_X, L_v, L_{Xv}$ are identical; only the time-stepping orchestration changes.
+\end{itemize}
+
+\paragraph{If higher precision is required} (e.g., for option Greeks where $O(\Delta\tau)$ truncation is amplified), the upgrade to HV is in scope for a future iteration.
+
+%============================================================
+\section{Stability}
+%============================================================
+
+A full von Neumann stability analysis of the Heston ADI is complex and depends on the parameter regime. We give the qualitative conclusions.
+
+\subsection{Why explicit fails}
+
+A fully explicit scheme $W^{n+1} = W^n + \Delta\tau\, L W^n$ is constrained by the CFL condition. For 2D parabolic problems with diffusion coefficients $D_x, D_v$, the constraint is
+\[
+    \Delta\tau \leq \frac{1}{2(D_x / \Delta X^2 + D_v / \Delta v^2)}.
+\]
+For Heston, $D_x = \tfrac12 v$ and $D_v = \tfrac{\sigma^2}{2} v$, both of which depend on $v$. At $v = v_{\max}$, with typical parameters and $\Delta X = \Delta v = 0.05$, this gives $\Delta\tau \lesssim 10^{-4}$. For a $T = 1$ year option, that's at least $10^4$ time steps. ADI lets us use $\Delta\tau \sim 10^{-2}$, two orders of magnitude faster.
+
+\subsection{Why ADI works}
+
+The directional implicit treatments of $L_X$ and $L_v$ remove the CFL constraints from those directions: the resulting tridiagonal solves are stable at any $\Delta\tau$. The cross term $L_{Xv}$ is treated explicitly, but its CFL constraint is much milder than that of the diffusion operators, because the cross term scales as $\rho\sigma v / (\Delta X \Delta v)$ rather than $v / \Delta X^2$ (no quadratic $1/\Delta X^2$). For typical parameters and grids, the explicit cross term has a CFL of $\Delta\tau \sim 10^{-2}$, which is the bottleneck, but a manageable one.
+
+In practice, $\Delta\tau = T / 100$ to $T / 200$ is reliable for Douglas with typical Heston parameters and $N_X, N_v \sim 100$.
+
+%============================================================
+\section{Convergence and validation}
+%============================================================
+
+\subsection{Expected convergence rates}
+
+\begin{itemize}[topsep=2pt]
+    \item Spatial: $O(\Delta X^2 + \Delta v^2)$ with centred differences.
+    \item Temporal (Douglas): $O(\Delta\tau)$.
+    \item At production grid sizes ($N_X = 100, N_v = 50, N_\tau = 100$), the spatial error dominates. Refining $N_X, N_v$ by factor 2 each should reduce the error by factor 4.
+\end{itemize}
+
+\subsection{Validation strategy}
+
+The Fourier reference (Block 2) is the ground truth: it is bias-free to numerical quadrature precision ($\sim 10^{-6}$). The PDE pricer should match Fourier to a similar precision at converged grids:
+
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{BS limit ($\sigma \to 0$).} As in Blocks 3-4, the Heston PDE reduces to BS in this limit; verify the pricer matches BS analytic.
+    \item \textbf{Cross-method vs Fourier.} For a panel of strikes and maturities, the PDE price should agree with Fourier to 3-4 decimals at typical grids, and to 5 decimals at refined grids.
+    \item \textbf{Convergence study.} Halve $\Delta X, \Delta v, \Delta\tau$ and observe the error decrease following the expected rates.
+    \item \textbf{Cross-method vs MC (sanity).} The QE pricer of Block 4 with large $M$ provides a third independent estimate. PDE and QE should agree within MC half-widths.
+\end{enumerate}
+
+%============================================================
+\section{Implementation outline}
+%============================================================
+
+\subsection{Python}
+
+The module \texttt{quantlib.heston\_pde} exposes:
+
+\begin{itemize}[topsep=2pt]
+    \item \texttt{build\_heston\_grid(S0, T, params, N\_X, N\_v, N\_tau, X\_factor=4.0, v\_max\_factor=5.0)}: constructs the $(X, v, \tau)$ grids and returns them as arrays. The factors control the truncation: $X$-grid extends $X_{\mathrm{factor}} \cdot \sqrt{v_{\max} T}$ from $\log S_0$, $v$-grid extends to $v_{\mathrm{max\_factor}} \cdot \theta$.
+    \item \texttt{douglas\_step(W, params, dX, dv, dtau, theta=0.5)}: one Douglas step on the 2D grid. Internal: builds the discrete operators $L_X, L_v, L_{Xv}$, applies the explicit predictor, and runs two tridiagonal sweeps (one in $X$, one in $v$). Reuses the Thomas solver from Phase 3 Block 4.
+    \item \texttt{heston\_call\_pde(S0, K, T, params, N\_X=200, N\_v=100, N\_tau=100)}: high-level pricer. Builds the grid, sets the call payoff initial condition, runs $N_\tau$ Douglas steps, and interpolates the price at $(S_0, v_0)$ from the grid.
+\end{itemize}
+
+The Thomas solver is reused from \texttt{quantlib.theta\_scheme} (Phase 3 Block 4). In the ADI sweeps, each line of the grid produces a tridiagonal system; we batch them by line and solve in a vectorised manner.
+
+\subsection{C++}
+
+The C++ implementation in \texttt{cpp/include/quant/heston\_pde.hpp} and \texttt{cpp/src/heston\_pde.cpp} mirrors Python with the standard adaptations: \texttt{HestonParams} from Block 2, Thomas solver from Phase 3, \texttt{std::vector<double>} for the flattened 2D grid. The 2D grid is stored row-major (X-major: index $(i, j) \to i \cdot (N_v + 1) + j$).
+
+The Catch2 tests in \texttt{cpp/tests/test\_heston\_pde.cpp} verify the four pillars at reduced grid sizes for runtime, with snapshot agreement against Python and Fourier.
+
+%============================================================
+\section{Bibliographical notes}
+%============================================================
+
+\begin{itemize}[topsep=2pt]
+    \item In't Hout, Foulon (2010) \cite{InHoutFoulon2010}: the standard reference for ADI applied to Heston. Detailed comparison of Douglas, CS, MCS, HV; recommends HV for production.
+    \item In't Hout (2010) \cite{InHout2010}: textbook treatment of ADI methods for general 2D parabolic problems.
+    \item Hundsdorfer, Verwer (2003) \cite{HundsdorferVerwer2003}: classical text on ADI and IMEX methods, with the original HV scheme.
+    \item Douglas, Rachford (1956) \cite{DouglasRachford1956}: the original ADI paper, now of historical interest.
+    \item Craig, Sneyd (1988) \cite{CraigSneyd1988}: the second-order correction to Douglas.
+    \item Achdou, Pironneau (2005) \cite{AchdouPironneau2005}: general PDE methods in finance, includes Heston PDE.
+\end{itemize}
+
+\begin{thebibliography}{99}
+    \bibitem{AchdouPironneau2005}     Achdou, Y.; Pironneau, O. (2005). \emph{Computational Methods for Option Pricing}. SIAM.
+    \bibitem{CraigSneyd1988}          Craig, I.~J.~D.; Sneyd, A.~D. (1988). \emph{An alternating-direction implicit scheme for parabolic equations with mixed derivatives}. Computers \& Mathematics with Applications, 16(4), 341--350.
+    \bibitem{DouglasRachford1956}     Douglas, J.; Rachford, H.~H. (1956). \emph{On the numerical solution of heat conduction problems in two and three space variables}. Trans. Amer. Math. Soc., 82, 421--439.
+    \bibitem{HundsdorferVerwer2003}   Hundsdorfer, W.; Verwer, J.~G. (2003). \emph{Numerical Solution of Time-Dependent Advection-Diffusion-Reaction Equations}. Springer.
+    \bibitem{InHout2010}              In't Hout, K.~J. (2010). \emph{Convergence of ADI schemes for diffusion equations with mixed derivatives}. SIAM Journal on Numerical Analysis, 47(6), 4399--4416.
+    \bibitem{InHoutFoulon2010}        In't Hout, K.~J.; Foulon, S. (2010). \emph{ADI finite difference schemes for option pricing in the Heston model with correlation}. International Journal of Numerical Analysis and Modeling, 7(2), 303--320.
+\end{thebibliography}
+
+\end{document}
