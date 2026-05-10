@@ -57,3 +57,7 @@ Thumbs.db
 # Phase 3 leftover debug scripts (kept locally, not versioned)
 python/preflight_phase3.py
 python/probe_signatures.py
+
+# Whitelist: writeup PDFs under theory/ are tracked despite the *.pdf rule above.
+# Without this, a future `git rm --cached '*.pdf'` would accidentally untrack them.
+!theory/**/*.pdf
