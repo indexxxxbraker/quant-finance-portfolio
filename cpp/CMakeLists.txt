@@ -35,6 +35,9 @@ add_library(quant_lib
     src/heston_mc.cpp
     src/heston_qe.cpp
     src/heston_pde.cpp
+    src/heston_exotics.cpp
+    src/heston_american_pde.cpp
+    src/heston_calibration.cpp
 )
 
 # QMC needs to know the path to the Joe-Kuo direction-numbers file.
