@@ -1,0 +1,602 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---------- Math shortcuts ----------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\eqdef}{\overset{\mathrm{def}}{=}}
+\newcommand{\BS}{\mathrm{BS}}
+\newcommand{\Vega}{\mathcal{V}}
+
+% ---------- Document metadata ----------
+\title{The Greeks of European Options under Black--Scholes}
+\author{Quant Finance Portfolio --- Phase 1, Algorithm 2}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We derive the closed-form expressions for the five classical Greeks
+\((\Delta, \Gamma, \Vega, \Theta, \rho)\) of European call and put
+options under the Black--Scholes model. The derivations rest on a
+single algebraic identity --- the equality of the two normal-density
+factors that appear when differentiating the price formula --- which
+is established once and reused throughout. We close with the
+identities that link the Greeks: the Black--Scholes partial differential
+equation, the Vega--Gamma identity, the conventions for Theta, and the
+non-uniform convexity of the call price in volatility. The document
+serves as a reference for the implementation in the project and for
+the volatility-implied analysis that depends on Vega.
+\end{abstract}
+
+% ============================================================
+\section{Setup}
+% ============================================================
+
+Throughout this document we work under the Black--Scholes model
+introduced in the companion document \texttt{black\_scholes.tex}. We
+fix \(S, K > 0\), \(r \in \R\), \(\sigma > 0\), and \(T > t \geq 0\),
+and let \(\tau \eqdef T - t\). The price of a European call is
+\begin{equation}
+    C^{\BS}(S, K, r, \sigma, \tau)
+    = S\, N(d_1) - K e^{-r\tau} N(d_2),
+    \label{eq:bs}
+\end{equation}
+with
+\begin{equation}
+    d_1 = \frac{\log(S/K) + (r + \tfrac{1}{2}\sigma^2)\tau}{\sigma\sqrt{\tau}},
+    \qquad
+    d_2 = d_1 - \sigma\sqrt{\tau},
+    \label{eq:d1d2}
+\end{equation}
+where \(N\) and \(\varphi\) denote the standard normal CDF and density
+respectively, and the put price is
+\begin{equation}
+    P^{\BS} = K e^{-r\tau} N(-d_2) - S\, N(-d_1).
+    \label{eq:put}
+\end{equation}
+
+A Greek is a partial derivative of the option price with respect to one
+of its arguments. Each derivative is taken holding the remaining
+arguments fixed.
+
+\begin{definition}[The classical Greeks]
+For a European option with price \(V \in \{C^{\BS}, P^{\BS}\}\), the
+classical Greeks are
+\[
+    \Delta = \frac{\partial V}{\partial S},
+    \qquad
+    \Gamma = \frac{\partial^2 V}{\partial S^2},
+    \qquad
+    \Vega = \frac{\partial V}{\partial \sigma},
+    \qquad
+    \Theta = \frac{\partial V}{\partial t},
+    \qquad
+    \rho = \frac{\partial V}{\partial r}.
+\]
+\end{definition}
+
+The Theta convention is the calendar-time derivative, not the
+maturity-time derivative; the two differ by a sign because
+\(\partial / \partial t = -\partial / \partial \tau\) when
+\(\tau = T - t\) with \(T\) fixed. We use the calendar-time form
+because it makes the Black--Scholes PDE
+(Theorem~\ref{thm:bs-pde}) read without sign reversals.
+
+\begin{remark}[Two readings of Greeks]
+Greeks admit two complementary readings. As \emph{sensitivities},
+they describe how the option price moves under marginal changes to
+the inputs, and form the basis of the dynamic hedging used at every
+options desk. As \emph{coefficients of a partial differential
+equation}, they are the building blocks of the no-arbitrage condition
+the price must satisfy: the Black--Scholes equation is a linear
+relation among \(\Theta, \Gamma, \Delta\) and \(V\) itself. The
+algebraic and the dynamical readings are not independent; they are
+two manifestations of the same underlying replication argument.
+\end{remark}
+
+% ============================================================
+\section{The Key Identity}
+% ============================================================
+
+The closed forms for the Greeks could in principle be obtained by
+brute differentiation of~\eqref{eq:bs}. Direct computation produces a
+profusion of terms involving \(\partial d_1 / \partial x\) and
+\(\partial d_2 / \partial x\) for each input \(x\). Almost all of those
+terms cancel, and the cancellation rests on a single identity which we
+establish first.
+
+\begin{lemma}[Density identity]
+\label{lem:density-identity}
+For all admissible \(S, K, r, \sigma, \tau\),
+\begin{equation}
+    S\, \varphi(d_1) = K e^{-r\tau}\, \varphi(d_2).
+    \label{eq:density-identity}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Compute the difference of the squares of \(d_1\) and \(d_2\), using
+\(d_2 = d_1 - \sigma\sqrt{\tau}\):
+\begin{align*}
+    d_1^2 - d_2^2
+    &= (d_1 - d_2)(d_1 + d_2)
+    = \sigma\sqrt{\tau} \cdot \left(2 d_1 - \sigma\sqrt{\tau}\right) \\
+    &= 2 d_1 \sigma\sqrt{\tau} - \sigma^2 \tau.
+\end{align*}
+Substitute the definition of \(d_1\) into the first term:
+\[
+    2 d_1 \sigma\sqrt{\tau}
+    = 2 \log(S/K) + (2r + \sigma^2)\tau.
+\]
+Therefore
+\[
+    d_1^2 - d_2^2
+    = 2\log(S/K) + 2 r \tau,
+\]
+which gives
+\[
+    \exp\!\left(\tfrac{1}{2}(d_2^2 - d_1^2)\right)
+    = \frac{K e^{-r\tau}}{S}.
+\]
+The identity follows by multiplying by \(S\) and recognising the
+density:
+\[
+    S\, \varphi(d_1)
+    = S \cdot \frac{1}{\sqrt{2\pi}} e^{-d_1^2/2}
+    = \frac{K e^{-r\tau}}{\sqrt{2\pi}} e^{-d_2^2/2}
+    = K e^{-r\tau}\, \varphi(d_2). \qedhere
+\]
+\end{proof}
+
+The identity holds because \(d_1\) and \(d_2\) are not independent; they
+share the same numerator structure and differ only by \(\sigma\sqrt{\tau}\).
+The symmetric quadratic form \(d_1^2 - d_2^2\) collapses to something
+\(\sigma\)-free, so the imbalance between \(\varphi(d_1)\) and
+\(\varphi(d_2)\) is exactly compensated by \(K e^{-r\tau}/S\).
+
+\begin{remark}[Where the identity comes from]
+The identity~\eqref{eq:density-identity} is not a coincidence.
+It is the algebraic shadow of the change of num\'{e}raire used in the
+derivation of the Black--Scholes formula. Recall from
+\texttt{black\_scholes.tex} that \(N(d_1) = \Prob^S(S_T > K)\) under
+the stock-num\'{e}raire measure, while
+\(N(d_2) = \Q(S_T > K)\) under the bond-num\'{e}raire (risk-neutral)
+measure. The two measures differ by the Radon--Nikodym derivative
+\(d\Prob^S / d\Q = S_T B_t / (B_T S_t)\), and the densities of \(\log
+S_T\) under the two measures shift by exactly the amount that equates
+\(S\varphi(d_1)\) and \(K e^{-r\tau}\varphi(d_2)\) at the strike.
+The cancellations we will exploit below are the algebraic image of
+that probabilistic equivalence.
+\end{remark}
+
+% ============================================================
+\section{The First-Order Greeks}
+% ============================================================
+
+We derive \(\Delta\), \(\Vega\), and \(\rho\) using
+Lemma~\ref{lem:density-identity}. The strategy is identical in each
+case: differentiate~\eqref{eq:bs}, isolate the
+\(\varphi\)-terms, and apply~\eqref{eq:density-identity} to make them
+cancel. The remaining terms give the closed form.
+
+% ------------------------------------------------------------
+\subsection{Delta}
+% ------------------------------------------------------------
+
+\begin{proposition}[Delta]
+\label{prop:delta}
+\[
+    \Delta_C = N(d_1), \qquad \Delta_P = N(d_1) - 1 = -N(-d_1).
+\]
+\end{proposition}
+
+\begin{proof}
+Differentiate~\eqref{eq:bs} with respect to \(S\):
+\[
+    \Delta_C = N(d_1) + S \varphi(d_1) \frac{\partial d_1}{\partial S}
+              - K e^{-r\tau} \varphi(d_2) \frac{\partial d_2}{\partial S}.
+\]
+From~\eqref{eq:d1d2}, both \(\partial d_1 / \partial S\) and
+\(\partial d_2 / \partial S\) equal \(1 / (S \sigma \sqrt{\tau})\)
+(since \(d_2 - d_1\) does not depend on \(S\)). Thus
+\[
+    \Delta_C = N(d_1) + \frac{1}{S \sigma \sqrt{\tau}}
+        \bigl[S \varphi(d_1) - K e^{-r\tau} \varphi(d_2)\bigr],
+\]
+and the bracketed term vanishes by~\eqref{eq:density-identity}.
+Therefore \(\Delta_C = N(d_1)\). For the put, differentiate
+\eqref{eq:put} or use put-call parity \(C - P = S - Ke^{-r\tau}\),
+which gives \(\Delta_C - \Delta_P = 1\).
+\end{proof}
+
+\begin{remark}[Replication interpretation]
+The Black--Scholes price~\eqref{eq:bs} is structured as
+\(S \cdot N(d_1) - K e^{-r\tau} \cdot N(d_2)\), which is the value of
+a portfolio holding \(N(d_1)\) shares financed by borrowing
+\(K e^{-r\tau} N(d_2)\) at the riskless rate. Proposition~\ref{prop:delta}
+makes this visible: the share quantity \(N(d_1)\) is exactly the
+hedge ratio, the option's sensitivity to the underlying. The fact
+that \(\partial C/\partial S\) lands cleanly on \(N(d_1)\) ---
+without trailing \(\varphi\) terms --- is not algebraic luck, but the
+internal consistency of the replication argument that produced the
+formula in the first place.
+\end{remark}
+
+% ------------------------------------------------------------
+\subsection{Vega}
+% ------------------------------------------------------------
+
+\begin{proposition}[Vega]
+\label{prop:vega}
+\[
+    \Vega_C = \Vega_P = S \varphi(d_1) \sqrt{\tau}.
+\]
+\end{proposition}
+
+\begin{proof}
+Differentiate~\eqref{eq:bs} with respect to \(\sigma\):
+\[
+    \Vega_C = S \varphi(d_1) \frac{\partial d_1}{\partial \sigma}
+            - K e^{-r\tau} \varphi(d_2) \frac{\partial d_2}{\partial \sigma}.
+\]
+By~\eqref{eq:density-identity}, the two density factors satisfy
+\(S\varphi(d_1) = K e^{-r\tau} \varphi(d_2)\), so this collapses to
+\[
+    \Vega_C = S \varphi(d_1)\!\left(
+        \frac{\partial d_1}{\partial \sigma}
+        - \frac{\partial d_2}{\partial \sigma}
+    \right).
+\]
+From \(d_1 - d_2 = \sigma\sqrt{\tau}\),
+\(\partial d_1/\partial\sigma - \partial d_2/\partial\sigma = \sqrt{\tau}\),
+giving \(\Vega_C = S \varphi(d_1) \sqrt{\tau}\).
+
+For the put, differentiate~\eqref{eq:put} or apply put-call parity:
+\(\partial(C - P)/\partial\sigma = 0\), since the parity right-hand
+side does not depend on \(\sigma\). Hence \(\Vega_P = \Vega_C\).
+\end{proof}
+
+\begin{remark}[Vega is positive, and identical for calls and puts]
+Vega is strictly positive because all three factors are. This is the
+monotonicity that underlies the well-posedness of the
+implied-volatility inversion (see \texttt{implied\_volatility.tex},
+Lemma 2.1). The equality \(\Vega_C = \Vega_P\) is not a coincidence
+either: parity differentiated in \(\sigma\) has zero on the right.
+The same argument gives \(\Gamma_C = \Gamma_P\) and
+\(\Theta_C - \Theta_P = -r K e^{-r\tau}\); only Delta and Rho carry
+genuine option-type information.
+\end{remark}
+
+% ------------------------------------------------------------
+\subsection{Rho}
+% ------------------------------------------------------------
+
+\begin{proposition}[Rho]
+\label{prop:rho}
+\[
+    \rho_C = K \tau e^{-r\tau} N(d_2),
+    \qquad
+    \rho_P = -K \tau e^{-r\tau} N(-d_2).
+\]
+\end{proposition}
+
+\begin{proof}
+Differentiate~\eqref{eq:bs} with respect to \(r\):
+\[
+    \rho_C
+    = S \varphi(d_1) \frac{\partial d_1}{\partial r}
+        + K \tau e^{-r\tau} N(d_2)
+        - K e^{-r\tau} \varphi(d_2) \frac{\partial d_2}{\partial r}.
+\]
+Both \(\partial d_1 / \partial r\) and \(\partial d_2 / \partial r\)
+equal \(\sqrt{\tau}/\sigma\) (a constant independent of \(d_1\) versus
+\(d_2\) shift), so
+\(\bigl[S\varphi(d_1) - K e^{-r\tau}\varphi(d_2)\bigr] \cdot \sqrt{\tau}/\sigma\)
+vanishes again by~\eqref{eq:density-identity}. Only the
+\(K\tau e^{-r\tau} N(d_2)\) term survives. The put result follows from
+parity.
+\end{proof}
+
+% ============================================================
+\section{The Second-Order and Time Greeks}
+% ============================================================
+
+The remaining Greeks --- \(\Gamma\) and \(\Theta\) --- arise from
+second derivatives or from time. \(\Gamma\) gets a separate
+treatment because it does not require~\eqref{eq:density-identity}; it
+falls out of differentiating \(\Delta = N(d_1)\) directly. \(\Theta\)
+involves the most cancellation and is the longest derivation.
+
+% ------------------------------------------------------------
+\subsection{Gamma}
+% ------------------------------------------------------------
+
+\begin{proposition}[Gamma]
+\label{prop:gamma}
+\[
+    \Gamma_C = \Gamma_P = \frac{\varphi(d_1)}{S \sigma \sqrt{\tau}}.
+\]
+\end{proposition}
+
+\begin{proof}
+By Proposition~\ref{prop:delta}, \(\Delta_C = N(d_1)\). Differentiating
+in \(S\):
+\[
+    \Gamma_C = \varphi(d_1) \frac{\partial d_1}{\partial S}
+             = \frac{\varphi(d_1)}{S \sigma \sqrt{\tau}}.
+\]
+The put case follows from \(\Delta_C - \Delta_P = 1\) (constant in
+\(S\)).
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Theta}
+% ------------------------------------------------------------
+
+\begin{proposition}[Theta]
+\label{prop:theta}
+\begin{align*}
+    \Theta_C
+    &= -\frac{S \varphi(d_1) \sigma}{2 \sqrt{\tau}}
+        - r K e^{-r\tau} N(d_2), \\
+    \Theta_P
+    &= -\frac{S \varphi(d_1) \sigma}{2 \sqrt{\tau}}
+        + r K e^{-r\tau} N(-d_2).
+\end{align*}
+\end{proposition}
+
+\begin{proof}
+Recall \(\tau = T - t\), so \(\partial/\partial t = -\partial/\partial\tau\).
+Differentiate~\eqref{eq:bs} with respect to \(\tau\):
+\[
+    \frac{\partial C^{\BS}}{\partial \tau}
+    = S \varphi(d_1) \frac{\partial d_1}{\partial \tau}
+        + K r e^{-r\tau} N(d_2)
+        - K e^{-r\tau} \varphi(d_2) \frac{\partial d_2}{\partial \tau}.
+\]
+The second term is straightforward. For the first and third,
+\[
+    \frac{\partial d_1}{\partial \tau}
+    = \frac{r + \tfrac{1}{2}\sigma^2}{\sigma\sqrt{\tau}}
+        - \frac{d_1}{2\tau},
+    \qquad
+    \frac{\partial d_2}{\partial \tau}
+    = \frac{r - \tfrac{1}{2}\sigma^2}{\sigma\sqrt{\tau}}
+        - \frac{d_2}{2\tau}.
+\]
+Group the \(\varphi\)-terms. By Lemma~\ref{lem:density-identity},
+\(S\varphi(d_1) = K e^{-r\tau}\varphi(d_2)\), so we factor out a single
+\(S\varphi(d_1)\) from both:
+\[
+    S\varphi(d_1)\!\left[
+        \frac{\partial d_1}{\partial\tau} - \frac{\partial d_2}{\partial\tau}
+    \right]
+    = S\varphi(d_1)\!\left[
+        \frac{\sigma}{\sqrt{\tau}}
+        + \frac{d_2 - d_1}{2\tau}
+    \right].
+\]
+Since \(d_1 - d_2 = \sigma\sqrt{\tau}\), the bracketed expression
+becomes
+\[
+    \frac{\sigma}{\sqrt{\tau}} - \frac{\sigma}{2\sqrt{\tau}}
+    = \frac{\sigma}{2\sqrt{\tau}}.
+\]
+Therefore
+\[
+    \frac{\partial C^{\BS}}{\partial \tau}
+    = \frac{S\varphi(d_1) \sigma}{2 \sqrt{\tau}} + r K e^{-r\tau} N(d_2),
+\]
+and the calendar-time derivative is the negative,
+\[
+    \Theta_C
+    = \frac{\partial C^{\BS}}{\partial t}
+    = -\frac{\partial C^{\BS}}{\partial \tau}
+    = -\frac{S\varphi(d_1) \sigma}{2 \sqrt{\tau}} - r K e^{-r\tau} N(d_2).
+\]
+The put expression follows from parity differentiated in \(t\):
+\(\Theta_C - \Theta_P = \partial(C - P)/\partial t
+= \partial(S - K e^{-r\tau})/\partial t = -r K e^{-r\tau}\).
+\end{proof}
+
+\begin{remark}[Sign of Theta]
+For a non-dividend-paying call, the leading \(\varphi\)-term is always
+negative, and the discount term is also negative whenever
+\(N(d_2) > 0\). Hence \(\Theta_C < 0\): the call loses value as time
+passes, all else equal. For the put, the sign of \(\Theta_P\) is
+ambiguous because the two terms have opposite signs; deep ITM puts
+near expiry can have positive Theta when the discount benefit
+outweighs the time-value decay.
+\end{remark}
+
+% ============================================================
+\section{Identities and Structural Properties}
+% ============================================================
+
+The closed forms hide several relations among the Greeks. We collect
+them here because they appear repeatedly in pricing, hedging, and
+validation.
+
+% ------------------------------------------------------------
+\subsection{The Black--Scholes PDE in Greeks}
+% ------------------------------------------------------------
+
+\begin{theorem}[Black--Scholes PDE]
+\label{thm:bs-pde}
+The price of a European call (or put) under the Black--Scholes model
+satisfies
+\begin{equation}
+    \Theta + \tfrac{1}{2}\sigma^2 S^2\, \Gamma + r S\, \Delta - r V = 0,
+    \label{eq:bs-pde}
+\end{equation}
+identically in \((S, K, r, \sigma, \tau)\), with \(V \in \{C^{\BS}, P^{\BS}\}\).
+\end{theorem}
+
+\begin{proof}
+Substituting the closed forms from
+Propositions~\ref{prop:delta},~\ref{prop:gamma}, and~\ref{prop:theta}
+into~\eqref{eq:bs-pde} for the call:
+\begin{align*}
+&-\frac{S\varphi(d_1)\sigma}{2\sqrt{\tau}} - rKe^{-r\tau} N(d_2) \\
+&\qquad + \tfrac{1}{2}\sigma^2 S^2 \cdot \frac{\varphi(d_1)}{S\sigma\sqrt{\tau}}
+    + r S\, N(d_1) - r\bigl[S N(d_1) - K e^{-r\tau} N(d_2)\bigr] \\
+&= -\frac{S\varphi(d_1)\sigma}{2\sqrt{\tau}} + \frac{S\varphi(d_1)\sigma}{2\sqrt{\tau}}
+    + r S N(d_1) - r S N(d_1) - r K e^{-r\tau} N(d_2) + r K e^{-r\tau} N(d_2) \\
+&= 0.
+\end{align*}
+The put case follows by parity, or by the same substitution with the
+put closed forms.
+\end{proof}
+
+\begin{remark}[Why this identity matters]
+Theorem~\ref{thm:bs-pde} couples four of the five classical Greeks
+(\(\Vega\) and \(\rho\) do not appear because the model treats
+\(\sigma\) and \(r\) as constants). The PDE is therefore a stringent
+joint test of any closed-form or numerical implementation: a sign
+error or missing factor in a single Greek breaks the residual at
+machine precision. The numerical validation suite in
+\texttt{validate\_greeks.py} exploits this directly to triangulate
+correctness.
+\end{remark}
+
+% ------------------------------------------------------------
+\subsection{The Vega--Gamma identity}
+% ------------------------------------------------------------
+
+\begin{proposition}[Vega--Gamma identity]
+\label{prop:vega-gamma}
+\begin{equation}
+    \Vega = S^2\, \sigma\, \tau\, \Gamma.
+    \label{eq:vega-gamma}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Substituting the closed forms,
+\(S^2 \sigma \tau \cdot \varphi(d_1) / (S \sigma \sqrt{\tau}) = S \varphi(d_1) \sqrt{\tau} = \Vega\).
+\end{proof}
+
+\begin{remark}[The dual nature of Vega and Gamma]
+The Vega--Gamma identity says that, for a vanilla European option,
+being long Vega and being long Gamma are the same exposure up to a
+deterministic rescaling. This collapses two notions of risk that the
+trader's intuition might keep separate. The collapse is specific to
+Black--Scholes: in stochastic volatility models (Heston, SABR),
+\(\sigma\) becomes a state variable in its own right, the
+Vega-equivalent splits into multiple sensitivities to the volatility
+process, and~\eqref{eq:vega-gamma} no longer holds. The Black--Scholes
+collapse is one more way in which the model is a degenerate special
+case of the broader theory.
+\end{remark}
+
+% ------------------------------------------------------------
+\subsection{Curvature in volatility}
+% ------------------------------------------------------------
+
+The first derivative of \(C^{\BS}\) in \(\sigma\) (Vega) is strictly
+positive. The second derivative (sometimes called \emph{Volga}) is
+not.
+
+\begin{proposition}[Volga]
+\label{prop:volga}
+\begin{equation}
+    \frac{\partial^2 C^{\BS}}{\partial \sigma^2}
+    = \frac{S \varphi(d_1) \sqrt{\tau}}{\sigma}\, d_1\, d_2.
+    \label{eq:volga}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Differentiate \(\Vega = S\varphi(d_1)\sqrt{\tau}\) with respect to
+\(\sigma\):
+\[
+    \frac{\partial \Vega}{\partial \sigma}
+    = S \sqrt{\tau} \cdot \varphi'(d_1) \cdot \frac{\partial d_1}{\partial \sigma}.
+\]
+Using \(\varphi'(x) = -x \varphi(x)\) and
+\(\partial d_1 / \partial \sigma = -d_2 / \sigma\) (a calculation that
+isolates the explicit \(\sigma\)-dependence and uses
+\(d_2 = d_1 - \sigma\sqrt{\tau}\)):
+\[
+    \frac{\partial \Vega}{\partial \sigma}
+    = S \sqrt{\tau} \cdot (-d_1)\varphi(d_1) \cdot \frac{-d_2}{\sigma}
+    = \frac{S\varphi(d_1)\sqrt{\tau}}{\sigma}\, d_1 d_2. \qedhere
+\]
+\end{proof}
+
+The sign of Volga therefore tracks the sign of \(d_1 d_2\). For
+options moderately near at-the-money with small-to-moderate \(\sigma\),
+\(d_1\) and \(d_2\) typically straddle zero and the call is locally
+\emph{concave} in \(\sigma\); for options far from ATM or for large
+\(\sigma\), they share signs and the call is convex. The change of
+curvature occurs along the locus \(d_1 d_2 = 0\), which is the central
+object of the smile-implied-volatility approximation literature.
+
+\begin{remark}[Implication for Newton's method on implied volatility]
+Volga's sign change is the technical reason why monotonicity of
+\(C^{\BS}\) in \(\sigma\) is not by itself sufficient for global
+convergence of Newton's method when computing implied volatility, as
+discussed in \texttt{implied\_volatility.tex} (Section 3.2). When the
+initial guess and the true root lie on opposite sides of the locus
+\(d_1 d_2 = 0\), the first Newton step can overshoot.
+This is why the implementation uses a region-aware initial guess
+(Brenner--Subrahmanyam near ATM, neutral default elsewhere) rather
+than a constant.
+\end{remark}
+
+% ============================================================
+\section{Summary}
+% ============================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{l|l|l}
+Greek & Call & Put \\\hline
+\(\Delta\) & \(N(d_1)\) & \(N(d_1) - 1\) \\
+\(\Gamma\) & \multicolumn{2}{l}{\(\dfrac{\varphi(d_1)}{S\sigma\sqrt{\tau}}\)} \\[0.5em]
+\(\Vega\) & \multicolumn{2}{l}{\(S \varphi(d_1) \sqrt{\tau}\)} \\[0.5em]
+\(\Theta\)
+    & \(-\dfrac{S\varphi(d_1)\sigma}{2\sqrt{\tau}} - rKe^{-r\tau}N(d_2)\)
+    & \(-\dfrac{S\varphi(d_1)\sigma}{2\sqrt{\tau}} + rKe^{-r\tau}N(-d_2)\) \\[0.7em]
+\(\rho\) & \(K\tau e^{-r\tau} N(d_2)\) & \(-K\tau e^{-r\tau} N(-d_2)\)
+\end{tabular}
+\end{center}
+
+The Greeks satisfy three structural identities: the Black--Scholes
+PDE \(\Theta + \tfrac{1}{2}\sigma^2 S^2 \Gamma + rS\Delta - rV = 0\),
+the Vega--Gamma identity \(\Vega = S^2 \sigma \tau \Gamma\), and the
+non-trivial sign of Volga \(\partial \Vega / \partial \sigma\) which
+governs the convexity of the price in volatility. Each identity is
+exploited downstream: the PDE in the validation of the Greeks
+implementation, the Vega--Gamma identity as an algebraic sanity
+check, and Volga in the analysis of Newton's method for implied
+volatility.
+
+\end{document}
