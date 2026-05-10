@@ -71,6 +71,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(quant_tests
     tests/test_black_scholes.cpp
     tests/test_implied_volatility.cpp
+    tests/test_gbm.cpp
     tests/test_monte_carlo.cpp
     tests/test_variance_reduction.cpp
     tests/test_qmc.cpp
