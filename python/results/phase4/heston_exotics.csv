@@ -1,0 +1,6 @@
+payoff_type,price,half_width_95,method
+European call (Fourier),9.242521,,Fourier
+Asian arithmetic,5.348968,4.146898e-02,MC Andersen QE
+Lookback floating,16.332879,7.168278e-02,MC Andersen QE
+Barrier UO (H=130),5.482310,4.820197e-02,MC Andersen QE
+American put (PDE),6.564659,,PDE Douglas ADI + projection
