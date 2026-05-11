@@ -1,0 +1,8 @@
+technique,family,underlying,n_paths_arg,total_payoffs,estimate,half_width,vrf
+IID baseline,iid,european_call,1048576,1048576,10.451621,2.818232e-02,1.0000
+Antithetic variates,vr_plain,european_call,524288,1048576,10.449944,1.987348e-02,2.0110
+CV (underlying),vr_plain,european_call,1048576,1048576,10.455592,1.074007e-02,6.8856
+CV (asset-or-nothing),vr_plain,european_call,1048576,1048576,10.468625,1.793254e-02,2.4698
+Sobol RQMC,qmc,european_call,65536,1048576,10.442526,3.669396e-03,58.9881
+IID baseline (Asian),iid,asian_arithmetic,1048576,1048576,5.860501,1.553149e-02,1.0000
+CV (geometric Asian),structural,asian_arithmetic,1048576,1048576,5.857267,4.272309e-04,1321.6019
