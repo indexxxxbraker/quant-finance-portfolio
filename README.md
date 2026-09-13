@@ -39,7 +39,7 @@ The architectural principle is **cross-validation**: every pricer must agree wit
 
 ## Project phases
 
-### Phase 1 — European options under Black-Scholes ✓
+### Phase 1 — European options under Black-Scholes 
 
 - Black-Scholes analytical pricer (call and put), derived via the martingale approach with explicit change of measure under the risk-neutral measure Q.
 - Five closed-form Greeks (Δ, Γ, Vega, Θ, ρ), validated by three independent routes: centered finite differences, residual of the Black-Scholes PDE on a random grid, and the Vega–Gamma algebraic identity.
@@ -47,7 +47,7 @@ The architectural principle is **cross-validation**: every pricer must agree wit
 
 Theory: 3 LaTeX writeups in [`theory/phase1/`](theory/phase1/).
 
-### Phase 2 — Monte Carlo methods ✓
+### Phase 2 — Monte Carlo methods 
 
 - Foundations: LLN, CLT, half-width confidence intervals, Acklam's inverse normal CDF.
 - Exact GBM sampling and SDE discretization: Euler–Maruyama (strong order 1/2) and Milstein (strong order 1), both verified empirically against same-Brownian exact paths.
@@ -58,7 +58,7 @@ Theory: 3 LaTeX writeups in [`theory/phase1/`](theory/phase1/).
 
 Theory: 13 LaTeX writeups in [`theory/phase2/`](theory/phase2/).
 
-### Phase 3 — Finite-difference PDE and lattice methods ✓
+### Phase 3 — Finite-difference PDE and lattice methods 
 
 - FTCS (forward-time centered-space) with explicit CFL stability analysis: α = (σ²/2)Δt/Δx² ≤ 1/2.
 - BTCS (backward-time) backed by a custom Thomas algorithm, justified by strict diagonal dominance (Higham, Theorem 9.5).
@@ -69,7 +69,7 @@ Theory: 13 LaTeX writeups in [`theory/phase2/`](theory/phase2/).
 
 Theory: 6 LaTeX writeups in [`theory/phase3/`](theory/phase3/).
 
-### Phase 4 — Heston stochastic volatility model ✓
+### Phase 4 — Heston stochastic volatility model 
 
 - Heston SDE theory: Feller condition for v > 0, conditional moments of v_t and integrated variance ∫₀ᵀ v_s ds.
 - Fourier-based pricing via the AMSST characteristic function, Carr–Madan FFT, and Lewis quadrature.
