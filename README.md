@@ -1,6 +1,6 @@
 # Quantitative Finance Portfolio
 
-A multi-method derivative pricing library covering European, American, and exotic options under Black-Scholes and Heston dynamics. Each pricer is implemented in parallel in Python (reference) and C++ (production), backed by ~50 pages of LaTeX writeups and cross-validated against independent numerical methods.
+A multi-method derivative pricing library covering European, American, and exotic options under Black-Scholes and Heston dynamics. Each pricer is implemented in parallel in Python (reference) and C++ (production), backed by ~50 pages of LaTeX writeups and cross-validated against independent numerical methods. 
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
@@ -26,6 +26,8 @@ This project demonstrates comprehensive numerical methods for derivative pricing
 The architectural principle is **cross-validation**: every pricer must agree with at least one independent method within a known tolerance. The Heston European call, for example, is priced by four radically different architectures (Fourier, MC-QE, MC-Euler, PDE-ADI) that agree to 4-5 significant figures.
 
 **Scope and assumptions.** The library handles European, American, and selected exotic options under Black-Scholes and Heston dynamics, assuming non-dividend-paying assets, constant interest rate, and (under Black-Scholes) constant volatility. Jump-diffusion and local volatility models are out of scope.
+
+The theoretical foundations of this library are developed in my bachelor's thesis: [option-pricing-via-martingales](https://github.com/indexxxxbraker/option-pricing-via-martingales).
 
 ## Highlights
 
