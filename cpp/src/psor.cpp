@@ -52,6 +52,11 @@ PSORResult psor_solve(
             + std::to_string(n) + ", got "
             + std::to_string(obstacle.size()));
     }
+    // omega = 1 is projected Gauss-Seidel. On the Phase 3 benchmark grids the
+    // optimum was close to 1.4, and being off by 0.5 cost roughly 5x more
+    // iterations; the Python default of 1.2 is deliberately conservative. The
+    // classical SOR formula is only a heuristic once the projection is active,
+    // so omega is left as a parameter rather than fixed.
     if (!(0.0 < omega && omega < 2.0)) {
         throw std::invalid_argument(
             "psor_solve: omega must lie strictly in (0, 2), got "

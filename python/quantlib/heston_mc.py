@@ -212,6 +212,11 @@ def simulate_heston_paths(S0, v0, r, kappa, theta, sigma, rho, T,
     # Generating the standard normals one step at a time keeps memory
     # bounded at O(n_paths) rather than O(n_steps * n_paths).
     for n in range(n_steps):
+        # Full truncation (Lord, Koekkoek & van Dijk 2010): v_pos enters both
+        # the drift and the diffusion of the update, while v itself is stored
+        # unclipped. Of the standard fixes for negative variance (absorption,
+        # reflection, partial truncation) this one has the smallest bias in
+        # their comparison; it is the baseline the QE scheme is measured against.
         v_pos = np.maximum(v[n, :], 0.0)
         sqrt_v_pos = np.sqrt(v_pos)
 
@@ -286,6 +291,7 @@ def simulate_terminal_heston(S0, v0, r, kappa, theta, sigma, rho, T,
     half = n_paths // 2 if antithetic else n_paths
 
     for _ in range(n_steps):
+        # Full truncation; see the comment in the path simulator above.
         v_pos = np.maximum(v, 0.0)
         sqrt_v_pos = np.sqrt(v_pos)
 

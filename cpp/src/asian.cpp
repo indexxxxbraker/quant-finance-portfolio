@@ -220,6 +220,11 @@ mc_asian_call_arithmetic_cv(double S, double K, double r,
         Pi_G[i] = discount * std::max(avg.geometric  - K, 0.0);
     }
 
+    // Control variate's known mean: closed-form geometric Asian price
+    // (Kemna & Vorst 1990). The arithmetic and geometric means of the same
+    // path are tied by AM-GM and their correlation here is above 0.999, which
+    // is why this control cuts variance by three orders of magnitude where a
+    // control on S_T alone gives under ten (see benchmark_phase2.py).
     const double EX = geometric_asian_call_closed_form(S, K, r, sigma, T,
                                                         n_steps);
     return apply_cv(Pi_A, Pi_G, EX, confidence_level);

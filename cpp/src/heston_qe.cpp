@@ -53,6 +53,11 @@ inline void qe_step(double& log_S,
 
     // Sample v_next via the Q or E regime depending on psi.
     double v_next;
+    // Regime switch (Andersen 2008, Sec. 3.2). psi = s2/m^2 measures how far
+    // the conditional distribution of v is from Gaussian. The quadratic scheme
+    // needs psi <= 2 for b^2 to be real; the exponential scheme needs psi >= 1
+    // for p = (psi-1)/(psi+1) to be a valid probability. Both are usable on
+    // [1, 2], so psi_c = 1.5 is a convention, not a sharp boundary.
     if (psi <= psi_c) {
         // Quadratic regime: v_next = a (b + Z)^2.
         const double inv_psi = 1.0 / psi;

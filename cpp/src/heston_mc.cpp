@@ -27,6 +27,11 @@ inline void ft_step(double& log_S,
                      const HestonParams& p,
                      double r,
                      double dt) {
+    // Full truncation (Lord, Koekkoek & van Dijk 2010): v_pos enters both
+    // the drift and the diffusion of the update, while v itself is stored
+    // unclipped. Of the standard fixes for negative variance (absorption,
+    // reflection, partial truncation) this one has the smallest bias in
+    // their comparison; it is the baseline the QE scheme is measured against.
     const double v_pos     = std::max(v, 0.0);
     const double sqrt_vpos = std::sqrt(v_pos);
 

@@ -106,6 +106,11 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
         )
 
     # Parameter validation.
+    # omega = 1 is projected Gauss-Seidel. The default 1.2 is deliberately
+    # conservative: on the Phase 3 benchmark grids the optimum was close to
+    # 1.4, and being off by 0.5 cost roughly 5x more iterations. The SOR
+    # formula in the module docstring is only a heuristic once the projection
+    # is active, so omega is left as a parameter rather than fixed.
     if not (0.0 < omega < 2.0):
         raise ValueError(
             f"psor_solve: omega must lie strictly in (0, 2), got {omega}"

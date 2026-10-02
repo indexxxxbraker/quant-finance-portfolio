@@ -202,7 +202,11 @@ def mc_asian_call_arithmetic_cv(S, K, r, sigma, T, n_paths,
     paths = _gbm_paths(S, r, sigma, T, n_paths, n_steps, rng)
     Pi_A, Pi_G = _arithmetic_geometric_payoffs(paths, K, r, T)
 
-    # Control variate's known mean: closed-form geometric Asian price.
+    # Control variate's known mean: closed-form geometric Asian price
+    # (Kemna & Vorst 1990). The arithmetic and geometric means of the same
+    # path are tied by AM-GM and their correlation here is above 0.999, which
+    # is why this control cuts variance by three orders of magnitude where a
+    # control on S_T alone gives under ten (see benchmark_phase2.py).
     cv_mean = geometric_asian_call_closed_form(S, K, r, sigma, T, n_steps)
 
     return _apply_cv(Pi_A, Pi_G, cv_mean,

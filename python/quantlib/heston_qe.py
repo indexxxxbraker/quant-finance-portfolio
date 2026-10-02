@@ -169,6 +169,11 @@ def _qe_variance_step(v_n, kappa, theta, sigma, dt, psi_c, U, Z):
 
     # Branch on the regime. Both regimes are vectorised; we just
     # combine the results with np.where based on psi.
+    # Regime switch (Andersen 2008, Sec. 3.2). psi = s2/m^2 measures how far
+    # the conditional distribution of v is from Gaussian. The quadratic scheme
+    # needs psi <= 2 for b^2 to be real; the exponential scheme needs psi >= 1
+    # for p = (psi-1)/(psi+1) to be a valid probability. Both are usable on
+    # [1, 2], so psi_c = 1.5 is a convention, not a sharp boundary.
     is_quadratic = psi <= psi_c
 
     # ---- Quadratic regime (psi <= psi_c) ----------------------------

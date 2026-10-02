@@ -76,6 +76,11 @@ def _cn_march(grid, V0, bc_lower, bc_upper, *, rannacher_steps=2):
         return theta_march(grid, V0, 0.5, bc_lower, bc_upper)
 
     # ---- Rannacher warm-up: 2 * rannacher_steps BTCS half-steps ----
+    # Why: the payoff kink at the strike loads the highest-frequency grid
+    # mode, and CN's amplification factor for that mode tends to -1 rather
+    # than 0, so the oscillation is never damped and the observed order
+    # drops to O(dt). A few fully implicit steps (|g| -> 0) remove it and
+    # restore O(dt^2). Giles & Carter (2005).
     n_half = 2 * rannacher_steps
     half_dtau = 0.5 * grid.dtau
 
