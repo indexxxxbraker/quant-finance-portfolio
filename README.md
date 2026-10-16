@@ -11,7 +11,7 @@ Numerical methods for derivative pricing — analytical, Monte Carlo, finite-dif
 </p>
 
 <p align="center">
-  <em>European call under Heston priced by four independent methods — Fourier inversion, Monte Carlo with Andersen QE, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo — agreeing within tolerance across a strike strip.</em>
+  <em>European call under Heston priced by four independent methods — Fourier inversion, Monte Carlo with Andersen QE, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo. Bottom panel: relative difference from the Fourier price, with 95% confidence intervals for Monte Carlo.</em>
 </p>
 
 ## About this project
@@ -26,8 +26,8 @@ I used AI assistants (Anthropic's Claude) throughout, and I would rather say pre
 
 ## What is in here
 
-- A Heston European call priced four independent ways — Fourier inversion, Andersen QE Monte Carlo, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo — agreeing to 4–5 significant figures.
-- Variance reduction on European and Asian calls, from antithetic variates (VRF ≈ 2) to a geometric-Asian control variate (VRF ≈ 1300, because AM–GM forces ρ > 0.999 between the arithmetic and geometric means).
+- A Heston European call priced four independent ways — Fourier inversion, Andersen QE Monte Carlo, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo. The PDE matches the Fourier price to within 0.1% for strikes 80–115 (0.3% at 120), and all eighteen Monte Carlo prices fall inside their 95% confidence intervals (0.1–0.4% of the price with 1.6 million paths).
+- Variance reduction on European and Asian calls, from antithetic variates (VRF ≈ 2) to a geometric-Asian control variate (VRF ≈ 1300: on the same path the arithmetic and geometric means differ only at second order, so ρ > 0.999).
 - Solvers written from scratch rather than imported: Cholesky decomposition, Thomas algorithm, Projected SOR, Acklam's inverse normal CDF, Sobol sequences with Joe–Kuo direction numbers.
 - Convergence rates checked against theory: strong order 1/2 vs 1 for Euler–Maruyama vs Milstein, O(Δt²) for Crank–Nicolson with Rannacher smoothing, O(h²) for Douglas ADI.
 - Levenberg–Marquardt calibration of Heston with vega weighting, on a synthetic surface.
@@ -51,7 +51,7 @@ Theory: 3 LaTeX writeups in [`theory/phase1/`](theory/phase1/).
 - Exact GBM sampling and SDE discretization: Euler–Maruyama (strong order 1/2) and Milstein (strong order 1), both verified empirically against same-Brownian exact paths.
 - Variance reduction: antithetic variates, control variates (underlying, asset-or-nothing, geometric Asian), and randomized quasi-Monte Carlo with Sobol and Halton sequences.
 - Monte Carlo Greeks: bumping with common random numbers, pathwise sensitivities, likelihood-ratio.
-- Asian arithmetic call with geometric control variate yielding VRF ≈ 1300, because the AM–GM inequality forces correlation above 0.999.
+- Asian arithmetic call with geometric control variate yielding VRF ≈ 1300. Along a path, log A − log G ≈ ½·Var(log S) = O(σ²T); AM–GM only fixes the sign of this gap, and its smallness is what pushes the correlation above 0.999.
 - American put via Longstaff–Schwartz with Laguerre basis (Cholesky decomposition implemented from scratch for the normal equations).
 
 Theory: 13 LaTeX writeups in [`theory/phase2/`](theory/phase2/).
@@ -84,7 +84,7 @@ Theory: 6 LaTeX writeups in [`theory/phase4/`](theory/phase4/).
   <img src="python/results/phase2/vr_scoreboard.png" alt="Variance reduction scoreboard" width="80%">
 </p>
 
-*Variance reduction techniques benchmarked against the IID baseline. The geometric Asian control variate exploits ρ > 0.999 (by AM–GM) for a VRF of about 1300, the largest reduction in the project; it is shown separately because it changes the product being priced, not just the estimator. Sobol RQMC reaches a VRF of about 60 under conservative replication settings.*
+*Variance reduction techniques benchmarked against the IID baseline. The geometric Asian control variate exploits ρ > 0.999 between the arithmetic and geometric means of the same path for a VRF of about 1300, the largest reduction in the project; it is shown separately because it changes the product being priced, not just the estimator. Sobol RQMC reaches a VRF of about 60 under conservative replication settings.*
 
 <p align="center">
   <img src="python/results/phase4/heston_calibration.png" alt="Heston calibration to synthetic vol surface" width="80%">
@@ -113,9 +113,9 @@ Further artifacts under [`python/results/`](python/results/) include the Douglas
 
 - Agreement between independent methods is the only test I trust. A pricer can be internally consistent and still be wrong; checking Fourier against ADI against Monte Carlo, which share no code and no approximation, is what made me confident in the Heston numbers.
 - Stability conditions matter in practice, not only in the theorems. FTCS with the CFL condition violated produces a sawtooth at the highest grid frequency that grows without bound. Crank–Nicolson does not blow up, but the kink in the payoff excites that same mode and CN only damps it to |g| → 1, so two implicit steps at the start (Rannacher) are needed to recover O(Δt²). The American put under PSOR does not need this, because the projection onto the payoff removes the oscillation.
-- In variance reduction, the gain depends on how closely the control matches the structure of the payoff. Antithetic variates give a factor of 2 and a control variate on S_T gives about 7; the geometric-Asian control gives about 1300 because the arithmetic and geometric means of a lognormal path have correlation above 0.999 by AM–GM.
+- In variance reduction, the gain depends on how closely the control matches the structure of the payoff. Antithetic variates give a factor of 2 and a control variate on S_T gives about 7; the geometric-Asian control gives about 1300 because the arithmetic and geometric means of a lognormal path differ only at second order in σ√T, so their correlation exceeds 0.999. AM–GM gives the ordering A ≥ G, not the correlation.
 - Asymptotic convergence rates can be far away. Sobol RQMC should converge like N^-1, but in dimension 20 with N ≤ 65,536 the observed rate is N^-0.62 because of the (log N)^d prefactor. This is not an implementation error.
-- A better scheme only shows its advantage in the regime it was designed for. With well-behaved Heston parameters, full-truncation Euler and Andersen QE agree within Monte Carlo noise; with the Feller condition strongly violated, Euler's bias is about a hundred times larger.
+- A better scheme only shows its advantage in the regime it was designed for. With well-behaved Heston parameters, full-truncation Euler and Andersen QE agree within Monte Carlo noise. With the Feller condition strongly violated, Euler overprices by about 10% at 25 time steps and still by about 0.5% at 400, while QE's bias stays below the Monte Carlo resolution (about 0.3% of the price) at every step count tested.
 - Lattices and finite differences are the same construction. The Kamrad–Ritchken trinomial tree with stretch parameter λ is FTCS with α = 1/(2λ), and λ ≥ 1 is the CFL condition.
 - Porting from Python to C++ forced me to make explicit what NumPy had been doing implicitly: types, edge cases and the behaviour of library calls. Writing the same algorithm twice was the most effective review of the first version.
 
