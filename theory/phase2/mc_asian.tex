@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -248,8 +249,11 @@ high.
 For small relative variation in $\{X_k\}$ (which holds for
 moderate $\sigma\sqrt T$ and reasonable $N$), $\log \bar S \approx
 \log \tilde S + \tfrac{1}{2}\Var_k(X_k)$ by a Taylor expansion of
-the log-sum-exp around its mean. The correction is a deterministic
-shift, so $\Corr(\log \tilde S, \log \bar S) \to 1$ in this regime.
+the log-sum-exp around its mean. The correction is small, of order
+$\sigma^2 T$, and fluctuates far less than $\log \tilde S$ itself, so
+$\Corr(\log \tilde S, \log \bar S) \to 1$ in this regime. Note that the
+AM-GM inequality only fixes the sign of the gap; the correlation comes
+from its smallness.
 
 In practice, for a 1-year ATM call with $\sigma = 0.20$ and $N = 50$
 monitoring dates, empirical correlation between $\bar S - K$ and
@@ -351,8 +355,9 @@ better outcome ($\rho > 0.999$, VRF $> 1000$).
 The lesson is that \emph{control variate quality is determined by
 the structural relationship between control and target}, not by the
 sophistication of the technique. The geometric and arithmetic
-averages of the same set of lognormals are bound by AM-GM and share
-all the same noise; they could not help being correlated. The
+averages of the same set of lognormals differ only at second order
+in $\sigma\sqrt{T}$, so they share almost all of their noise; they
+could not help being correlated. The
 discounted-underlying and the European call payoff are connected
 only through the indicator function $\indic_{\{S_T > K\}}$, which
 loses about $40\%$ of the variance to the bounded-payoff truncation.

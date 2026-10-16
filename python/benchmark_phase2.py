@@ -285,13 +285,12 @@ def plot_vr_scoreboard(records: List[VRRecord]) -> None:
                   r"$\mathrm{VRF} = (\mathrm{hw}_{\mathrm{IID}}"
                   r"/ \mathrm{hw}_{\mathrm{technique}})^2$",
                   fontsize=11)
-    ax.set_title("Phase 2: variance reduction scoreboard",
-                 fontsize=12)
+    ax.set_title("Variance reduction scoreboard", fontsize=12)
     ax.grid(True, axis="x", which="both", alpha=0.3)
     ax.axvline(1.0, color="black", linewidth=0.8, alpha=0.5)
-    ax.text(1.05, -0.65, "IID baseline (= 1)",
+    ax.text(1.05, len(names) - 0.55, "IID baseline (= 1)",
             fontsize=8, color="black", alpha=0.6,
-            ha="left", va="top")
+            ha="left", va="bottom")
 
     # Numeric annotation at the end of each bar.
     for i, v in enumerate(vrfs):
@@ -303,11 +302,10 @@ def plot_vr_scoreboard(records: List[VRRecord]) -> None:
                     if r.name == "CV (geometric Asian)"), None)
     if geo_idx is not None:
         v = vrfs[geo_idx]
-        ax.annotate(r"thanks to AM-GM: $\rho > 0.999$",
-                    xy=(v, geo_idx), xytext=(v * 0.04, geo_idx + 0.45),
-                    fontsize=9, color="#C44E52",
-                    arrowprops=dict(arrowstyle="->", color="#C44E52",
-                                    lw=0.8))
+        ax.text(1.5, geo_idx,
+                r"same path: $\log A - \log G = O(\sigma^2 T)$, "
+                r"so $\rho > 0.999$",
+                va="center", ha="left", fontsize=9, color="white")
 
     # Legend by family.
     legend_handles = [

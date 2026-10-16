@@ -137,8 +137,9 @@ TEST_CASE("Asian: arithmetic CV agrees with arithmetic IID",
 TEST_CASE("Asian: geometric CV gives huge VRF (>500)",
           "[asian][cv][vrf]") {
     // Geometric and arithmetic averages of the same lognormal path
-    // are bound by AM-GM and share all the noise. Empirical
-    // correlation > 0.999 at our parameters, predicting VRF > 1000.
+    // differ only at second order (log A - log G = O(sigma^2 T)), so
+    // they share almost all the noise. Empirical correlation > 0.999
+    // at our parameters, predicting VRF > 1000.
     // We require VRF > 500 with margin against MC noise.
     constexpr double S = 100.0, K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
     constexpr std::size_t N = 50;

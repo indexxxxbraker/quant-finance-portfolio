@@ -221,10 +221,12 @@ mc_asian_call_arithmetic_cv(double S, double K, double r,
     }
 
     // Control variate's known mean: closed-form geometric Asian price
-    // (Kemna & Vorst 1990). The arithmetic and geometric means of the same
-    // path are tied by AM-GM and their correlation here is above 0.999, which
-    // is why this control cuts variance by three orders of magnitude where a
-    // control on S_T alone gives under ten (see benchmark_phase2.py).
+    // (Kemna & Vorst 1990). Both means are built from the same path and their
+    // gap is second order: log A - log G ~ (1/2) * (variance of log S over the
+    // monitoring dates) = O(sigma^2 T). AM-GM only fixes the sign of that gap;
+    // its smallness is what makes the correlation exceed 0.999 here, and why
+    // this control cuts variance by three orders of magnitude where a control
+    // on S_T alone gives under ten (see benchmark_phase2.py).
     const double EX = geometric_asian_call_closed_form(S, K, r, sigma, T,
                                                         n_steps);
     return apply_cv(Pi_A, Pi_G, EX, confidence_level);
