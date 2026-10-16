@@ -64,8 +64,11 @@ T  = 1.0
 # Strikes for cross-validation (Section 1)
 STRIKES_CROSS = np.arange(80.0, 121.0, 5.0)  # 80, 85, ..., 120  (9 strikes)
 
-# MC and PDE production sizes (Section 1)
-MC_N_PATHS = 200_000
+# MC and PDE production sizes (Section 1). Each strike gets its own seed, so
+# the Monte Carlo errors are independent across strikes; with a shared seed
+# every strike reuses the same paths and one unlucky draw shifts the whole
+# curve coherently.
+MC_N_PATHS = 1_600_000
 MC_N_STEPS = 200
 PDE_N_X    = 200
 PDE_N_V    = 100
@@ -124,7 +127,8 @@ def cross_validation_section():
           f"sigma={HESTON['sigma']}, rho={HESTON['rho']}, v0={HESTON['v0']}")
     feller = 2 * HESTON["kappa"] * HESTON["theta"] / HESTON["sigma"]**2
     print(f"  Feller parameter 2*kappa*theta/sigma^2 = {feller:.3f}")
-    print(f"  MC: n_paths={MC_N_PATHS}, n_steps={MC_N_STEPS}")
+    print(f"  MC: n_paths={MC_N_PATHS}, n_steps={MC_N_STEPS}, "
+          f"independent seed per strike")
     print(f"  PDE: N_X={PDE_N_X}, N_v={PDE_N_V}, N_tau={PDE_N_TAU}")
     print("=" * 102)
 
@@ -133,7 +137,8 @@ def cross_validation_section():
     print("  " + "-" * 80)
 
     rows = []
-    for K in STRIKES_CROSS:
+    for i, K in enumerate(STRIKES_CROSS):
+        seed_K = RNG_SEED + i
         # Fourier (reference)
         price_f = heston_call_lewis(
             K, T, S0, HESTON["v0"], R,
@@ -146,7 +151,7 @@ def cross_validation_section():
             S0, K, HESTON["v0"], R,
             HESTON["kappa"], HESTON["theta"],
             HESTON["sigma"], HESTON["rho"],
-            T, MC_N_STEPS, MC_N_PATHS, seed=RNG_SEED)
+            T, MC_N_STEPS, MC_N_PATHS, seed=seed_K)
         t_e = time.perf_counter() - t0
 
         # MC QE
@@ -155,7 +160,7 @@ def cross_validation_section():
             S0, K, HESTON["v0"], R,
             HESTON["kappa"], HESTON["theta"],
             HESTON["sigma"], HESTON["rho"],
-            T, MC_N_STEPS, MC_N_PATHS, seed=RNG_SEED)
+            T, MC_N_STEPS, MC_N_PATHS, seed=seed_K)
         t_q = time.perf_counter() - t0
 
         # PDE
@@ -224,20 +229,21 @@ def plot_cross_validation(rows):
 
     # --- Bottom: relative differences ---
     ax2.axhline(0, color="black", linewidth=2.5, label="Fourier (reference)")
-    ax2.fill_between(Ks, rel_euler - rel_euler_hw, rel_euler + rel_euler_hw,
-                       color="C0", alpha=0.20)
-    ax2.plot(Ks, rel_euler, "o-", color="C0", linewidth=1.5, markersize=8,
-              label="MC full-truncation Euler (95% CI)")
-    ax2.fill_between(Ks, rel_qe - rel_qe_hw, rel_qe + rel_qe_hw,
-                       color="C3", alpha=0.20)
-    ax2.plot(Ks, rel_qe, "s-", color="C3", linewidth=1.5, markersize=8,
-              label="MC Andersen QE (95% CI)")
-    ax2.plot(Ks, rel_pde, "D-", color="C2", linewidth=1.5, markersize=8,
-              label="PDE 2D Douglas ADI")
+    dK = 0.6  # small horizontal offset so the error bars do not overlap
+    ax2.errorbar(Ks - dK, 100 * rel_euler, yerr=100 * rel_euler_hw, fmt="o",
+                  color="C0", capsize=4, markersize=7,
+                  label="MC full-truncation Euler (95% CI)")
+    ax2.errorbar(Ks + dK, 100 * rel_qe, yerr=100 * rel_qe_hw, fmt="s",
+                  color="C3", capsize=4, markersize=7,
+                  label="MC Andersen QE (95% CI)")
+    ax2.plot(Ks, 100 * rel_pde, "D-", color="C2", linewidth=1.5,
+              markersize=8, label="PDE 2D Douglas ADI")
     ax2.set_xlabel("Strike K")
     ax2.set_ylabel(r"$(C_{\mathrm{method}} - C_{\mathrm{Fourier}}) "
-                     r"/ C_{\mathrm{Fourier}}$")
-    ax2.set_title("Relative difference from Fourier (95% CI shaded for MC)")
+                     r"/ C_{\mathrm{Fourier}}$  (%)")
+    ax2.set_title(f"Relative difference from Fourier "
+                   f"(MC: {MC_N_PATHS:,} paths, {MC_N_STEPS} steps, "
+                   f"one seed per strike)")
     ax2.legend(loc="best", fontsize=9)
     ax2.grid(True, alpha=0.3)
 
