@@ -30,7 +30,14 @@ ATOL_LIMIT = 1e-6      # Asymptotic limits, looser due to non-zero T.
 ATOL_MONO = 1e-12      # Monotonicity checks: tiny tolerance for FP noise.
 
 
+_n_fail = 0
+
+
 def _status(ok: bool) -> str:
+    """Return the PASS/FAIL tag and record failures for the exit code."""
+    global _n_fail
+    if not ok:
+        _n_fail += 1
     return "PASS" if ok else "FAIL"
 
 
@@ -102,23 +109,31 @@ def check_limit_T_to_zero():
         (a) that the discounting limit is correct (exp(-r*T) -> 1),
         (b) that the tails of the normal CDF behave correctly when d1, d2
             blow up to +/- infinity in the ITM/OTM cases,
-        (c) that the ATM case (where d1, d2 stay near 0) gives the right
-            cancellation between the two terms.
+        (c) the at-the-money case, where d1, d2 stay near 0.
+
+    Away from the money the convergence is exponentially fast. At the money
+    it is not: expanding Phi around 0 with d1 - d2 = sigma*sqrt(T) gives
+        C_ATM = S * (sigma*sqrt(T/(2*pi)) + r*T/2) + O(T^{3/2}),
+    so the price tends to the intrinsic value 0 only like sqrt(T). At
+    T = 1e-8 that leading term is about 8e-4, far above ATOL_LIMIT, so the
+    ATM call is checked against the expansion instead of against 0.
     """
     print("[3] Limit T -> 0+ (probed at T = 1e-8)")
-    T = 1e-8
+    T, r, sigma = 1e-8, 0.05, 0.20
+    S_atm = 100.0
+    atm_expansion = S_atm * (sigma * np.sqrt(T / (2.0 * np.pi)) + 0.5 * r * T)
     cases = [
         ("ITM call", call_price, 110.0, 100.0, 10.0),
         ("OTM call", call_price,  90.0, 100.0,  0.0),
-        ("ATM call", call_price, 100.0, 100.0,  0.0),
+        ("ATM call", call_price, S_atm, 100.0, atm_expansion),
         ("ITM put",  put_price,   90.0, 100.0, 10.0),
         ("OTM put",  put_price,  110.0, 100.0,  0.0),
     ]
     for name, fn, S, K, target in cases:
-        price = fn(S, K, 0.05, 0.20, T)
+        price = fn(S, K, r, sigma, T)
         err = abs(price - target)
         ok = err < ATOL_LIMIT
-        print(f"    {name:8s} (S={S:.0f}, K={K:.0f}): price={price:.6f}  (target {target:.4f}, err {err:.1e})  {_status(ok)}")
+        print(f"    {name:8s} (S={S:.0f}, K={K:.0f}): price={price:.6e}  (target {target:.6e}, err {err:.1e})  {_status(ok)}")
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +267,9 @@ def main():
     check_arbitrage_bounds();  print()
 
     print("=" * 72)
+    if _n_fail:
+        print(f"{_n_fail} check(s) FAILED")
+    raise SystemExit(1 if _n_fail else 0)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,14 @@ TOL_EDGE      = 1e-4
 VEGA_THRESHOLD = 1e-3
 
 
+_n_fail = 0
+
+
 def _status(ok: bool) -> str:
+    """Return the PASS/FAIL tag and record failures for the exit code."""
+    global _n_fail
+    if not ok:
+        _n_fail += 1
     return "PASS" if ok else "FAIL"
 
 
@@ -233,6 +240,9 @@ def main():
     check_textbook_reference();    print()
 
     print("=" * 72)
+    if _n_fail:
+        print(f"{_n_fail} check(s) FAILED")
+    raise SystemExit(1 if _n_fail else 0)
 
 
 if __name__ == "__main__":

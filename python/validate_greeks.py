@@ -33,12 +33,19 @@ from quantlib.black_scholes import (
 # ---------------------------------------------------------------------------
 # Tolerances
 # ---------------------------------------------------------------------------
-TOL_FD       = 1e-6     # Central differences are O(h^2) with h=1e-5.
+TOL_FD       = 1e-6     # Central differences: O(h^2) truncation plus rounding.
 TOL_PDE      = 1e-10    # PDE residual at machine precision (FP noise only).
 TOL_IDENTITY = 1e-12    # Vega-Gamma identity is algebraic.
 
 
+_n_fail = 0
+
+
 def _status(ok: bool) -> str:
+    """Return the PASS/FAIL tag and record failures for the exit code."""
+    global _n_fail
+    if not ok:
+        _n_fail += 1
     return "PASS" if ok else "FAIL"
 
 
@@ -51,6 +58,11 @@ def check_finite_differences():
 
     S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
     h = 1e-5
+    # Gamma needs its own step. The second difference has truncation error
+    # ~ h^2 |C''''| / 12 but rounding error ~ 4 eps |C| / h^2, which at
+    # h = 1e-5 is about 1e-5 and swamps the check. Balancing the two gives
+    # h ~ (48 eps |C| / |C''''|)^{1/4}, of order 1e-2 here.
+    h_gamma = 1e-2
 
     # Bumps for each parameter.
     cases = [
@@ -63,7 +75,8 @@ def check_finite_differences():
          (put_price(S + h, K, r, sigma, T) - put_price(S - h, K, r, sigma, T)) / (2 * h)),
         ("Gamma",
          gamma(S, K, r, sigma, T),
-         (call_price(S + h, K, r, sigma, T) - 2 * call_price(S, K, r, sigma, T) + call_price(S - h, K, r, sigma, T)) / (h ** 2)),
+         (call_price(S + h_gamma, K, r, sigma, T) - 2 * call_price(S, K, r, sigma, T)
+          + call_price(S - h_gamma, K, r, sigma, T)) / (h_gamma ** 2)),
         ("Vega",
          vega(S, K, r, sigma, T),
          (call_price(S, K, r, sigma + h, T) - call_price(S, K, r, sigma - h, T)) / (2 * h)),
@@ -170,6 +183,9 @@ def main():
     check_vega_gamma();         print()
 
     print("=" * 72)
+    if _n_fail:
+        print(f"{_n_fail} check(s) FAILED")
+    raise SystemExit(1 if _n_fail else 0)
 
 
 if __name__ == "__main__":
