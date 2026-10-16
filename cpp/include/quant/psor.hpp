@@ -45,8 +45,9 @@ struct PSORResult {
 /// @param omega        Relaxation parameter; must lie in (0, 2).
 ///                     Default 1.2.
 /// @param tol_abs      Absolute tolerance on the iteration increment.
-///                     Default 1e-8.
-/// @param tol_rel      Relative tolerance. Default 1e-7.
+///                     Default 1e-10.
+/// @param tol_rel      Relative tolerance. Default 1e-9. See the note
+///                     on the stopping rule in psor.cpp.
 /// @param max_iter     Iteration limit. Default 10000.
 /// @param x0           Initial guess (size n) or empty vector for
 ///                     default (= obstacle). If non-empty, must
@@ -64,8 +65,8 @@ PSORResult psor_solve(
     const std::vector<double>& rhs,
     const std::vector<double>& obstacle,
     double omega    = 1.2,
-    double tol_abs  = 1e-8,
-    double tol_rel  = 1e-7,
+    double tol_abs  = 1e-10,
+    double tol_rel  = 1e-9,
     int    max_iter = 10000,
     const std::vector<double>& x0 = {});
 

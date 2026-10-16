@@ -122,7 +122,7 @@ def _cn_american_march(grid, V0, bc_lower, bc_upper, *,
 # High-level pricer
 # ---------------------------------------------------------------------------
 def cn_american_put(S, K, r, sigma, T, *, N, M, n_sigma=4.0,
-                    omega=1.2, tol_abs=1e-8, tol_rel=1e-7,
+                    omega=1.2, tol_abs=1e-10, tol_rel=1e-9,
                     max_iter=10000, return_diagnostics=False):
     """Price an American put by Crank-Nicolson with PSOR.
 

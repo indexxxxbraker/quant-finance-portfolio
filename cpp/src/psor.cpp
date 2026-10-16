@@ -52,9 +52,9 @@ PSORResult psor_solve(
             + std::to_string(n) + ", got "
             + std::to_string(obstacle.size()));
     }
-    // omega = 1 is projected Gauss-Seidel. On the Phase 3 benchmark grids the
-    // optimum was close to 1.4, and being off by 0.5 cost roughly 5x more
-    // iterations; the Python default of 1.2 is deliberately conservative. The
+    // omega = 1 is projected Gauss-Seidel. The best omega depends on the
+    // matrix: about 1.2 on the small problem swept in validate_psor.py, about
+    // 1.4 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py. The
     // classical SOR formula is only a heuristic once the projection is active,
     // so omega is left as a parameter rather than fixed.
     if (!(0.0 < omega && omega < 2.0)) {
@@ -124,7 +124,11 @@ PSORResult psor_solve(
             x[i] = new_val;
         }
 
-        // Stopping criterion.
+        // Stopping criterion on the size of the last update. For a
+        // contraction with factor q the remaining error is about q/(1-q)
+        // times that update, so a loose tolerance under-converges most when
+        // omega is far from its optimum (see the note in quantlib/psor.py;
+        // this is why the defaults are tol_abs = 1e-10, tol_rel = 1e-9).
         double max_x = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
             const double a = std::abs(x[i]);

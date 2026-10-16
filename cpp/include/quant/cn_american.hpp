@@ -45,8 +45,8 @@ double cn_american_put(double S, double K, double r,
                        int N, int M,
                        double n_sigma  = 4.0,
                        double omega    = 1.2,
-                       double tol_abs  = 1e-8,
-                       double tol_rel  = 1e-7,
+                       double tol_abs  = 1e-10,
+                       double tol_rel  = 1e-9,
                        int    max_iter = 10000);
 
 }  // namespace quant::pde

@@ -32,7 +32,7 @@ import numpy as np
 
 
 def psor_solve(sub, diag, sup, rhs, obstacle, *,
-               omega=1.2, tol_abs=1e-8, tol_rel=1e-7,
+               omega=1.2, tol_abs=1e-10, tol_rel=1e-9,
                max_iter=10000, x0=None):
     """Solve a tridiagonal LCP by Projected SOR.
 
@@ -51,10 +51,11 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
     omega : float, default 1.2
         Relaxation parameter; must be in (0, 2). Optimal for typical
         CN/BTCS matrices is approximately 1.2-1.5.
-    tol_abs : float, default 1e-8
+    tol_abs : float, default 1e-10
         Absolute tolerance on the iteration increment.
-    tol_rel : float, default 1e-7
-        Relative tolerance on the iteration increment.
+    tol_rel : float, default 1e-9
+        Relative tolerance on the iteration increment. See the note on
+        the stopping rule in the function body before loosening these.
     max_iter : int, default 10000
         Maximum number of iterations before declaring failure.
     x0 : ndarray or None, default None
@@ -106,11 +107,11 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
         )
 
     # Parameter validation.
-    # omega = 1 is projected Gauss-Seidel. The default 1.2 is deliberately
-    # conservative: on the Phase 3 benchmark grids the optimum was close to
-    # 1.4, and being off by 0.5 cost roughly 5x more iterations. The SOR
-    # formula in the module docstring is only a heuristic once the projection
-    # is active, so omega is left as a parameter rather than fixed.
+    # omega = 1 is projected Gauss-Seidel. The best omega depends on the
+    # matrix: about 1.2 on the small problem swept in validate_psor.py, about
+    # 1.4 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py. The
+    # SOR formula in the module docstring is only a heuristic once the
+    # projection is active, so omega is left as a parameter rather than fixed.
     if not (0.0 < omega < 2.0):
         raise ValueError(
             f"psor_solve: omega must lie strictly in (0, 2), got {omega}"
@@ -169,7 +170,14 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
 
             x[i] = new_val
 
-        # Stopping criterion: combined absolute and relative tolerance.
+        # Stopping criterion on the size of the last update. For a
+        # contraction with factor q the remaining error is about q/(1-q)
+        # times that update, so a loose tolerance under-converges most when
+        # omega is far from its optimum. With the earlier defaults
+        # (tol_rel = 1e-7) the CN-PSOR American put of benchmark_phase3.py
+        # moved by 1.7e-3 between omega = 1.0 and omega = 1.6; with
+        # tol_rel = 1e-9 the spread is below 2e-5, under the grid's own
+        # discretisation error (about 1e-4 there).
         threshold = tol_abs + tol_rel * np.max(np.abs(x))
         if max_change < threshold:
             return x, k + 1
