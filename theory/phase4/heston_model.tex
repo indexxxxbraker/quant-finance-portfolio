@@ -2,6 +2,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
 \usepackage[margin=1in]{geometry}
@@ -27,9 +28,9 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-\title{Phase 4, Block 1\\[0.3em]\Large The Heston Model and the CIR Variance Process}
-\author{Quant Finance Portfolio}
-\date{\today}
+\title{The Heston Model and the CIR Variance Process}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -51,16 +52,16 @@ Empirically, returns of an equity index and changes in its volatility are negati
 \paragraph{Volatility clustering.}
 Realized volatility itself shows persistence: high-volatility periods are followed by high-volatility periods. The natural fix is to make \(\sigma\) a stochastic process with mean-reverting dynamics.
 
-The Heston model \cite{Heston1993} is the simplest stochastic-volatility model that captures all three phenomena: random instantaneous variance, negative correlation with the underlying, and mean reversion. Crucially, it admits a semi-closed-form characteristic function, which makes Fourier-based pricing and calibration tractable. This combination of empirical realism and computational tractability is what made it the industry workhorse and what justifies the depth of treatment we give it in this Phase.
+The Heston model \cite{Heston1993} is the simplest stochastic-volatility model that captures all three phenomena: random instantaneous variance, negative correlation with the underlying, and mean reversion. Crucially, it admits a semi-closed-form characteristic function, which makes Fourier-based pricing and calibration tractable. This combination of empirical realism and computational tractability is what made it the industry workhorse and what justifies the depth of treatment we give it in these notes.
 
-The aim of this block is to lay the mathematical foundations:
+The aim of this note is to lay the mathematical foundations:
 \begin{itemize}[topsep=2pt]
     \item the SDE system itself, and the precise meaning of working under the risk-neutral measure;
     \item the Cox--Ingersoll--Ross (CIR) variance process, including existence and uniqueness despite a non-Lipschitz diffusion coefficient, the Feller boundary classification, the transition density, and the conditional moments;
     \item the coupled \((S, v)\) system and the Cholesky construction of the correlation;
-    \item the affine structure of the model, which underpins the Fourier pricing methods of Block 2.
+    \item the affine structure of the model, which underpins the Fourier pricing methods of the note \emph{Heston Characteristic Function and Fourier Pricing}.
 \end{itemize}
-No code is written in this block. All concepts introduced here are used in every subsequent block.
+This note has no accompanying code. All concepts introduced here are used in every other Heston note.
 
 %============================================================
 \section{The Heston SDE system}
@@ -83,7 +84,7 @@ where
     \item \(v_0 \geq 0\) is the initial variance.
 \end{itemize}
 
-The instantaneous volatility of \(S\) is \(\sqrt{v_t}\). The leverage effect is captured by \(\rho < 0\). The mean-reverting drift in \(v\) produces volatility clustering. The vol-of-vol \(\sigma\) controls the magnitude of variance fluctuations and, through it, the curvature of the smile. We will see throughout the Phase how each parameter controls a distinct feature of the implied-volatility surface.
+The instantaneous volatility of \(S\) is \(\sqrt{v_t}\). The leverage effect is captured by \(\rho < 0\). The mean-reverting drift in \(v\) produces volatility clustering. The vol-of-vol \(\sigma\) controls the magnitude of variance fluctuations and, through it, the curvature of the smile. We will see throughout these notes how each parameter controls a distinct feature of the implied-volatility surface.
 
 We will spend the rest of this section discussing what \eqref{eq:heston-S}--\eqref{eq:heston-rho} mean as written under the risk-neutral measure, since it is not entirely obvious that all five parameters can be specified there freely.
 
@@ -124,7 +125,7 @@ where
 \]
 So both the speed of reversion \emph{and} the long-run mean of the variance change under the measure change, in a way that depends on \(\lambda\). The functional form \(\eta_2 \propto \sqrt{v_t}\) was chosen so that the structure of the SDE (linear drift, square-root diffusion) is preserved; that is what makes Heston tractable.
 
-In practice, \(\lambda\) is unobservable: nobody calibrates it directly. Calibration to market option prices fixes \(\kappa\) and \(\theta\) under \(\mathbb{Q}\) (and \(\sigma, \rho, v_0\), which do not change between measures since they enter the diffusion or the correlation, both of which are invariant under Girsanov). For the rest of this Phase we work directly under \(\mathbb{Q}\) and treat \((\kappa, \theta, \sigma, \rho, v_0)\) as the parameters to be calibrated. The discussion above is included so that the conceptual situation is clear: this is not a notational convenience, it is a substantive modeling choice rooted in market incompleteness.
+In practice, \(\lambda\) is unobservable: nobody calibrates it directly. Calibration to market option prices fixes \(\kappa\) and \(\theta\) under \(\mathbb{Q}\) (and \(\sigma, \rho, v_0\), which do not change between measures since they enter the diffusion or the correlation, both of which are invariant under Girsanov). For the rest of these notes we work directly under \(\mathbb{Q}\) and treat \((\kappa, \theta, \sigma, \rho, v_0)\) as the parameters to be calibrated. The discussion above is included so that the conceptual situation is clear: this is not a notational convenience, it is a substantive modeling choice rooted in market incompleteness.
 
 %============================================================
 \section{The CIR variance process}
@@ -261,10 +262,10 @@ First, the drift evaluated at zero, \(\kappa(\theta - 0) = \kappa\theta\), is st
 
 Second, the time the process spends at the boundary is Lebesgue-null: the occupation measure of \(\{0\}\) is zero almost surely. This means the boundary is \emph{instantaneously reflecting}, not \emph{absorbing}. The process can touch the boundary but bounces off immediately.
 
-The numerical implication is direct: when running an Euler discretization, negative excursions of \(\hat v_t\) are an artifact of the discretization, not of the model. Schemes such as full-truncation Euler (Block 3), which project \(\hat v_t \mapsto \max(\hat v_t, 0)\) before computing \(\sqrt{\hat v_t}\), are not modifying the model; they are correcting a discretization error.
+The numerical implication is direct: when running an Euler discretization, negative excursions of \(\hat v_t\) are an artifact of the discretization, not of the model. Schemes such as full-truncation Euler (see the note on Heston Monte Carlo with full-truncation Euler), which project \(\hat v_t \mapsto \max(\hat v_t, 0)\) before computing \(\sqrt{\hat v_t}\), are not modifying the model; they are correcting a discretization error.
 
 \paragraph{Discussion: numerical examples.}
-For typical equity-index calibrations one finds parameters such as \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), giving \(\nu = 2(2)(0.04)/0.09 \approx 1.78 \geq 1\). Feller is satisfied. For FX or short-dated equity calibrations the vol-of-vol can be much larger: \(\kappa = 1\), \(\theta = 0.04\), \(\sigma = 0.5\) gives \(\nu = 2(1)(0.04)/0.25 = 0.32 < 1\). Feller is violated. We will see calibrated examples of both regimes in Block 6.
+For typical equity-index calibrations one finds parameters such as \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), giving \(\nu = 2(2)(0.04)/0.09 \approx 1.78 \geq 1\). Feller is satisfied. For FX or short-dated equity calibrations the vol-of-vol can be much larger: \(\kappa = 1\), \(\theta = 0.04\), \(\sigma = 0.5\) gives \(\nu = 2(1)(0.04)/0.25 = 0.32 < 1\). Feller is violated. Calibrated examples of both regimes appear in the calibration note.
 
 %-----------------------------------------------------------
 \subsection{Transition density: non-central chi-squared}
@@ -297,7 +298,7 @@ the chi-squared and Poisson being independent. Representation~\eqref{eq:ncchi-po
 \end{remark}
 
 \begin{remark}[Why exact simulation is expensive]
-    The transition density is known in closed form, so in principle one could simulate \(v_t\) exactly, without time-stepping. The catch is that sampling from a non-central chi-squared with non-integer \(d\) requires either (i) sampling a Poisson, then a chi-squared with random degrees of freedom, or (ii) inverting a hypergeometric-series CDF. Both are far slower than evaluating an Euler step, by orders of magnitude. Andersen's QE scheme \cite{Andersen2008} (Block 4) gets around this by matching only the first two moments of \(v_t \mid v_s\), sacrificing exact distributional matching for a 100\(\times\) speedup. The exact result, Theorem~\ref{thm:cir-density}, remains the conceptual reference point against which all discretization schemes are measured.
+    The transition density is known in closed form, so in principle one could simulate \(v_t\) exactly, without time-stepping. The catch is that sampling from a non-central chi-squared with non-integer \(d\) requires either (i) sampling a Poisson, then a chi-squared with random degrees of freedom, or (ii) inverting a hypergeometric-series CDF. Both are far slower than evaluating an Euler step, by orders of magnitude. Andersen's QE scheme \cite{Andersen2008} (see the QE note) gets around this by matching only the first two moments of \(v_t \mid v_s\), sacrificing exact distributional matching for a 100\(\times\) speedup. The exact result, Theorem~\ref{thm:cir-density}, remains the conceptual reference point against which all discretization schemes are measured.
 \end{remark}
 
 %-----------------------------------------------------------
@@ -326,7 +327,7 @@ recovering the local Brownian behaviour. As \(\Delta t \to \infty\),
 \[
     \mathbb{E}[v_t \mid v_s] \to \theta, \qquad \mathrm{Var}(v_t \mid v_s) \to \frac{\sigma^2 \theta}{2\kappa},
 \]
-the stationary moments. We will use \eqref{eq:cir-mean}--\eqref{eq:cir-var} in Block 4 to construct moment-matched approximations to the conditional distribution of \(v_t\).
+the stationary moments. The QE note uses \eqref{eq:cir-mean}--\eqref{eq:cir-var} to construct moment-matched approximations to the conditional distribution of \(v_t\).
 
 %============================================================
 \section{The coupled Heston system}
@@ -352,7 +353,7 @@ In simulation and PDE work, it is convenient to work with the log-price \(X_t = 
 \begin{equation}
     dX_t \;=\; \left(r - \tfrac12 v_t\right)\,dt + \sqrt{v_t}\,dW^1_t.                          \label{eq:heston-X}
 \end{equation}
-The drift in \(X\) is \(r - v_t/2\); the \(-v_t/2\) is the Itô correction that accounts for the convexity of the exponential. The system \((X, v)\) is what we will work with in Block 2 (the affine structure is naturally expressed in \(X\), not in \(S\)) and in Block 5 (the Heston PDE is more numerically stable in log-price, both because the spatial domain becomes \(\mathbb{R}\) and because the diffusion coefficient becomes uniformly Lipschitz in \(X\) at fixed \(v\)).
+The drift in \(X\) is \(r - v_t/2\); the \(-v_t/2\) is the Itô correction that accounts for the convexity of the exponential. The system \((X, v)\) is what we work with in the Fourier pricing note (the affine structure is naturally expressed in \(X\), not in \(S\)) and in the Heston PDE note (the Heston PDE is more numerically stable in log-price, both because the spatial domain becomes \(\mathbb{R}\) and because the diffusion coefficient becomes uniformly Lipschitz in \(X\) at fixed \(v\)).
 
 \subsection{Correlation via Cholesky}
 
@@ -369,13 +370,13 @@ In a discretized scheme, on each timestep we sample \(\Delta Z^1, \Delta Z^2 \si
 \[
     \Delta W^1 = \Delta Z^1, \qquad \Delta W^2 = \rho\,\Delta Z^1 + \sqrt{1 - \rho^2}\,\Delta Z^2.
 \]
-We will use this construction throughout Blocks 3 and 4.
+This construction is used by both Monte Carlo schemes (full-truncation Euler and QE).
 
 %============================================================
 \section{Affine structure and preview of Fourier pricing}
 %============================================================
 
-The final piece of theory we set up in this block is the \emph{affine} structure of the Heston model. This will be the engine of Block 2.
+The final piece of theory we set up in this note is the \emph{affine} structure of the Heston model. It is the engine of Fourier pricing.
 
 \begin{definition}[Affine diffusion, after \cite{DPS2000}]
     A Markov diffusion \(X_t \in \mathbb{R}^n\) with drift \(\mu(x)\) and instantaneous covariance \(\Sigma(x) \in \mathbb{R}^{n \times n}\) is called \emph{affine} if both functions are affine in the state variable:
@@ -421,9 +422,9 @@ where the dependence on \(X_t\) is exactly \(i u_1 X_t\). The reason: the drift 
     \phi_X(u; t, T) \;:=\; \mathbb{E}\!\left[\,e^{i u X_T}\,\Big|\,\mathcal{F}_t\,\right] \;=\; \exp\!\bigl(A(t, T; u) + B(t, T; u)\,v_t + i u\,X_t\bigr).
                                                                                                                             \label{eq:heston-cf-form}
 \end{equation}
-The functions \(A(t, T; u)\) and \(B(t, T; u)\) are determined by a system of two ODEs (one Riccati, one quadrature) with explicit solutions in terms of elementary functions. The derivation, the explicit formulas, the well-known branch-cut issue (the ``Heston trap'') and its remedy à la \cite{AMSS2007}, and the Fourier-inversion machinery that turns \eqref{eq:heston-cf-form} into option prices are the content of Block 2.
+The functions \(A(t, T; u)\) and \(B(t, T; u)\) are determined by a system of two ODEs (one Riccati, one quadrature) with explicit solutions in terms of elementary functions. The derivation, the explicit formulas, the well-known branch-cut issue (the ``Heston trap'') and its remedy à la \cite{AMSS2007}, and the Fourier-inversion machinery that turns \eqref{eq:heston-cf-form} into option prices are the content of the Fourier pricing note.
 
-The takeaway from Block 1 is structural: the entire reason Heston admits semi-closed-form European pricing is the affine property, which is itself a consequence of the linear drift and square-root diffusion of the variance process. Both the analytical tractability and the numerical subtleties (Feller, the boundary, Yamada--Watanabe) flow from the same source.
+The takeaway from this note is structural: the entire reason Heston admits semi-closed-form European pricing is the affine property, which is itself a consequence of the linear drift and square-root diffusion of the variance process. Both the analytical tractability and the numerical subtleties (Feller, the boundary, Yamada--Watanabe) flow from the same source.
 
 %============================================================
 \section{Bibliographical notes}
@@ -438,8 +439,8 @@ The original sources to consult, with brief commentary:
     \item Yamada and Watanabe (1971) \cite{YamadaWatanabe1971} for pathwise uniqueness under non-Lipschitz diffusion. The proof of Theorem~\ref{thm:YW} is in Karatzas and Shreve \cite{KaratzasShreve1991} \S5.2.
     \item Karlin and Taylor (1981) \cite{KarlinTaylor1981} \S15 contains a clean exposition of Feller's classification, including the integrability tests we used. Karatzas and Shreve \cite{KaratzasShreve1991} \S5.5 covers the same material with a focus on Itô-style boundary classification.
     \item Duffie, Pan and Singleton (2000) \cite{DPS2000} is the modern reference for affine processes, going far beyond the diffusion case (jumps, regime switching, etc.) but specializing cleanly to Heston.
-    \item Glasserman (2004) \cite{Glasserman2004} \S3.4 covers CIR from a Monte Carlo perspective; useful for Block 3.
-    \item Andersen (2008) \cite{Andersen2008} for the QE scheme; required reading before Block 4.
+    \item Glasserman (2004) \cite{Glasserman2004} \S3.4 covers CIR from a Monte Carlo perspective; useful for full-truncation Euler simulation.
+    \item Andersen (2008) \cite{Andersen2008} for the QE scheme; required reading before the QE note.
     \item Rouah (2013) \cite{Rouah2013} is a thorough computational treatment of the model and a useful sanity-check reference for everything we will implement.
 \end{itemize}
 

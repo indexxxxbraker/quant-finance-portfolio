@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -40,8 +41,8 @@
 % ---------- Document metadata ----------
 \title{Monte Carlo Pricing of a European Call:\\
        Exact Simulation under Geometric Brownian Motion}
-\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 1}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -51,16 +52,17 @@ We construct, analyse, and prepare for implementation the standard
 Monte Carlo estimator of a European call option under geometric
 Brownian motion, using exact simulation of the terminal asset price.
 The setting is analytically degenerate: the price admits the
-Black--Scholes closed form derived in Phase~1, and the algorithm is
+Black--Scholes closed form derived in the note on the martingale
+approach, and the algorithm is
 therefore presented not for its practical necessity but as the
-canonical Monte Carlo problem against which every more elaborate method
-of Phase~2 will be measured. Three deliverables emerge. First, the
-estimator is exhibited and the regularity hypotheses of the Block~0
-framework are verified explicitly. Second, the variance of the
+canonical Monte Carlo problem against which every more elaborate Monte Carlo
+method is measured. Three deliverables emerge. First, the
+estimator is exhibited and the regularity hypotheses of the Monte Carlo
+foundations framework are verified explicitly. Second, the variance of the
 discounted payoff is computed in closed form, providing both an a
 priori sample-size criterion and a sharp baseline for the variance
-reductions of Block~2. Third, a triangulated validation strategy is
-articulated, anchored on the Phase~1 Black--Scholes formula, on the
+reduction techniques. Third, a triangulated validation strategy is
+articulated, anchored on the closed-form Black--Scholes formula, on the
 $O(n^{-1/2})$ asymptotic error rate, and on the agreement between
 sample variance and its closed-form value.
 \end{abstract}
@@ -78,26 +80,29 @@ price is given by the Black--Scholes formula
 C_{\mathrm{BS}} \;=\; S_0\,N(d_1) \;-\; K e^{-rT}\,N(d_2),
 \end{equation}
 with the standard definitions of $d_1, d_2$ recalled in
-Section~\ref{sec:setting}. Phase~1 of this project derived this formula
-through the equivalent martingale measure framework and implemented it
+Section~\ref{sec:setting}. The note \emph{The Black--Scholes Formula via
+the Martingale Approach} derives this formula
+through the equivalent martingale measure framework, and it is implemented
 in Python and C++.
 
 The natural question is therefore why one would price this option by
 Monte Carlo simulation at all. The honest answer is that, in this
 setting, one would not---outside of pedagogical or validation contexts.
 The algorithm developed in this writeup is the simplest possible
-instance of the Monte Carlo machinery that will support every other
-method in Phase~2, and its value lies in the role it plays as a
-foundation for what follows.
+instance of the Monte Carlo machinery that supports every other
+Monte Carlo method in these notes, and its value lies in the role it
+plays as a foundation for what follows.
 
 That role is threefold. First, the algorithm is the canonical reference
 implementation of a Monte Carlo \emph{engine}: a function that consumes
 a model, a payoff, a sample size, and a random source, and returns a
 point estimate together with a quantified uncertainty. The architecture
 designed here---the partitioning of responsibilities between sampling,
-payoff evaluation, and statistical reduction---will recur essentially
-unchanged throughout the phase. Second, this is the only algorithm of
-the phase entirely free of systematic error: the exact transition law
+payoff evaluation, and statistical reduction---recurs essentially
+unchanged throughout the Monte Carlo notes. Second, this is the only
+Monte Carlo
+algorithm in these notes entirely free of systematic error: the exact
+transition law
 of the underlying is known and used directly, so no time-discretisation
 bias enters, and no nested estimation introduces regression bias. Any
 discrepancy between the estimator and the Black--Scholes price is
@@ -106,7 +111,7 @@ this algorithm an unusually clean diagnostic for implementation
 correctness. Third, because the distribution of the discounted payoff
 is known explicitly, its variance admits a closed-form expression,
 which we derive in Section~\ref{sec:variance}. This expression is the
-denominator against which the variance reductions of Block~2 will be
+denominator against which the variance reduction techniques are
 measured, and it provides an additional independent test of the
 implementation.
 
@@ -115,14 +120,14 @@ Section~\ref{sec:setting} fixes notation. Section~\ref{sec:exact}
 records the closed-form solution of the Black--Scholes SDE and
 formalises the notion of exact simulation that the title invokes.
 Section~\ref{sec:estimator} presents the estimator, verifies the
-second-moment hypothesis required by the Block~0 framework, and
-specialises the confidence interval to the present setting.
+second-moment hypothesis required by the Monte Carlo foundations
+framework, and specialises the confidence interval to the present setting.
 Section~\ref{sec:variance} derives the closed-form variance of the
 discounted payoff and discusses its implications for sample-size
 selection. Section~\ref{sec:validation} articulates the validation
 strategy. Section~\ref{sec:algorithm} states the algorithm formally.
 Section~\ref{sec:ahead} situates the algorithm within the rest of
-Phase~2.
+the Monte Carlo notes.
 
 \section{Setting and notation}
 \label{sec:setting}
@@ -173,7 +178,8 @@ d_1 \;\eqdef\;
 d_2 \;\eqdef\; d_1 - \sigma\sqrt{T}.
 \end{equation}
 The derivation of~\eqref{eq:bs} from~\eqref{eq:price} via the martingale
-approach is given in the Phase~1 writeup and will not be repeated.
+approach is given in the note on the martingale approach to the
+Black--Scholes formula and is not repeated.
 
 \section{Exact simulation of the terminal price}
 \label{sec:exact}
@@ -215,9 +221,9 @@ time-discretisation error in the construction~\eqref{eq:sampling}: the
 random variable on the right-hand side has \emph{exactly} the
 distribution of $S_T$ under the model. It does not refer to the
 estimator of the price, which carries the usual statistical error
-inherent to Monte Carlo. The distinction matters because the algorithms
-of Block~1.2 (Euler--Maruyama, Milstein) will not be exact in this
-sense: their simulated terminal values will be drawn from a
+inherent to Monte Carlo. The distinction matters because the
+SDE discretisation schemes (Euler--Maruyama, Milstein) are not exact in this
+sense: their simulated terminal values are drawn from a
 distribution that approximates, but does not coincide with, the true
 distribution of $S_T$.
 \end{remark}
@@ -249,7 +255,8 @@ $\hat{C}_n \to C$ almost surely as $n \to \infty$.
 \subsection{Verification of the second-moment hypothesis}
 \label{sec:second-moment}
 
-The asymptotic apparatus of Block~0---in particular the central limit
+The asymptotic apparatus of the Monte Carlo foundations---in particular
+the central limit
 theorem and the resulting confidence interval---requires that
 $\Var(Y) < \infty$, equivalently $\E[Y^2] < \infty$. We verify this
 explicitly.
@@ -276,13 +283,14 @@ $\E[Y^2] \leq S_0^2\, e^{(\sigma^2 - 2r) T} \cdot e^{2rT}
 = S_0^2\, e^{\sigma^2 T}$, which is finite.
 \end{proof}
 
-The hypotheses of the Block~0 framework are therefore satisfied without
-restriction, and all conclusions of Sections~2.2--2.6 of that writeup
+The hypotheses of the Monte Carlo foundations framework are therefore
+satisfied without
+restriction, and all conclusions of Sections~2.2--2.6 of that note
 specialise directly to the present estimator.
 
 \subsection{Confidence interval and stopping criterion}
 
-Following the Block~0 prescription, the asymptotic
+Following the prescription of the Monte Carlo foundations, the asymptotic
 $(1-\beta)$-confidence interval for $C$ is
 \begin{equation}
 \label{eq:CI}
@@ -307,7 +315,7 @@ We now derive an explicit expression for $\Var(Y)$, which is finite by
 Lemma~\ref{lem:second-moment} and computable in closed form because the
 distribution of $S_T$ is known. The derivation reuses the
 change-of-measure techniques familiar from the proof of~\eqref{eq:bs}
-in Phase~1.
+by the martingale approach.
 
 \subsection{Decomposition of the second moment}
 
@@ -432,7 +440,8 @@ n_\varepsilon \;\approx\; \left(\frac{z_{\beta/2}}{\varepsilon}\right)^{\!2}
 \end{equation}
 This is one of the few cases in financial Monte Carlo where the
 required sample size is known before any path is simulated. In every
-later algorithm of the phase the variance must be estimated from a
+other Monte Carlo algorithm of these notes the variance must be
+estimated from a
 preliminary run, and~\eqref{eq:n-eps} becomes a feedback loop rather
 than a one-shot calculation.
 
@@ -442,13 +451,14 @@ denominator $\Var_{\mathrm{vanilla}}$ of the variance reduction factors
 \mathrm{VRF} \;\eqdef\;
 \frac{\Var_{\mathrm{vanilla}}}{\Var_{\mathrm{technique}}}
 \]
-that will be reported throughout Block~2 to quantify the gain of each
-variance reduction technique.
+that are reported throughout the variance-reduction notes to quantify
+the gain of each variance reduction technique.
 
 \section{Validation strategy}
 \label{sec:validation}
 
-We follow the triangulation principle established in Phase~1: the
+We follow the triangulation principle established for Black--Scholes
+pricing: the
 algorithm is subjected to several independent tests, each closing a
 distinct potential failure mode. Passing any one of them is necessary
 but not sufficient; passing all of them makes incorrectness highly
@@ -504,7 +514,7 @@ should $\lim_{S_0 \to 0} C = 0$.
 
 The algorithm is summarised below. The pseudocode is parametric in the
 random source (a generator object accepting a seed) to enforce the
-reproducibility discipline of Block~0, Section~2.5.
+reproducibility discipline of the Monte Carlo foundations note, Section~3.4.
 
 \begin{algorithm}[H]
 \caption{Vanilla Monte Carlo for the European call (exact GBM)}
@@ -541,24 +551,25 @@ it is a single contiguous loop with no allocation inside.
 \section{Looking ahead}
 \label{sec:ahead}
 
-Three extensions of this algorithm structure the remainder of Phase~2.
+Three extensions of this algorithm structure the remaining Monte Carlo notes.
 
-\paragraph{Block~1.2: discretisation.} The exactness of the sampling
+\paragraph{SDE discretisation.} The exactness of the sampling
 scheme~\eqref{eq:sampling} relies on the closed-form solution
 \eqref{eq:gbm-solution} of the SDE, which is unavailable for almost
 every model of practical interest beyond geometric Brownian motion. In
-the next algorithm of the phase, the closed form is replaced by a
+the SDE discretisation notes, the closed form is replaced by a
 time-discretised approximation (Euler--Maruyama, then Milstein), and
 systematic error of order $\Delta t$ or $\sqrt{\Delta t}$ enters
 alongside the statistical error analysed here. The bias--variance
-tradeoff of Section~5 of the Block~0 writeup becomes operational at
+tradeoff of Section~2.5 of the Monte Carlo foundations note becomes
+operational at
 that point, and the optimal allocation of the computational budget
 between sample size and time-step refinement is the central new
 question.
 
-\paragraph{Block~2: variance reduction.} Each technique introduced in
-Block~2---antithetic variates, control variates, stratified sampling,
-importance sampling---is implemented as a wrapper around the same
+\paragraph{Variance reduction.} Each variance reduction
+technique of the later notes---antithetic variates, control variates and
+randomised quasi-Monte Carlo---is implemented as a wrapper around the same
 estimator structure developed here, and is benchmarked against the
 present algorithm. The denominator of the variance reduction factor is
 Proposition~\ref{prop:closed-form-variance}; the numerator is the
@@ -567,7 +578,7 @@ the present algorithm---a single sampling step, a single payoff
 evaluation, no per-replication state---makes it the natural reference
 implementation in this comparison.
 
-\paragraph{Block~4: greeks.} The pathwise and likelihood-ratio
+\paragraph{Monte Carlo Greeks.} The pathwise and likelihood-ratio
 estimators of price sensitivities reuse the sample paths
 $\{S_T^{(i)}\}_{i=1}^n$ generated by the present algorithm, applying
 to them a different functional in place of the discounted payoff. The

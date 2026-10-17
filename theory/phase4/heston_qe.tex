@@ -2,6 +2,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
 \usepackage[margin=1in]{geometry}
@@ -28,9 +29,9 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-\title{Phase 4, Block 4 \\[0.3em]\Large Heston model: Andersen's Quadratic-Exponential (QE) scheme}
-\author{Quant Finance Portfolio}
-\date{\today}
+\title{Heston model: Andersen's Quadratic-Exponential (QE) scheme}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -41,18 +42,18 @@
 \section{Introduction and goals}
 %============================================================
 
-In Block 3 we implemented full-truncation Euler for Heston Monte Carlo. The scheme is robust, simple, and works correctly across all parameter regimes, but it carries a discretisation bias of order $O(\Delta t)$ that becomes problematic in two specific situations:
+Full-truncation Euler (see the note \emph{Heston model: Monte Carlo simulation with full-truncation Euler}) is the baseline scheme for Heston Monte Carlo. The scheme is robust, simple, and works correctly across all parameter regimes, but it carries a discretisation bias of order $O(\Delta t)$ that becomes problematic in two specific situations:
 
 \begin{itemize}[topsep=2pt]
     \item Low Feller parameter $\nu = 2\kappa\theta/\sigma^2$, where the variance process spends measurable time near $v = 0$ and the truncation $v_n^+ = \max(\hat v_n, 0)$ fires frequently. The asymmetric distribution of $v_t$ near zero is poorly captured by a Gaussian Euler step.
     \item Short maturities relative to the discretisation step, where the bias dominates the statistical error and large $N$ are needed for any pretense of accuracy.
 \end{itemize}
 
-The remedy is to exploit a property the Heston model gives us \emph{for free}: the conditional distribution of $v_{t+\Delta} \mid v_t$ is known explicitly, in closed form, as a non-central chi-squared (Block 1 \S4). A simulator that samples $v_{t+\Delta}$ from this exact distribution would be bias-free \emph{within the variance process}, with discretisation error coming only from the spot equation. Such a sampler exists and was constructed by Broadie and Kaya (2006); we discuss it below.
+The remedy is to exploit a property the Heston model gives us \emph{for free}: the conditional distribution of $v_{t+\Delta} \mid v_t$ is known explicitly, in closed form, as a non-central chi-squared (the Heston model note, \S3.3). A simulator that samples $v_{t+\Delta}$ from this exact distribution would be bias-free \emph{within the variance process}, with discretisation error coming only from the spot equation. Such a sampler exists and was constructed by Broadie and Kaya (2006); we discuss it below.
 
 The Broadie-Kaya method is bias-free but expensive: each step requires sampling a non-central chi-squared variate, which involves an iterative algorithm (typically rejection sampling or numerical inversion). Andersen (2008) observed that for the dynamics of a Heston call option, an \emph{approximate} simulator that matches the first two conditional moments of $v_{t+\Delta} \mid v_t$ is sufficient: the higher moments contribute corrections of order $O(\Delta t^{3/2})$ to the option price, which are negligible at typical step sizes. Andersen's Quadratic-Exponential (QE) scheme is the workhorse of this insight.
 
-This block has four goals.
+This note has four goals.
 
 \paragraph{Theoretical foundation.} We derive the conditional moments of the CIR process explicitly, and use them to motivate the moment-matching strategy.
 
@@ -60,7 +61,7 @@ This block has four goals.
 
 \paragraph{The log-spot integration.} Once $v_t$ and $v_{t+\Delta}$ are sampled, the spot SDE benefits from a refined integration that uses both endpoints; we derive this central discretisation.
 
-\paragraph{Validation.} We confirm experimentally that QE has substantially lower bias than full-truncation Euler in the difficult regimes (low $\nu$, short maturities), and we use the Fourier pricer of Block 2 as ground truth.
+\paragraph{Validation.} We confirm experimentally that QE has substantially lower bias than full-truncation Euler in the difficult regimes (low $\nu$, short maturities), and we use the Fourier pricer as ground truth.
 
 %============================================================
 \section{Why full-truncation Euler is not enough}
@@ -68,9 +69,9 @@ This block has four goals.
 
 \subsection{The bias mechanism}
 
-In Block 3 we noted that the truncation $v_n^+ = \max(\hat v_n, 0)$ fires with non-negligible probability when $\hat v_n$ is small. Each truncation event contributes a small bias: rather than letting the ``true'' continuous variance reach zero and immediately reflect upward (the regime captured by the non-central chi-squared distribution), the discretised process is artificially pinned at zero for one step, missing both the negative diffusive impulse and the structural drift back towards $\theta$.
+As noted in the full-truncation Euler note, the truncation $v_n^+ = \max(\hat v_n, 0)$ fires with non-negligible probability when $\hat v_n$ is small. Each truncation event contributes a small bias: rather than letting the ``true'' continuous variance reach zero and immediately reflect upward (the regime captured by the non-central chi-squared distribution), the discretised process is artificially pinned at zero for one step, missing both the negative diffusive impulse and the structural drift back towards $\theta$.
 
-Quantitatively, Lord, Koekkoek, van Dijk (2010) show that the per-step bias of full-truncation Euler is $O(\Delta t)$ as expected from weak convergence theory, but with a coefficient that scales as the time the process spends near zero. For $\nu \ll 1$ (e.g., the aggressive equity case of Block 3 with $\nu = 0.04$), this coefficient is large, and the practical error at $\Delta t = 0.005$ can be 0.1--0.5\% of the option price. In a calibration setting that demands 0.1\% accuracy, this is the difference between converged and unconverged.
+Quantitatively, Lord, Koekkoek, van Dijk (2010) show that the per-step bias of full-truncation Euler is $O(\Delta t)$ as expected from weak convergence theory, but with a coefficient that scales as the time the process spends near zero. For $\nu \ll 1$ (e.g., the aggressive equity case of the full-truncation Euler note with $\nu = 0.04$), this coefficient is large, and the practical error at $\Delta t = 0.005$ can be 0.1--0.5\% of the option price. In a calibration setting that demands 0.1\% accuracy, this is the difference between converged and unconverged.
 
 \subsection{The right diagnostic}
 
@@ -89,7 +90,7 @@ For completeness we describe the Broadie-Kaya (2006) exact simulation scheme, ev
 The construction is built on three exact distributional facts about the Heston model:
 
 \begin{enumerate}[topsep=2pt]
-    \item \textbf{Variance transition.} As established in Block 1 \S4, the conditional distribution of $v_{t+\Delta} \mid v_t$ is non-central chi-squared, scaled. Specifically, if we let
+    \item \textbf{Variance transition.} As established in the Heston model note, \S3.3, the conditional distribution of $v_{t+\Delta} \mid v_t$ is non-central chi-squared, scaled. Specifically, if we let
     \[
         d = \frac{4\kappa\theta}{\sigma^2}, \qquad
         c(\Delta) = \frac{\sigma^2 (1 - e^{-\kappa\Delta})}{4\kappa},
@@ -228,11 +229,11 @@ The lack of higher-moment continuity means that QE is not a smooth interpolation
 \section{The log-spot scheme}
 %============================================================
 
-Once $v_t$ and $v_{t+\Delta}$ are sampled (by either regime), we still need to discretise the log-spot SDE. Recall from \eqref{eq:logS} that
+Once $v_t$ and $v_{t+\Delta}$ are sampled (by either regime), we still need to discretise the log-spot SDE. Recall from the full-truncation Euler note (equation~(6) there) that
 \[
     d \log S_t = (r - \tfrac12 v_t)\, dt + \sqrt{v_t}\, dW^1_t,
 \]
-where $W^1$ has correlation $\rho$ with the variance Brownian motion $W^2$. In Block 3 we used a simple Euler step
+where $W^1$ has correlation $\rho$ with the variance Brownian motion $W^2$. Full-truncation Euler uses a simple Euler step
 \[
     \log \hat S_{n+1} - \log \hat S_n = (r - \tfrac12 v_n^+)\, \Delta t + \sqrt{v_n^+}\,\Delta W^1_n,
 \]
@@ -296,7 +297,7 @@ The mechanism for the rate improvement is:
 
 \subsection{Empirical comparison}
 
-For the standard Heston parameters of Block 3 ($\nu = 1.33$, ATM, $T = 0.5$, comparing against the Fourier reference $C_{\mathrm{Fourier}} = 6.8257$):
+For the standard Heston parameters of the full-truncation Euler note ($\nu = 1.33$, ATM, $T = 0.5$, comparing against the Fourier reference $C_{\mathrm{Fourier}} = 6.8257$):
 
 \begin{center}
 \begin{tabular}{rcc}
@@ -327,7 +328,7 @@ The arithmetic in QE is more involved (square roots, exponentials, conditionals)
 \section{Validation strategy}
 %============================================================
 
-The validation strategy mirrors that of Block 3, but with stricter tolerances reflecting QE's higher accuracy.
+The validation strategy mirrors that of full-truncation Euler, but with stricter tolerances reflecting QE's higher accuracy.
 
 \subsection{Pillars}
 
@@ -346,7 +347,7 @@ For the standard Heston parameters ($\kappa = 1.5, \theta = 0.04, \sigma = 0.3, 
 \begin{center}
 \begin{tabular}{rcl}
 \toprule
-$T$ & Fourier (Block 2) & Comments \\
+$T$ & Fourier & Comments \\
 \midrule
 0.25 & 4.5842062306 & Short maturity, small bias \\
 0.5  & 6.8257341234 & Standard test case \\
@@ -364,23 +365,23 @@ $T$ & Fourier (Block 2) & Comments \\
 The module \texttt{quantlib.heston\_qe} exposes:
 
 \begin{itemize}[topsep=2pt]
-    \item \texttt{simulate\_terminal\_heston\_qe(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, seed=None, rng=None, antithetic=False, psi\_c=1.5, gamma1=0.5, gamma2=0.5)}: terminal-only QE simulator with $O(M)$ memory, paralleling \texttt{simulate\_terminal\_heston} from Block 3.
+    \item \texttt{simulate\_terminal\_heston\_qe(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, seed=None, rng=None, antithetic=False, psi\_c=1.5, gamma1=0.5, gamma2=0.5)}: terminal-only QE simulator with $O(M)$ memory, paralleling \texttt{simulate\_terminal\_heston} from \texttt{quantlib.heston\_mc}.
     \item \texttt{mc\_european\_call\_heston\_qe(...)}: high-level pricer with the same interface as \texttt{mc\_european\_call\_heston}.
 \end{itemize}
-The full-grid simulator \texttt{simulate\_heston\_paths\_qe} is omitted for now; we add it if/when we need path-dependent QE pricing in Block 6.
+A full-grid simulator \texttt{simulate\_heston\_paths\_qe} is not provided; path-dependent QE pricing lives in \texttt{quantlib.heston\_exotics}.
 
 \subsection{C++}
 
-The C++ implementation in \texttt{cpp/include/quant/heston\_qe.hpp} and \texttt{cpp/src/heston\_qe.cpp} mirrors the Python interface using \texttt{HestonParams} from Block 2 and reusing \texttt{MCResult} from \texttt{monte\_carlo.hpp}. The internal helper \texttt{qe\_step} takes the same role as \texttt{ft\_step} in Block 3: a single function that captures the entire scheme update, callable from both the path and terminal simulators.
+The C++ implementation in \texttt{cpp/include/quant/heston\_qe.hpp} and \texttt{cpp/src/heston\_qe.cpp} mirrors the Python interface using \texttt{HestonParams} from \texttt{heston\_fourier.hpp} and reusing \texttt{MCResult} from \texttt{monte\_carlo.hpp}. The internal helper \texttt{qe\_step} takes the same role as \texttt{ft\_step} in \texttt{heston\_mc.cpp}: a single function that captures the entire scheme update, callable from both the path and terminal simulators.
 
-The Catch2 tests in \texttt{cpp/tests/test\_heston\_qe.cpp} verify the four pillars at reduced sample size and snapshot against Python references, mirroring the Block 3 test structure.
+The Catch2 tests in \texttt{cpp/tests/test\_heston\_qe.cpp} verify the four pillars at reduced sample size and snapshot against Python references, mirroring the structure of \texttt{test\_heston\_mc.cpp}.
 
 %============================================================
 \section{Bibliographical notes}
 %============================================================
 
 \begin{itemize}[topsep=2pt]
-    \item Andersen (2008) \cite{Andersen2008}: the seminal QE paper, with detailed parameter tables and benchmarks. The reference for this entire block; readable and well-organized.
+    \item Andersen (2008) \cite{Andersen2008}: the seminal QE paper, with detailed parameter tables and benchmarks. The reference for this entire note; readable and well-organized.
     \item Broadie, Kaya (2006) \cite{BroadieKaya2006}: the exact simulation algorithm. Worth reading once to understand what QE is approximating.
     \item Lord, Koekkoek, van Dijk (2010) \cite{LKvD2010}: comparison of all biased schemes; QE comes out on top in their benchmarks.
     \item Smith (2010) \cite{Smith2010}: refined analysis of the QE error structure.

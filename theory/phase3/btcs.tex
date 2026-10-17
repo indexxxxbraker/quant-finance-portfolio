@@ -1,6 +1,6 @@
-% block2_btcs.tex
+% btcs.tex
 %
-% Phase 3, Block 2: implicit BTCS scheme + Thomas algorithm.
+% Implicit BTCS scheme + Thomas algorithm.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
 
@@ -20,24 +20,24 @@
 \newtheorem{definition}[proposition]{Definition}
 \newtheorem{remark}[proposition]{Remark}
 
-\title{Phase 3, Block 2:\\The implicit BTCS scheme\\and the Thomas algorithm}
-\author{Quant Finance Portfolio}
-\date{}
+\title{The implicit BTCS scheme\\and the Thomas algorithm}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \section{Setting and motivation}
 
-Block~1 implemented the explicit FTCS scheme, which is conditionally
+The explicit FTCS scheme of the previous note is conditionally
 stable: $\alpha = (\sigma^2/2)\Delta\tau/\Delta x^2 \le 1/2$ forces
-$M \gtrsim N^2$ time steps and $O(N^3)$ total work. This block
+$M \gtrsim N^2$ time steps and $O(N^3)$ total work. This note
 implements BTCS (Backward-Time, Centred-Space), an
 \emph{unconditionally stable} scheme: any $\Delta\tau > 0$ produces a
 convergent solution, decoupling $M$ from $N$.
 
 The cost of unconditional stability is that each time step requires
-solving a linear system. Block~2 has therefore two deliverables:
+solving a linear system. This note has therefore two deliverables:
 \begin{enumerate}[leftmargin=2em]
 \item the BTCS pricer for European options;
 \item the \emph{Thomas algorithm}, a specialised Gaussian elimination
@@ -45,8 +45,7 @@ that solves tridiagonal systems in $O(N)$ work.
 \end{enumerate}
 Thomas is implemented from scratch as a standalone module
 (\texttt{quantlib.thomas} in Python, \texttt{quant::pde::thomas} in
-C++). It will be reused by Crank--Nicolson in Block~3 and by PSOR in
-Block~4.
+C++). It is reused by the Crank--Nicolson and PSOR pricers.
 
 % =====================================================================
 \section{The BTCS discretisation}
@@ -60,7 +59,7 @@ We discretise the transformed Black--Scholes PDE
 - r\,V
 \label{eq:transformed}
 \end{equation}
-on the grid of Block~0. BTCS evaluates every spatial stencil at the
+on the grid of the finite-difference foundations note. BTCS evaluates every spatial stencil at the
 \emph{new} time level $n+1$:
 \[
 \frac{V_j^{n+1} - V_j^n}{\Delta\tau}
@@ -97,8 +96,8 @@ $\theta = 1$ extremes of the family
 b_-\,V_{j-1}^{n+1} + b_0\,V_j^{n+1} + b_+\,V_{j+1}^{n+1}
 = a_-\,V_{j-1}^n + a_0\,V_j^n + a_+\,V_{j+1}^n,
 \]
-the $\theta$-scheme, with Crank--Nicolson at $\theta = 1/2$ in
-Block~3.
+the $\theta$-scheme, with Crank--Nicolson at $\theta = 1/2$ (see
+the Crank--Nicolson note).
 
 % =====================================================================
 \section{The tridiagonal system}
@@ -117,7 +116,7 @@ b_- & b_0 & b_+    &        & \\
 \end{pmatrix}.
 \]
 The boundary nodes $V_0^{n+1}$ and $V_N^{n+1}$ are known from the
-Dirichlet conditions of Block~0; they appear in the right-hand side:
+Dirichlet conditions of the foundations note; they appear in the right-hand side:
 \begin{equation}
 \mathbf{d} = \begin{pmatrix}
 V_1^n - b_-\,V_0^{n+1} \\
@@ -136,7 +135,7 @@ are independent of $n$ and $j$ thanks to the constant-coefficient
 form \eqref{eq:transformed}. The matrix $A$ is therefore the same at
 every time step; only the right-hand side $\mathbf{d}$ changes.
 This is the structural pay-off of the logarithmic transformation
-that we already exploited in Block~1, now in a stronger form: at
+that we already exploited in FTCS, now in a stronger form: at
 each step we solve a system with the \emph{same} matrix and a
 different right-hand side. The forward sweep of the Thomas algorithm
 can be done \emph{once} at setup and reused, halving the per-step
@@ -146,7 +145,7 @@ cost.
 \section{Stability: unconditional}
 % =====================================================================
 
-The von Neumann analysis of \eqref{eq:btcs} mirrors Block 0, §7.3
+The von Neumann analysis of \eqref{eq:btcs} mirrors the foundations note, §9.3,
 extended with the convective and reactive terms. Substituting
 $V_j^n = g^n e^{ij\theta}$ and solving for $g$:
 \begin{equation}
@@ -303,7 +302,7 @@ right-hand side:
 \]
 When $\alpha \ge \bigl|\mu\Delta\tau/(2\Delta x)\bigr|$ — i.e.,
 $\bigl|\mu\bigr|\Delta x/\sigma^2 \le 1$, the grid Péclet condition
-of Block~1 — both terms inside the absolute values have $\alpha$
+of the FTCS note — both terms inside the absolute values have $\alpha$
 dominating and the same sign, and we get
 $|b_-| + |b_+| = 2\alpha$. Then
 \[
@@ -335,7 +334,7 @@ sub-dominant. The total error is $O(\Delta x)$. Cost: $O(N) \cdot
 M = O(N^2)$. \emph{Acceptable when first-order precision is enough}
 (prototyping, calibration of insensitive parameters, sanity checks).
 
-\paragraph{Crank--Nicolson preview.} The next block achieves
+\paragraph{Crank--Nicolson preview.} Crank--Nicolson achieves
 $O(\Delta\tau^2) + O(\Delta x^2)$ local truncation, so $M \sim N$
 gives full $O(\Delta x^2)$ precision at $O(N^2)$ cost. That is the
 point where the explicit-vs-implicit trade decisively tips toward

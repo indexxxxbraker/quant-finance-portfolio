@@ -2,6 +2,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
 \usepackage[margin=1in]{geometry}
@@ -28,9 +29,9 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-\title{Phase 4, Block 5 \\[0.3em]\Large Heston model: 2D PDE pricing via Alternating Direction Implicit (ADI) schemes}
-\author{Quant Finance Portfolio}
-\date{\today}
+\title{Heston model: 2D PDE pricing via Alternating Direction Implicit (ADI) schemes}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -41,17 +42,17 @@
 \section{Introduction and goals}
 %============================================================
 
-Blocks 2--4 gave us three independent pricing methods for European options under Heston: Fourier inversion (Block 2, semi-analytic, fast and accurate but limited to specific payoffs), full-truncation Euler MC (Block 3, robust but biased), and Andersen QE MC (Block 4, less biased but still statistical). We now add a fourth: deterministic PDE pricing on a 2D grid in $(S, v)$.
+The preceding Heston notes give three independent pricing methods for European options under Heston: Fourier inversion (semi-analytic, fast and accurate but limited to specific payoffs), full-truncation Euler MC (robust but biased), and Andersen QE MC (less biased but still statistical). This note adds a fourth: deterministic PDE pricing on a 2D grid in $(S, v)$.
 
 PDE pricing has structural advantages over Monte Carlo for this problem:
 \begin{itemize}[topsep=2pt]
     \item Deterministic: no statistical error, only discretisation error in space and time. The error decreases predictably with grid refinement.
     \item Greeks for free: derivatives of the price with respect to underlyings ($\Delta, \Gamma, \mathrm{vega}$) are extracted directly from the grid by finite differences, with no extra simulation cost.
-    \item Natural fit for early exercise: American-style payoffs are handled by adding a free-boundary projection (PSOR or similar) to the time-stepping. We saw the 1D version of this in Phase 3 Block 5.
+    \item Natural fit for early exercise: American-style payoffs are handled by adding a free-boundary projection (PSOR or similar) to the time-stepping. The 1D version of this is the American put via PSOR (see the note \emph{Pricing the American put via PSOR}).
 \end{itemize}
-The cost is implementation complexity. The Heston PDE is two-dimensional, with a non-trivial cross-derivative term coupling the two spatial directions. A naive explicit time-stepping is severely constrained by stability (the CFL condition forces $\Delta t = O(\Delta x^2 \Delta v^2 / \cdots)$, which in two dimensions kills runtime). The remedy is implicit time-stepping, but a fully implicit 2D solver requires inverting a large sparse matrix at every step. The compromise that wins in practice is \emph{Alternating Direction Implicit} (ADI): split the implicit operator into directional pieces, each tridiagonal, and solve the directions sequentially. The Thomas solver from Phase 3 Block 4 is the workhorse.
+The cost is implementation complexity. The Heston PDE is two-dimensional, with a non-trivial cross-derivative term coupling the two spatial directions. A naive explicit time-stepping is severely constrained by stability (the CFL condition forces $\Delta t = O(\Delta x^2 \Delta v^2 / \cdots)$, which in two dimensions kills runtime). The remedy is implicit time-stepping, but a fully implicit 2D solver requires inverting a large sparse matrix at every step. The compromise that wins in practice is \emph{Alternating Direction Implicit} (ADI): split the implicit operator into directional pieces, each tridiagonal, and solve the directions sequentially. The Thomas solver (see the note \emph{The implicit BTCS scheme and the Thomas algorithm}) is the workhorse.
 
-This block has four goals:
+This note has four goals:
 
 \paragraph{The Heston PDE.} Derive the pricing PDE in $(S, v)$ via Feynman-Kac, transform to log-spot $(X, v)$ for grid efficiency, and analyse the boundary conditions including the delicate behaviour at $v = 0$.
 
@@ -59,7 +60,7 @@ This block has four goals:
 
 \paragraph{Stability and convergence.} Brief von Neumann analysis to motivate the implicit treatment, plus the discrete convergence rates: $O(\Delta x^2 + \Delta v^2)$ in space, $O(\Delta t)$ for Douglas, $O(\Delta t^2)$ for CS/HV.
 
-\paragraph{Validation.} Cross-check against the Fourier reference (Block 2). PDE precision should match Fourier to 4-5 decimals at production grid sizes.
+\paragraph{Validation.} Cross-check against the Fourier reference (\texttt{quantlib.heston\_fourier}). PDE precision should match Fourier to 4-5 decimals at production grid sizes.
 
 %============================================================
 \section{The Heston PDE for European options}
@@ -67,7 +68,7 @@ This block has four goals:
 
 \subsection{Derivation via Feynman-Kac}
 
-Let $V(t, S, v)$ denote the price at time $t$ of a European-style derivative paying $f(S_T)$ at maturity $T$. By the Feynman-Kac theorem applied to the Heston dynamics under $\mathbb{Q}$ (Block 1, equations 4.1-4.3), $V$ satisfies the parabolic PDE
+Let $V(t, S, v)$ denote the price at time $t$ of a European-style derivative paying $f(S_T)$ at maturity $T$. By the Feynman-Kac theorem applied to the Heston dynamics under $\mathbb{Q}$ (the Heston model note, equations (1)--(3)), $V$ satisfies the parabolic PDE
 \begin{equation}
     \partial_t V + r S \partial_S V + \kappa(\theta - v)\, \partial_v V + \tfrac12 v S^2 \partial^2_S V + \rho \sigma v S\, \partial_S \partial_v V + \tfrac{\sigma^2}{2} v\, \partial^2_v V - r V = 0,                                  \label{eq:heston-pde-S}
 \end{equation}
@@ -162,7 +163,7 @@ For a European call with strike $K$, the terminal payoff is $f(S) = \max(S - K, 
 \[
     W(0, X, v) = \max(e^X - K, 0).
 \]
-This is independent of $v$, which is intuitive: at maturity, only the spot matters. This initial condition has a non-smooth corner at $X = \log K$ (the strike), which propagates a known oscillation in the numerical solution unless smoothed. For Block 5 we use the unsmoothed payoff and let the smoothing happen via the discrete operator's diffusion; in production calibration one would replace it with a $C^2$ smoothed version near the strike.
+This is independent of $v$, which is intuitive: at maturity, only the spot matters. This initial condition has a non-smooth corner at $X = \log K$ (the strike), which propagates a known oscillation in the numerical solution unless smoothed. Here we use the unsmoothed payoff and let the smoothing happen via the discrete operator's diffusion; in production calibration one would replace it with a $C^2$ smoothed version near the strike.
 
 %============================================================
 \section{Spatial discretisation}
@@ -177,7 +178,7 @@ Uniform grids in both directions:
 \end{align*}
 The grid has $(N_X + 1)(N_v + 1)$ nodes. We denote the discrete approximation $W^n_{ij} \approx W(\tau_n, X_i, v_j)$, where $\tau_n = n \Delta\tau$.
 
-A non-uniform grid in $v$ (with concentration near $v_0$ and near $v = 0$) gives noticeably better accuracy at fixed $N_v$, since the option payoff is most sensitive to variance values near $v_0$. We start with uniform grids for clarity; non-uniform grids are an Block 6 refinement.
+A non-uniform grid in $v$ (with concentration near $v_0$ and near $v = 0$) gives noticeably better accuracy at fixed $N_v$, since the option payoff is most sensitive to variance values near $v_0$. We start with uniform grids for clarity; non-uniform grids are a further refinement.
 
 \subsection{Finite difference operators}
 
@@ -254,7 +255,7 @@ HV is a further refinement of CS that improves stability for stiff problems. It 
 
 \subsection{Implementation choice}
 
-We implement \textbf{Douglas} as the production scheme for Block 5. Reasons:
+We implement \textbf{Douglas} as the production scheme. Reasons:
 \begin{itemize}[topsep=2pt]
     \item It illustrates all the ADI ideas (operator splitting, tridiagonal sweeps, explicit cross term) in their simplest form.
     \item $O(\Delta\tau)$ in time is acceptable when paired with reasonable space discretisation: at production grid sizes ($N_X \times N_v \times N_\tau \sim 100 \times 50 \times 100$), the Douglas error is dominated by the spatial $O(\Delta x^2 + \Delta v^2)$ rather than the temporal $O(\Delta\tau)$.
@@ -297,13 +298,13 @@ In practice, $\Delta\tau = T / 100$ to $T / 200$ is reliable for Douglas with ty
 
 \subsection{Validation strategy}
 
-The Fourier reference (Block 2) is the ground truth: it is bias-free to numerical quadrature precision ($\sim 10^{-6}$). The PDE pricer should match Fourier to a similar precision at converged grids:
+The Fourier reference is the ground truth: it is bias-free to numerical quadrature precision ($\sim 10^{-6}$). The PDE pricer should match Fourier to a similar precision at converged grids:
 
 \begin{enumerate}[topsep=2pt]
-    \item \textbf{BS limit ($\sigma \to 0$).} As in Blocks 3-4, the Heston PDE reduces to BS in this limit; verify the pricer matches BS analytic.
+    \item \textbf{BS limit ($\sigma \to 0$).} As for the Monte Carlo pricers, the Heston PDE reduces to BS in this limit; verify the pricer matches BS analytic.
     \item \textbf{Cross-method vs Fourier.} For a panel of strikes and maturities, the PDE price should agree with Fourier to 3-4 decimals at typical grids, and to 5 decimals at refined grids.
     \item \textbf{Convergence study.} Halve $\Delta X, \Delta v, \Delta\tau$ and observe the error decrease following the expected rates.
-    \item \textbf{Cross-method vs MC (sanity).} The QE pricer of Block 4 with large $M$ provides a third independent estimate. PDE and QE should agree within MC half-widths.
+    \item \textbf{Cross-method vs MC (sanity).} The QE pricer (\texttt{quantlib.heston\_qe}) with large $M$ provides a third independent estimate. PDE and QE should agree within MC half-widths.
 \end{enumerate}
 
 %============================================================
@@ -316,15 +317,15 @@ The module \texttt{quantlib.heston\_pde} exposes:
 
 \begin{itemize}[topsep=2pt]
     \item \texttt{build\_heston\_grid(S0, T, params, N\_X, N\_v, N\_tau, X\_factor=4.0, v\_max\_factor=5.0)}: constructs the $(X, v, \tau)$ grids and returns them as arrays. The factors control the truncation: $X$-grid extends $X_{\mathrm{factor}} \cdot \sqrt{v_{\max} T}$ from $\log S_0$, $v$-grid extends to $v_{\mathrm{max\_factor}} \cdot \theta$.
-    \item \texttt{douglas\_step(W, params, dX, dv, dtau, theta=0.5)}: one Douglas step on the 2D grid. Internal: builds the discrete operators $L_X, L_v, L_{Xv}$, applies the explicit predictor, and runs two tridiagonal sweeps (one in $X$, one in $v$). Reuses the Thomas solver from Phase 3 Block 4.
+    \item \texttt{douglas\_step(W, params, dX, dv, dtau, theta=0.5)}: one Douglas step on the 2D grid. Internal: builds the discrete operators $L_X, L_v, L_{Xv}$, applies the explicit predictor, and runs two tridiagonal sweeps (one in $X$, one in $v$). Reuses the Thomas algorithm of the BTCS note.
     \item \texttt{heston\_call\_pde(S0, K, T, params, N\_X=200, N\_v=100, N\_tau=100)}: high-level pricer. Builds the grid, sets the call payoff initial condition, runs $N_\tau$ Douglas steps, and interpolates the price at $(S_0, v_0)$ from the grid.
 \end{itemize}
 
-The Thomas solver is reused from \texttt{quantlib.theta\_scheme} (Phase 3 Block 4). In the ADI sweeps, each line of the grid produces a tridiagonal system; we batch them by line and solve in a vectorised manner.
+The Thomas solver is reused from \texttt{quantlib.theta\_scheme}. In the ADI sweeps, each line of the grid produces a tridiagonal system; we batch them by line and solve in a vectorised manner.
 
 \subsection{C++}
 
-The C++ implementation in \texttt{cpp/include/quant/heston\_pde.hpp} and \texttt{cpp/src/heston\_pde.cpp} mirrors Python with the standard adaptations: \texttt{HestonParams} from Block 2, Thomas solver from Phase 3, \texttt{std::vector<double>} for the flattened 2D grid. The 2D grid is stored row-major (X-major: index $(i, j) \to i \cdot (N_v + 1) + j$).
+The C++ implementation in \texttt{cpp/include/quant/heston\_pde.hpp} and \texttt{cpp/src/heston\_pde.cpp} mirrors Python with the standard adaptations: \texttt{HestonParams} from \texttt{heston\_fourier.hpp}, Thomas solver from the finite-difference pricers, \texttt{std::vector<double>} for the flattened 2D grid. The 2D grid is stored row-major (X-major: index $(i, j) \to i \cdot (N_v + 1) + j$).
 
 The Catch2 tests in \texttt{cpp/tests/test\_heston\_pde.cpp} verify the four pillars at reduced grid sizes for runtime, with snapshot agreement against Python and Fourier.
 

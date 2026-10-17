@@ -1,6 +1,6 @@
-% block0_pde_foundations.tex
+% pde_foundations.tex
 %
-% Phase 3, Block 0: Foundations of the finite-difference solution of the
+% Foundations of the finite-difference solution of the
 % Black-Scholes PDE.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
@@ -21,17 +21,17 @@
 \newtheorem{definition}[proposition]{Definition}
 \newtheorem{remark}[proposition]{Remark}
 
-\title{Phase 3, Block 0:\\Foundations of the finite-difference solution\\of the Black-Scholes PDE}
-\author{Quant Finance Portfolio}
-\date{}
+\title{Foundations of the finite-difference solution\\of the Black-Scholes PDE}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \section{Scope}
 
-This block sets up the mathematical and numerical scaffolding on which
-all of Phase~3 rests. It contains no pricer. Its deliverables are:
+This note sets up the mathematical and numerical scaffolding on which
+all the finite-difference and lattice notes rest. It contains no pricer. Its deliverables are:
 \begin{enumerate}[leftmargin=2em]
 \item the logarithmic transformation that turns the Black--Scholes PDE
       into a constant-coefficient parabolic PDE;
@@ -43,7 +43,7 @@ all of Phase~3 rests. It contains no pricer. Its deliverables are:
       and implicit (BTCS) schemes for the pure-diffusive part of the PDE.
 \end{enumerate}
 The pricers themselves (FTCS, BTCS, Crank--Nicolson, PSOR, trinomial)
-appear in Blocks~1--5, all built on this foundation.
+appear in separate notes, all built on this foundation.
 
 % =====================================================================
 \section{The Black--Scholes PDE}
@@ -129,8 +129,8 @@ V(x, 0) \;=\; \phi(K e^x), \qquad x \in \mathbb{R}.
 The transformation \eqref{eq:transform} preserves the regularity of
 $V$. The non-smoothness of $\phi$ at the strike (the kink of
 $(\cdot)^+$) becomes a kink of the transformed initial condition at
-$x = 0$. This irregularity will be relevant in Block~3 when we discuss
-spurious oscillations in Crank--Nicolson.
+$x = 0$. This irregularity is the source of the spurious oscillations
+of Crank--Nicolson discussed in the Crank--Nicolson note.
 \end{remark}
 
 % =====================================================================
@@ -151,11 +151,11 @@ Each of the three terms has a distinct numerical character.
 \item The \emph{diffusive} term $D\, V_{xx}$ is dominant for typical
       financial parameters ($\sigma \in [0.1, 0.5]$, $\Delta x$ small).
       It governs the most restrictive stability constraint on the
-      explicit scheme of Block~1.
+      explicit FTCS scheme.
 \item The \emph{convective} term $a\, V_x$ encodes directional drift.
       For $\mu > 0$ information flows toward $+x$; for $\mu < 0$
       toward $-x$. With centred space differences (used throughout
-      Phase~3) the contribution to the von~Neumann factor is purely
+      the finite-difference notes) the contribution to the von~Neumann factor is purely
       imaginary.
 \item The \emph{reactive} term $c V = -rV$ is local in space and acts
       as a uniform exponential decay with rate $r$. It contributes
@@ -208,8 +208,9 @@ truncation error from the artificial boundary, and floating-point
 round-off. For $N_\sigma \ge 4$ the truncation contribution is
 typically below the discretisation error already at moderate
 $N \sim 100$ and never becomes the dominant error, so we treat it as
-negligible throughout. This separation of error sources will reappear
-in Block~3 when verifying the empirical convergence rate of CN.
+negligible throughout. This separation of error sources reappears
+in the Crank--Nicolson note, where the empirical convergence rate of CN
+is verified.
 \end{remark}
 
 % =====================================================================
@@ -260,11 +261,12 @@ V(S,t) \to e^{-r(T-t)}\bigl(K - \mathbb{E}^{\mathbb{Q}}[S_T \mid S_t = S]\bigr)
 which is precisely $K(e^{-r\tau} - e^x)$.
 
 \begin{remark}
-For Block~4 (American put) the boundary conditions
+For the American put the boundary conditions
 \eqref{eq:bc-put-lo}--\eqref{eq:bc-put-hi} have to be replaced by the
 \emph{intrinsic-value} conditions $V(x_{\min},\tau) = K - K e^{x_{\min}}$
 (the option is exercised immediately for very low $S$) and the same
-$V(x_{\max},\tau) = 0$. We will revisit this in Block~4.
+$V(x_{\max},\tau) = 0$. This is treated in the note on the American
+put via PSOR.
 \end{remark}
 
 % =====================================================================
@@ -327,7 +329,7 @@ For the time derivative we use forward or backward Euler:
    \frac{V_j^n - V_j^{n-1}}{\Delta \tau} + O(\Delta \tau).
    \qquad &\text{(backward, used in BTCS)}\label{eq:fd-bwd}
 \end{align}
-Centred-in-time differences (used in Crank--Nicolson, Block~3) achieve
+Centred-in-time differences (used in Crank--Nicolson) achieve
 $O(\Delta\tau^2)$ at the cost of being implicit at both adjacent
 levels.
 
@@ -420,8 +422,8 @@ $\alpha\Delta x^2 / D \approx \frac{0.5 \cdot 0.0025}{0.02} = 0.0625$,
 so a year requires at least $T/\Delta\tau = 16$ time steps. Halving
 $\Delta x$ requires \emph{quadrupling} the number of time steps. This
 $O(\Delta x^{-2})$ scaling of the time-step count is the principal
-limitation of FTCS and the motivation for the implicit schemes in
-Block~2 and beyond.
+limitation of FTCS and the motivation for the implicit schemes
+(BTCS, Crank--Nicolson).
 \end{remark}
 
 \subsection{BTCS for the pure-diffusive equation}
@@ -446,10 +448,10 @@ The BTCS scheme for $V_\tau = D V_{xx}$ is von Neumann stable for any
 $\Delta\tau > 0,\; \Delta x > 0$.
 \end{proposition}
 
-This is the central trade-off of Phase~3. FTCS is cheap per step
+This is the central trade-off of the finite-difference methods. FTCS is cheap per step
 (matrix-free) but has the CFL constraint; BTCS allows arbitrary
 $\Delta\tau$ but requires solving a linear system at each step.
-Block~2 will pay the cost of that linear solve via the Thomas
+The BTCS note pays the cost of that linear solve via the Thomas
 algorithm.
 
 \subsection{Convective term: an aside}
@@ -482,7 +484,7 @@ satisfied.
 
 \subsection{Summary: two control numbers}
 
-The discrete dynamics of the entire phase is controlled by two
+The discrete dynamics of all these schemes is controlled by two
 dimensionless numbers,
 \begin{equation}
 \alpha \;=\; \frac{\sigma^2}{2}\cdot\frac{\Delta\tau}{\Delta x^2},
@@ -490,11 +492,11 @@ dimensionless numbers,
 \nu \;=\; \frac{|\mu|}{2}\cdot\frac{\Delta\tau}{\Delta x}.
 \label{eq:control-numbers}
 \end{equation}
-FTCS (Block~1) is stable iff $\alpha \le 1/2$ and the convective
+FTCS is stable iff $\alpha \le 1/2$ and the convective
 contribution does not violate the mixed bound; in the parameter range
 of this project this reduces effectively to $\alpha \le 1/2$.
-BTCS (Block~2) and Crank--Nicolson (Block~3) are unconditionally stable
-in $\alpha$. As we will see in Block~5, the Kamrad--Ritchken trinomial
+BTCS and Crank--Nicolson are unconditionally stable
+in $\alpha$. As shown in the trinomial-tree note, the Kamrad--Ritchken trinomial
 tree maps to FTCS under a specific reparametrisation; its
 non-negative-probability condition $\lambda^2 \ge 1/\alpha$ is the
 discrete-tree avatar of the CFL constraint \eqref{eq:cfl}.
@@ -503,7 +505,7 @@ discrete-tree avatar of the CFL constraint \eqref{eq:cfl}.
 \section{Implementation outline}
 % =====================================================================
 
-The Phase 3 Block 0 implementation provides four ingredients:
+The implementation (\texttt{quantlib.pde}) provides four ingredients:
 \begin{enumerate}[leftmargin=2em]
 \item \texttt{Grid} (Python dataclass / C++ struct): an immutable
       container holding $N$, $M$, $T$, $\sigma$, $r$, $K$,
@@ -522,7 +524,7 @@ The Phase 3 Block 0 implementation provides four ingredients:
       every $\tau_n$.
 \item Stability-number utilities \texttt{fourier\_number} and
       \texttt{courant\_number} for diagnostic use by the explicit
-      pricer in Block~1.
+      FTCS pricer.
 \end{enumerate}
 This module imports nothing from outside \texttt{numpy} and the
 standard library. It contains no pricer.

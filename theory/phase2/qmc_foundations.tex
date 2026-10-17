@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -42,8 +43,8 @@
 
 % ---------- Document metadata ----------
 \title{Quasi-Monte Carlo: Foundations}
-\author{Quant Finance Portfolio --- Phase 2, Block 3.0}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -60,7 +61,7 @@ develop the discrepancy framework, prove the Koksma-Hlawka
 inequality, and construct two foundational sequences: Halton (an
 extension of van der Corput's one-dimensional sequence) and Sobol
 (based on primitive polynomials over $\mathbb{F}_2$). The relation
-to inverse sampling --- which we adopted in Block~0 of this phase
+to inverse sampling --- adopted in the Monte Carlo foundations
 specifically for QMC compatibility --- is highlighted throughout.
 \end{abstract}
 
@@ -75,9 +76,9 @@ The Monte Carlo identity is
 \qquad u_i \sim \mathrm{Unif}\bigl([0,1]^d\bigr) \text{ i.i.d.},
 \end{equation}
 with statistical error of order $\sigma(f)/\sqrt n$ where
-$\sigma^2(f) = \Var(f(u))$. The variance reduction techniques of
-Block~2 attack the constant $\sigma(f)$; they leave the rate
-$1/\sqrt n$ untouched.
+$\sigma^2(f) = \Var(f(u))$. The variance reduction techniques
+(antithetic and control variates) attack the constant $\sigma(f)$; they
+leave the rate $1/\sqrt n$ untouched.
 
 QMC takes a different route. Instead of choosing $\{u_i\}$
 randomly, we choose them deterministically to be ``as uniform as
@@ -155,7 +156,7 @@ high nominal dimension, have ``effective dimension'' much smaller
 than $d$ because the function depends primarily on a low-dimensional
 subspace. QMC then performs well even at large nominal $d$. This is
 beyond the scope of the present writeup but motivates the
-preparatory experiments of Block~3.1.
+preparatory experiments of the QMC pricer for the European call.
 
 \section{The van der Corput sequence}
 \label{sec:vdc}
@@ -312,15 +313,15 @@ Ziggurat (rejection-based) --- destroy the low-discrepancy structure
 of the input. Box-Muller, in particular, can introduce spurious
 correlations between dimensions when paired with a QMC source.
 
-This is why we adopted inversion sampling in Block~0 of this phase,
+This is why the Monte Carlo foundations adopt inversion sampling,
 even though Ziggurat is faster for plain MC. The pipeline
 \begin{equation}
 \text{QMC source} \;\longrightarrow\; \Phi^{-1}
 \;\longrightarrow\; \text{normal samples}
 \end{equation}
 preserves the discrepancy structure across the transformation. The
-choice of normal sampler made in Block~0 was deliberately taken
-with this future need in mind.
+choice of normal sampler made in the Monte Carlo foundations is
+deliberately taken with this need in mind.
 
 \section{The need for randomization: from QMC to RQMC}
 \label{sec:rqmc}
@@ -411,9 +412,9 @@ for stability of $\hat\sigma_{\mathrm{rep}}$).
 \end{itemize}
 The standard practical rule is $R \in [10, 30]$ replications and the
 remaining budget on $n$. We adopt $R = 20$ in the validation script
-of Block~3.1.
+of the QMC pricer for the European call.
 
-\section{Summary and look ahead to Block 3.1}
+\section{Summary and look ahead to the QMC pricer}
 \label{sec:summary}
 
 We have established the framework:
@@ -422,17 +423,18 @@ We have established the framework:
 / n)$, faster than the MC rate $O(\sqrt{(\log\log n)/n})$.
 \item The Koksma-Hlawka bound is deterministic but practically
 unusable for option payoffs because $V(f)$ is hard to bound.
-\item Inverse sampling (chosen in Block~0) is the only normal
-sampler that preserves QMC structure.
+\item Inverse sampling (chosen in the Monte Carlo foundations) is the
+only normal sampler that preserves QMC structure.
 \item RQMC with digital shifting recovers a usable error bar by
 averaging $R$ independent shifts.
 \end{itemize}
 
-Block~3.1 specialises this framework to the European call. We will
-implement Halton and Sobol generators, build a multi-step Euler MC
-pricer with $d = 20$ (one normal per discretisation step), compare
-deterministic-QMC and RQMC against the IID Block~1.2.1 baseline,
-and measure empirical convergence rates on a log-log slope plot.
+The note on the QMC pricer (\texttt{mc\_european\_qmc.tex}) specialises
+this framework to the European call. It
+implements Halton and Sobol generators, builds a multi-step Euler MC
+pricer with $d = 20$ (one normal per discretisation step), compares
+deterministic-QMC and RQMC against the IID Euler--Maruyama baseline,
+and measures empirical convergence rates on a log-log slope plot.
 
 \section{Bibliographic notes}
 \label{sec:biblio}

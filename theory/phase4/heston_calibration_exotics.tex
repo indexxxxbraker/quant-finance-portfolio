@@ -2,6 +2,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
 \usepackage[margin=1in]{geometry}
@@ -28,9 +29,9 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-\title{Phase 4, Block 6 \\[0.3em]\Large Heston model: calibration to market data and exotic option pricing}
-\author{Quant Finance Portfolio}
-\date{\today}
+\title{Heston model: calibration to market data and exotic option pricing}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -41,7 +42,7 @@
 \section{Introduction and goals}
 %============================================================
 
-In Blocks 1-5 we built the Heston model from theoretical foundations to four independent pricing methods: closed-form Fourier (Block 2), full-truncation Euler MC (Block 3), Andersen QE MC (Block 4), and 2D PDE with Douglas ADI (Block 5). All four agree to high precision on European call prices at the same parameters. In Block 6 we close the cycle by addressing the two questions that practitioners actually face:
+The preceding Heston notes take the model from theoretical foundations to four independent pricing methods: closed-form Fourier, full-truncation Euler MC, Andersen QE MC, and 2D PDE with Douglas ADI. All four agree to high precision on European call prices at the same parameters. This note closes the cycle by addressing the two questions that practitioners actually face:
 
 \begin{enumerate}[topsep=2pt]
     \item \textbf{Calibration.} Given a market-observed surface of European option prices (or equivalently, implied volatilities) at various strikes and maturities, find the Heston parameters $(\kappa, \theta, \sigma, \rho, v_0)$ that best reproduce this surface. The model must be \emph{fitted to the market} before it can be used for anything else.
@@ -51,15 +52,15 @@ In Blocks 1-5 we built the Heston model from theoretical foundations to four ind
 
 These two tasks form the core operational workflow of derivatives trading under Heston: \emph{calibrate to liquid vanilla quotes, then price illiquid exotics with the calibrated model}. The accuracy of the entire workflow depends on both halves: a poorly-calibrated model gives wrong exotic prices, and a poorly-implemented exotic pricer fails to deliver the calibrated model's accuracy.
 
-This block has four goals.
+This note has four goals.
 
 \paragraph{Calibration mathematics.} Define the calibration problem as a constrained least-squares optimisation in parameter space. Identify the natural objective function (price RMSE or implied-vol RMSE), the parameter constraints (Feller condition, $\rho \in [-1, 1]$), and the practical optimisation strategies (Levenberg-Marquardt, differential evolution, hybrid).
 
 \paragraph{Calibration robustness.} The Heston calibration is notoriously ill-conditioned: multiple parameter sets reproduce a given vanilla surface to within market precision, and the optimiser may converge to local minima or to physically-unreasonable parameters. We discuss diagnostics and the use of regularisation.
 
-\paragraph{Exotic pricing.} Implement Asian (arithmetic average), lookback (max-floating), and up-and-out barrier options using QE Monte Carlo (the natural workhorse for path-dependent European-style payoffs). For American puts, extend the 2D PDE pricer with PSOR (Phase 3 Block 5).
+\paragraph{Exotic pricing.} Implement Asian (arithmetic average), lookback (max-floating), and up-and-out barrier options using QE Monte Carlo (the natural workhorse for path-dependent European-style payoffs). For American puts, extend the 2D PDE pricer with PSOR (see the note \emph{Pricing the American put via PSOR}).
 
-\paragraph{Validation.} The validation strategy now must operate without the Fourier ground truth that anchored Blocks 2-5. Cross-method consistency (PDE vs MC) becomes the primary diagnostic, complemented by analytical limit cases (e.g., a barrier with $H \to \infty$ recovers the European price).
+\paragraph{Validation.} The validation strategy now must operate without the Fourier ground truth that anchored the European pricers. Cross-method consistency (PDE vs MC) becomes the primary diagnostic, complemented by analytical limit cases (e.g., a barrier with $H \to \infty$ recovers the European price).
 
 %============================================================
 \section{The calibration problem}
@@ -108,7 +109,7 @@ The Heston calibration objective \eqref{eq:loss-price} is generally non-convex w
 
 \paragraph{Hybrid (DE + LM).} The standard recipe in production: run DE for a coarse global search (a few hundred function evaluations), then hand off the result to LM for high-precision local refinement. This combines the global reach of DE with the speed of LM.
 
-For the implementation in this block we provide the LM-only variant (which works well for synthetic test problems where the initial guess is reasonable) and document how to wrap it in DE for production use.
+For the implementation in this note we provide the LM-only variant (which works well for synthetic test problems where the initial guess is reasonable) and document how to wrap it in DE for production use.
 
 \subsection{Identifiability concerns}
 
@@ -162,7 +163,7 @@ The arithmetic-average Asian call has payoff
 \end{equation}
 where $\{t_k\}$ are the averaging dates (typically uniformly spaced, e.g., daily over the option's life). The payoff depends on the entire path, so Fourier pricing does not apply; we use Monte Carlo.
 
-The natural method is QE (Block 4): the path-outer iteration of the simulator naturally accumulates the path average as it goes. The terminal-only QE simulator of Block 4 is replaced by a slight modification that, instead of returning only $S_T$, accumulates $\bar S = \tfrac{1}{n_{\mathrm{avg}}} \sum_k S_{t_k}$ during the iteration and returns $\bar S$.
+The natural method is QE (see the QE note): the path-outer iteration of the simulator naturally accumulates the path average as it goes. The terminal-only QE simulator of \texttt{quantlib.heston\_qe} is replaced by a slight modification that, instead of returning only $S_T$, accumulates $\bar S = \tfrac{1}{n_{\mathrm{avg}}} \sum_k S_{t_k}$ during the iteration and returns $\bar S$.
 
 \subsection{Lookback options (floating-strike)}
 
@@ -189,15 +190,15 @@ Like the lookback, the maximum is biased downward by discrete monitoring; the Br
 American puts cannot be priced by Monte Carlo on a forward-only path, since the optimal exercise decision at each time depends on the conditional distribution of future paths. Two methods:
 \begin{itemize}[topsep=2pt]
     \item \textbf{Longstaff-Schwartz Monte Carlo (LSM)}: simulates paths and uses regression on the path state to approximate the continuation value, then exercises optimally backward in time. Standard in MC-only environments.
-    \item \textbf{PSOR on the 2D PDE}: extends Block 5's Douglas ADI by adding a free-boundary projection at each time step. The projection enforces $V \geq \Phi_{\mathrm{exercise}}$ in the discretised state, and the PSOR iterations converge to the optimal exercise policy.
+    \item \textbf{PSOR on the 2D PDE}: extends the Douglas ADI pricer of the Heston PDE note by adding a free-boundary projection at each time step. The projection enforces $V \geq \Phi_{\mathrm{exercise}}$ in the discretised state, and the PSOR iterations converge to the optimal exercise policy.
 \end{itemize}
-We use PSOR-on-2D-PDE because (a) we already have the PDE infrastructure from Block 5, (b) PSOR was implemented in Phase 3 Block 5 for 1D and the extension is mechanical, and (c) PDE methods give Greeks for free. The implementation in Block 6 is the 1D PSOR pattern lifted to 2D operating on the Douglas ADI sweeps.
+We use PSOR-on-2D-PDE because (a) the PDE infrastructure of the Heston PDE note is already available, (b) PSOR exists for 1D (see the PSOR note) and the extension is mechanical, and (c) PDE methods give Greeks for free. The implementation (\texttt{quantlib.heston\_american\_pde}) is the 1D PSOR pattern lifted to 2D operating on the Douglas ADI sweeps.
 
 %============================================================
 \section{Validation strategy}
 %============================================================
 
-The validation is harder than in previous blocks because most exotics have no Fourier ground truth.
+The validation is harder than for the European pricers because most exotics have no Fourier ground truth.
 
 \subsection{Calibration validation}
 
@@ -216,7 +217,7 @@ The validation is harder than in previous blocks because most exotics have no Fo
     \item Down-and-out call with $H \to 0$: same as European call.
     \item American put with high mean-reversion ($\kappa$ very large): close to European put.
 \end{itemize}
-These limits give us anchored validation against Fourier (Block 2) for the corresponding European prices.
+These limits give us anchored validation against Fourier (\texttt{quantlib.heston\_fourier}) for the corresponding European prices.
 
 \paragraph{Cross-method consistency.}
 \begin{itemize}[topsep=2pt]
@@ -243,13 +244,13 @@ The module \texttt{quantlib.heston\_exotics} exposes:
     \item \texttt{mc\_asian\_call\_heston(S0, K, T, p, n\_steps, n\_paths, n\_avg, *, ...)}: arithmetic-average Asian call.
     \item \texttt{mc\_lookback\_call\_heston(S0, T, p, n\_steps, n\_paths, *, ...)}: floating-strike lookback.
     \item \texttt{mc\_barrier\_call\_heston(S0, K, T, H, p, n\_steps, n\_paths, *, ...)}: up-and-out barrier call.
-    \item \texttt{american\_put\_heston\_pde(S0, K, T, p, ...)}: American put via 2D PDE with PSOR. Reuses the Douglas ADI sweep machinery from Block 5.
+    \item \texttt{american\_put\_heston\_pde(S0, K, T, p, ...)}: American put via 2D PDE with PSOR. Reuses the Douglas ADI sweep machinery from \texttt{quantlib.heston\_pde}.
 \end{itemize}
-The MC exotics share a common pattern: a path-aware simulator that accumulates the path-functional during the time loop. We refactor the QE step from Block 4 into a callable kernel that the exotic simulators wrap.
+The MC exotics share a common pattern: a path-aware simulator that accumulates the path-functional during the time loop. The QE step of \texttt{quantlib.heston\_qe} is refactored into a callable kernel that the exotic simulators wrap.
 
 \subsection{C++}
 
-Same structure: \texttt{quant::heston::calibration} and \texttt{quant::heston::exotics} namespaces, with the corresponding pricer functions. The American PSOR builds on the 2D PDE infrastructure from Block 5, with only the projection step added inside the time loop.
+Same structure: \texttt{quant::heston::calibration} and \texttt{quant::heston::exotics} namespaces, with the corresponding pricer functions. The American PSOR builds on the 2D PDE infrastructure (\texttt{heston\_pde.hpp}), with only the projection step added inside the time loop.
 
 \subsection{Tests}
 

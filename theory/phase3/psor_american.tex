@@ -1,6 +1,6 @@
-% block4_psor.tex
+% psor_american.tex
 %
-% Phase 3, Block 4: American put pricing via PSOR.
+% American put pricing via PSOR.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
 
@@ -20,9 +20,9 @@
 \newtheorem{remark}[proposition]{Remark}
 \newtheorem{definition}[proposition]{Definition}
 
-\title{Phase 3, Block 4:\\Pricing the American put via PSOR}
-\author{Quant Finance Portfolio}
-\date{}
+\title{Pricing the American put via PSOR}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -37,16 +37,16 @@ on a free \emph{exercise boundary} $S_f(t)$ that separates a
 \emph{exercise region} (where it is exercised immediately). The
 boundary itself is unknown a priori --- it is part of the solution.
 
-The deliverable of this block is a numerical method that handles the
+The deliverable of this note is a numerical method that handles the
 free boundary cleanly, by reformulating the problem as a
 \emph{Linear Complementarity Problem} (LCP) on a fixed domain and
 solving it iteratively at every time step using \emph{Projected
-Successive Over-Relaxation} (PSOR). The block ships two modules:
+Successive Over-Relaxation} (PSOR). The implementation consists of two modules:
 \begin{itemize}[leftmargin=2em]
 \item \texttt{quantlib.psor}: a generic PSOR solver for tridiagonal
-LCPs (analogous to \texttt{quantlib.thomas} of Block~2).
+LCPs (analogous to \texttt{quantlib.thomas}).
 \item \texttt{quantlib.cn\_american}: the user-facing American put
-pricer, built on the $\theta$-scheme infrastructure of Block~3 with
+pricer, built on the $\theta$-scheme infrastructure (\texttt{quantlib.theta\_scheme}) with
 PSOR replacing Thomas in the per-step solve.
 \end{itemize}
 
@@ -114,7 +114,7 @@ determines $S_f(t)$.
 \paragraph{Why this formulation is hard numerically.} The PDE
 \eqref{eq:bs-pde-cont} holds on the time-varying domain
 $\mathcal{C}$, whose boundary moves with $t$. The finite-difference
-methods of Blocks 1--3 work on fixed domains; adapting the spatial
+methods for European options (FTCS, BTCS, CN) work on fixed domains; adapting the spatial
 mesh to track $S_f(t)$ would require remeshing at every time step,
 which is expensive and error-prone. We need a reformulation on a
 fixed domain.
@@ -126,7 +126,7 @@ fixed domain.
 Switching to log-coordinates $x = \ln(S/K)$ and $\tau = T - t$ and
 denoting the spatial operator
 $\mathcal{L}V = \frac{\sigma^2}{2}V_{xx} + \mu V_x - rV$ as in
-Block~3, we reformulate the American put as the system
+the Crank--Nicolson note, we reformulate the American put as the system
 \begin{equation}
 \boxed{\;\;\begin{aligned}
 V_\tau - \mathcal{L}V \;&\geq\; 0 \\
@@ -167,7 +167,7 @@ first is an equality (BS PDE); in $\mathcal{E}$ the first is strict
 makes no reference to the free boundary $S_f$. The boundary emerges
 a posteriori as the locus where one inequality changes from strict
 to equality. Numerically, this is enormous: we can work on the
-fixed log-truncated domain of Block~0, with no need to track a
+fixed log-truncated domain of the finite-difference foundations note, with no need to track a
 moving boundary, and the complementarity condition automatically
 selects which nodes are in which region.
 
@@ -186,9 +186,9 @@ Wilmott--Howison--Dewynne~\cite{WHD1995}, Chapter~7.
 % =====================================================================
 
 Apply the $\theta$-scheme to the operator $V_\tau - \mathcal{L}V$
-exactly as in Block~3. The discrete equality $A V^{n+1} = B V^n +
+exactly as in the Crank--Nicolson note. The discrete equality $A V^{n+1} = B V^n +
 \mathbf{b}_{\mathrm{bnd}}$ (with $A$, $B$, $\mathbf{b}_{\mathrm{bnd}}$ from
-Block~3) becomes the discrete LCP
+that note) becomes the discrete LCP
 \begin{equation}
 \boxed{\;\;\begin{aligned}
 A V^{n+1} \;&\geq\; B V^n + \mathbf{b}_{\mathrm{bnd}} \\
@@ -377,21 +377,21 @@ than the European pricer, the price of LCP generality.
 \hline
 Method & Cost & Accuracy \\
 \hline
-CRR binomial (Phase 2)        & $O(N^2)$ & $O(1/N)$, $O(1/N^2)$ Richardson \\
-LSM (Phase 2)                 & $O(N_{\mathrm{paths}} N_{\mathrm{steps}})$ & MC, $O(1/\sqrt{N_{\mathrm{paths}}})$ \\
-\textbf{CN-PSOR (this block)} & $O(N^3 \log\epsilon^{-1})$ & $O(\Delta x^2 + \Delta\tau^2)$ \\
+CRR binomial (\texttt{quantlib.american}) & $O(N^2)$ & $O(1/N)$, $O(1/N^2)$ Richardson \\
+LSM (\texttt{quantlib.american})          & $O(N_{\mathrm{paths}} N_{\mathrm{steps}})$ & MC, $O(1/\sqrt{N_{\mathrm{paths}}})$ \\
+\textbf{CN-PSOR (this note)} & $O(N^3 \log\epsilon^{-1})$ & $O(\Delta x^2 + \Delta\tau^2)$ \\
 \hline
 \end{tabular}
 \end{center}
 CN-PSOR is the most accurate but most expensive at moderate $N$.
 LSM scales best to high dimensions; CRR is the simplest and most
-robust. Block~6 makes the comparison numerical.
+robust. The finite-difference/lattice benchmark (\texttt{benchmark\_phase3.py}) makes the comparison numerical.
 
 % =====================================================================
 \section{Implementation outline}
 % =====================================================================
 
-Two new modules:
+Two modules:
 
 \paragraph{\texttt{quantlib.psor} / \texttt{quant::pde::psor}.}
 Generic LCP solver. The signature mirrors Thomas:
@@ -406,7 +406,7 @@ section below uses it to demonstrate $\omega$ optimality).
 
 \paragraph{\texttt{quantlib.cn\_american} / \texttt{quant::pde::cn\_american}.}
 American put pricer. Reuses the $\theta$-scheme grid and boundary
-construction of Block~3, replacing the per-step Thomas solve with a
+construction of the Crank--Nicolson pricer, replacing the per-step Thomas solve with a
 PSOR solve. Two notable differences from \texttt{cn\_european\_put}:
 \begin{enumerate}[leftmargin=2em]
 \item The lower boundary condition is $V(x_{\min}, \tau) = K
@@ -429,11 +429,11 @@ without Rannacher; the projection does the smoothing implicitly.
 Seven tests certify the new pricer:
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{Cross-validation against CRR binomial} (from Phase 2):
+\item \textbf{Cross-validation against CRR binomial} (\texttt{quantlib.american}):
 the gold-standard reference for American puts. Tolerance comparable
 to the discretisation error.
 
-\item \textbf{Cross-validation against LSM} (from Phase 2): a
+\item \textbf{Cross-validation against LSM} (\texttt{quantlib.american}): a
 secondary check. Tolerance loosened to account for Monte Carlo
 variance.
 

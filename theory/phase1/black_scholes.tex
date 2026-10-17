@@ -4,6 +4,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -32,8 +33,8 @@
 
 % ---------- Document metadata ----------
 \title{The Black--Scholes Formula via the Martingale Approach}
-\author{Quant Finance Portfolio --- Phase 1, Algorithm 1}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -321,10 +322,10 @@ options, LIBOR-based interest-rate products, and most exotic derivatives.
 The decomposition \(C_t = S_t\, N(d_1) - K e^{-r\tau} N(d_2)\) is,
 literally, the time-\(t\) value of the replicating portfolio: long
 \(N(d_1)\) shares, financed by borrowing \(K e^{-r\tau} N(d_2)\) at the
-riskless rate. When in the next algorithm we differentiate~\eqref{eq:bs}
-with respect to \(S\) and obtain \(\partial C / \partial S = N(d_1)\)
+riskless rate. When the note on the Greeks differentiates~\eqref{eq:bs}
+with respect to \(S\) and obtains \(\partial C / \partial S = N(d_1)\)
 (the \emph{delta}), with all the \(\varphi\)-terms cancelling cleanly,
-this will be a manifestation of the same internal consistency: the
+this is a manifestation of the same internal consistency: the
 formula is structured around its own hedge.
 \end{remark}
 

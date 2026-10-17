@@ -44,8 +44,8 @@
 % ---------- Document metadata ----------
 \title{American Options by Longstaff-Schwartz:\\
        Regression-Based Optimal Stopping with a Binomial-Tree Validator}
-\author{Quant Finance Portfolio --- Phase 2, Block 6}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -55,7 +55,7 @@ The American option pricing problem is fundamentally different from
 its European counterpart: the holder can exercise at any time up to
 maturity, so the price is the value function of a continuous-time
 optimal stopping problem. No closed form is available except in
-degenerate cases (zero rate, infinite maturity). This block presents
+degenerate cases (zero rate, infinite maturity). This note presents
 the Longstaff-Schwartz (2001) regression-based Monte Carlo algorithm,
 which discretises the exercise dates to a Bermudan grid and replaces
 the conditional expectation in the dynamic-programming Bellman
@@ -425,7 +425,7 @@ factor of paths.
 A separate \emph{upper bound} can be constructed via the
 Andersen-Broadie (2004) duality approach, which exploits the
 martingale formulation of the optimal stopping problem. We do not
-implement either refinement in this block; we rely on the
+implement either refinement in this note; we rely on the
 near-cancellation of the two biases and validate against the
 binomial tree.
 
@@ -485,13 +485,13 @@ swing options, real options on multi-factor commodities).
       via known regularisations.
 \end{enumerate}
 
-For the smooth, single-state American put we treat in this block,
+For the smooth, single-state American put we treat in this note,
 none of these difficulties arise.
 
 \section{Implementation outline}
 \label{sec:impl}
 
-The block ships two pricers in a new module \texttt{quantlib.american}
+Two pricers live in the module \texttt{quantlib.american}
 (and the C++ mirror):
 
 \begin{itemize}

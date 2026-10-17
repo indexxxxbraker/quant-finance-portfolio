@@ -4,6 +4,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -38,16 +39,17 @@
 % ---------- Document metadata ----------
 \title{Monte Carlo Foundations:\\
        Estimation, Efficiency, and Random Sampling}
-\author{Quant Finance Portfolio --- Phase 2, Block 0}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This document opens Phase~2 of the project. It implements no algorithm:
+This document opens the notes on Monte Carlo methods. It implements no
+algorithm:
 its purpose is to lay the conceptual groundwork on which every Monte Carlo
-method developed in the remainder of the phase will rest. Two themes are
+method developed in the companion notes rests. Two themes are
 developed. First, we formulate derivatives pricing as a numerical
 integration problem and analyse the standard Monte Carlo estimator:
 strong consistency, asymptotic normality, confidence intervals, the
@@ -58,7 +60,7 @@ distributions: the desirable properties of pseudorandom number
 generators, the inverse-transform method as a universal device, and the
 two standard routes to the normal distribution---inversion and
 Box--Muller---with attention to the consequences of each choice for the
-low-discrepancy methods of Block~3.
+low-discrepancy methods of quasi-Monte Carlo.
 \end{abstract}
 
 \tableofcontents
@@ -73,7 +75,8 @@ the computation of an expectation:
 C \;=\; \E^{\Q}\!\left[\, e^{-rT}\,\Phi(S_{[0,T]}) \,\right],
 \end{equation}
 where $\Phi$ is the discounted payoff functional and $S_{[0,T]}$ denotes
-the relevant trajectory of the underlying state. In Phase~1 we treated
+the relevant trajectory of the underlying state. The notes on
+Black--Scholes pricing treat
 the case in which~\eqref{eq:price-as-expectation} admits a closed form,
 namely the European call under geometric Brownian motion, where the
 expectation reduces to a one-dimensional Gaussian integral evaluated
@@ -91,7 +94,7 @@ Of the available numerical strategies, Monte Carlo simulation is the
 most widely applicable: it requires only the ability to sample paths of
 the underlying and evaluate the payoff on those paths.
 
-Phase~2 of this project develops Monte Carlo methods systematically,
+This series of notes develops Monte Carlo methods systematically,
 from the elementary estimator for European options to least-squares
 Monte Carlo for American options. Before any of these algorithms can be
 implemented or analysed, two prerequisites must be in place. We must
@@ -101,7 +104,7 @@ understand how the random samples that drive it are produced. This
 document addresses both. Section~\ref{sec:mc-as-integration} treats the
 estimator. Section~\ref{sec:sampling} treats the samples.
 Section~\ref{sec:roadmap} sketches how the material assembled here
-threads through the remaining blocks of the phase.
+threads through the remaining notes on Monte Carlo methods.
 
 We presuppose familiarity with the basic apparatus of probability
 theory---in particular the law of large numbers, the central limit
@@ -127,7 +130,8 @@ $Y \eqdef e^{-rT}\Phi$ is the expectation
 \end{equation}
 We will treat $\alpha$ throughout as a deterministic real number---the
 quantity to be estimated---and reserve hats for its estimators. The
-Phase~1 framework gives us $\alpha$ in closed form for the European call
+Black--Scholes framework gives us $\alpha$ in closed form for the
+European call
 under Black--Scholes; we recall that $C = S_0\,N(d_1) - K e^{-rT} N(d_2)$
 arises precisely as the evaluation of~\eqref{eq:alpha} when $S_T$ is
 log-normal under $\Q$.
@@ -199,7 +203,7 @@ $\Var(Y)$ is so large that the CLT regime is reached only at sample
 sizes exceeding any plausible computational budget. Heavy-tailed payoffs
 (e.g.\ deep out-of-the-money digital options under fat-tailed dynamics)
 fall into the second category and motivate the importance sampling
-techniques of Block~2.
+techniques of variance reduction.
 
 \subsection{Confidence intervals from the sample variance}
 \label{sec:ci}
@@ -232,13 +236,13 @@ The half-width
 h_n \;\eqdef\; z_{\beta/2}\,\frac{S_n}{\sqrt{n}}
 \end{equation}
 is the standard reportable summary of estimator uncertainty in Monte
-Carlo. It is what every implementation in this phase will compute and
-return alongside the point estimate.
+Carlo. It is what every Monte Carlo implementation in these notes computes and
+returns alongside the point estimate.
 
 \begin{remark}
 The use of $z_{\beta/2}$ rather than the corresponding $t$-quantile is
 purely asymptotic. For $n$ in the thousands, which is the regime of
-interest throughout the phase, the difference is negligible.
+interest throughout these notes, the difference is negligible.
 \end{remark}
 
 \subsection{Bias and the mean square error}
@@ -248,9 +252,9 @@ The estimator~\eqref{eq:mc-estimator} is unbiased by construction, but
 this exactness will be lost as soon as we replace the exact dynamics of
 the model with a discretisation, or as soon as we estimate a function of
 an expectation rather than an expectation itself. Both situations arise
-in this phase: the former in Block~1 (Euler--Maruyama and Milstein
-schemes), the latter in Block~6 (the nested-expectation structure of
-American option pricing).
+in these notes: the former in SDE discretisation (Euler--Maruyama and Milstein
+schemes), the latter in Longstaff--Schwartz (the nested-expectation
+structure of American option pricing).
 
 For a generic estimator $\hat{\alpha}$ of a target $\alpha$, the
 mean square error decomposes as
@@ -265,15 +269,15 @@ When discretisation enters, $\hat{\alpha}$ depends on a step size
 $\Delta t$, and a tradeoff appears: refining $\Delta t$ reduces bias
 but, for a fixed computational budget, also reduces the number of
 replications and hence increases variance. The MSE-optimal choice of
-$\Delta t$ balances the two contributions and will be derived
-explicitly in Block~1.
+$\Delta t$ balances the two contributions and is derived
+explicitly in the note on the Euler--Maruyama pricer.
 
 \subsection{Computational efficiency of an estimator}
 \label{sec:efficiency}
 
 The remaining piece of conceptual scaffolding is the notion of
 \emph{efficiency}, which underpins the entire programme of variance
-reduction in Block~2.
+reduction.
 
 Suppose two unbiased estimators $\hat{\alpha}$ and $\hat{\alpha}'$ of
 the same quantity $\alpha$ are available, with per-replication
@@ -320,8 +324,9 @@ cost: an antithetic estimator generates one extra path per pair, a
 control variate evaluates an additional payoff, importance sampling
 involves an extra likelihood ratio, and so on. The relevant question is
 not whether the variance went down, but whether the product
-$\sigma^2 \tau$ went down. Throughout Block~2 every reported result will
-include both factors, and the criterion of success will be a reduction
+$\sigma^2 \tau$ went down. In the variance-reduction notes every
+reported result
+includes both factors, and the criterion of success will be a reduction
 in the product, not in the variance alone.
 \end{remark}
 
@@ -331,8 +336,8 @@ For estimators carrying bias~$b$ controlled by some parameter (typically
 a discretisation step), the analogous comparison balances MSE against
 work, and the MSE-optimal allocation between bias and variance involves
 the asymptotic rates of $b$ and $\sigma$ as functions of the parameter.
-A representative analysis of this kind is carried out in Block~1 for
-the Euler scheme.
+A representative analysis of this kind is carried out in the note on
+the Euler--Maruyama pricer.
 \end{remark}
 
 \section{Generating Random Samples}
@@ -348,7 +353,7 @@ samples of the uniform distribution on $[0,1]$. Second, a
 the distributions actually required by the model: standard normals for
 Brownian increments, exponentials for Poisson interarrivals, and so on.
 Both stages admit several constructions, and the choices interact in
-ways that matter beyond the present block.
+ways that matter beyond the present note.
 
 \subsection{Pseudorandom number generators}
 \label{sec:prng}
@@ -463,14 +468,15 @@ construction, then $(F^{-1}(U_1), \dots, F^{-1}(U_d))$ is the
 corresponding sample of independent variables with distribution $F$,
 and the geometric structure of the $d$-dimensional construction is
 preserved. This property is essential for quasi-Monte Carlo, the
-subject of Block~3, where the points $(U_1, \dots, U_d)$ are drawn from
+subject of the note on quasi-Monte Carlo foundations, where the points
+$(U_1, \dots, U_d)$ are drawn from
 a low-discrepancy sequence designed to fill $[0,1)^d$ uniformly. Methods
 that consume two uniforms per sample (such as Box--Muller, see below)
 mix two coordinates of the construction together and destroy this
 structure.
 
 Second, inversion is \emph{monotone} in $U$, which makes it compatible
-with stratification (Block~2) and with antithetic sampling: the
+with stratification and with antithetic sampling: the
 antithetic of $X = F^{-1}(U)$ is $X' = F^{-1}(1-U)$, which is the
 correct antithetic in the sense of being perfectly negatively correlated
 with $X$ when $F$ is symmetric.
@@ -495,7 +501,7 @@ a widely used alternative; Acklam's approximation~\cite{Acklam2003}
 gives full double precision throughout the support and is what
 \texttt{scipy.stats.norm.ppf} effectively delivers.
 
-For the implementation work of Phase~2, we will not roll our own:
+For the Monte Carlo implementations, we do not roll our own:
 \texttt{scipy.special.ndtri} (or, equivalently,
 \texttt{scipy.stats.norm.ppf}) in Python and
 \texttt{boost::math::quantile} on a normal distribution in C++ provide
@@ -566,8 +572,8 @@ incompatible with quasi-Monte Carlo.
 
 For this reason we adopt inversion as the universal sampling strategy
 for the entire project. The marginal speed advantage of Box--Muller is
-not worth the architectural inflexibility it imposes. Block~3 will
-exploit this decision directly.
+not worth the architectural inflexibility it imposes. Quasi-Monte Carlo
+exploits this decision directly.
 
 \subsection{Reproducibility: seeds and streams}
 \label{sec:seeds}
@@ -597,31 +603,31 @@ function that consumes randomness. Each function uses the appropriate
 object (these are stateless modulo the engine), but the engine itself
 is owned by exactly one stack frame and threaded through.
 
-When variance reduction enters in Block~2, certain techniques (in
+When variance reduction enters, certain techniques (in
 particular common random numbers, used pervasively in greek estimation)
 require that two related estimators consume the \emph{same} sequence of
 uniforms. The seed-and-pass-by-reference discipline established now
 makes this trivial; an alternative discipline based on global state
 makes it impossible.
 
-\section{Roadmap for Phase~2}
+\section{Roadmap for the Monte Carlo notes}
 \label{sec:roadmap}
 
-The material assembled in this document threads through the remainder
-of the phase as follows.
+The material assembled in this document threads through the remaining
+notes on Monte Carlo methods as follows.
 
-\paragraph{Block~1 (Vanilla Monte Carlo and SDE discretisation).}
+\paragraph{Vanilla Monte Carlo and SDE discretisation.}
 Section~\ref{sec:mc-as-integration} provides directly the framework for
 the European call MC pricer: an estimator of the
 form~\eqref{eq:mc-estimator} applied to discounted payoffs, with the
 half-width~\eqref{eq:halfwidth} as the precision report. The
-discretisation portion of the block introduces bias for the first time,
+discretisation schemes introduce bias for the first time,
 and the bias--variance decomposition~\eqref{eq:mse} of
 Section~\ref{sec:mse} becomes the analytical tool for choosing time
 steps.
 
-\paragraph{Block~2 (Variance reduction).} Every method introduced in
-this block---antithetic variates, control variates, stratified
+\paragraph{Variance reduction.} Every variance-reduction
+method---antithetic variates, control variates, stratified
 sampling, importance sampling---is justified through the efficiency
 criterion of Proposition~\ref{prop:efficiency}: the variance reduction
 must dominate the additional per-replication cost. The monotonicity
@@ -630,32 +636,32 @@ the antithetic construction; the seed-control discipline of
 Section~\ref{sec:seeds} is required for control variates and for the
 common-random-numbers technique used in conjunction with greeks.
 
-\paragraph{Block~3 (Quasi-Monte Carlo).} The decision to adopt inversion
+\paragraph{Quasi-Monte Carlo.} The decision to adopt inversion
 as the universal sampling transformation
 (Section~\ref{sec:normal-sampling}) is taken for the express purpose of
-this block: low-discrepancy sequences cannot be processed through
+quasi-Monte Carlo: low-discrepancy sequences cannot be processed through
 Box--Muller without losing their structure. The asymptotic regime
 of~\eqref{eq:clt} is replaced by a deterministic Koksma--Hlawka bound,
 which improves the order of convergence from $n^{-1/2}$ to nearly
 $n^{-1}$ at the cost of dimension dependence in the constant.
 
-\paragraph{Block~4 (Greeks).} Pathwise and likelihood-ratio estimators
+\paragraph{Greeks.} Pathwise and likelihood-ratio estimators
 of price sensitivities are themselves Monte Carlo estimators, to which
 the apparatus of Section~\ref{sec:mc-as-integration} applies directly.
 Bumped finite-difference estimators introduce both bias (from the
 finite-difference truncation) and variance, and the optimal bump size
 balances them according to the same logic as the discretisation step
-in Block~1. Common random numbers across the bumped and unbumped
+of the SDE schemes. Common random numbers across the bumped and unbumped
 simulations are essential for variance control.
 
-\paragraph{Block~5 (Path-dependent options).} Asian, barrier, and
+\paragraph{Path-dependent options.} Asian, barrier, and
 lookback payoffs are functionals of the entire simulated path. The
 machinery of estimator, variance, and confidence interval is unchanged;
 the per-replication cost increases, and the variance can be very large
-(barrier options especially), making variance reduction techniques from
-Block~2 not optional but essential.
+(barrier options especially), making variance reduction techniques
+not optional but essential.
 
-\paragraph{Block~6 (American options).} Least-squares Monte Carlo
+\paragraph{American options.} Least-squares Monte Carlo
 introduces a nested estimation structure---continuation values are
 themselves estimated within a Monte Carlo loop---which produces a bias
 that does not vanish as the outer sample size grows. The bias--variance
@@ -666,7 +672,7 @@ by basis selection rather than by sample size alone.
 \section{Bibliographic notes}
 \label{sec:biblio}
 
-The principal reference throughout Phase~2 is
+The principal reference throughout the Monte Carlo notes is
 Glasserman~\cite{Glasserman}; the material of this document corresponds
 to Sections~1.1 and Chapter~2 of that text, with a slight reordering
 to bring the efficiency criterion into the same section as the basic

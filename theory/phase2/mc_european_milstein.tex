@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -39,8 +40,8 @@
 % ---------- Document metadata ----------
 \title{Monte Carlo Pricing of a European Call:\\
        Milstein Discretisation under Geometric Brownian Motion}
-\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 3}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -58,7 +59,7 @@ paths, we observe in a single experiment that Milstein achieves
 strong order $1$ where Euler achieves only $\tfrac{1}{2}$, while the
 two are tied at weak order $1$. This is the most direct possible
 confirmation of the theoretical result, and it is the experimental
-heart of Phase~2 Block~1.
+heart of the SDE discretisation notes.
 \end{abstract}
 
 \tableofcontents
@@ -66,11 +67,11 @@ heart of Phase~2 Block~1.
 \section{Introduction}
 \label{sec:intro}
 
-The previous writeup of Block~1.2.1 implemented Euler-Maruyama and
-verified empirically that its strong order is $\tfrac{1}{2}$ and its
+The note on the Euler--Maruyama pricer implements Euler-Maruyama and
+verifies empirically that its strong order is $\tfrac{1}{2}$ and its
 weak order is $1$. The asymmetry is a striking prediction of the
-SDE convergence theory developed in Block~1.2.0: the same scheme,
-applied to the same dynamics, has different convergence rates
+SDE convergence theory developed in the note on SDE discretisation: the
+same scheme, applied to the same dynamics, has different convergence rates
 depending on which kind of error one measures.
 
 The natural follow-up question is whether higher-order schemes lift
@@ -79,18 +80,19 @@ theory, is that the Milstein scheme lifts the strong order from
 $\tfrac{1}{2}$ to $1$ but leaves the weak order unchanged at $1$. The
 present writeup verifies this prediction empirically on the same
 benchmark (European call pricing under GBM with all its inputs at
-canonical values) used in Block~1.2.1, with the additional design
+canonical values) used for the Euler--Maruyama pricer, with the
+additional design
 choice that the Euler and Milstein experiments share their step-size
 grid so that the two slopes can be plotted on a single log-log axis.
 
 The pricing application of the algorithm is, frankly, a sideshow.
 Both schemes give weak order $1$ for European pricing under GBM, and
-the closed-form sampler of Block~1.1 is unbiased and faster than
+the closed-form exact GBM sampler is unbiased and faster than
 either; Milstein adds nothing to the pricing pipeline that Euler did
 not already provide. The value of the algorithm is in the convergence
 study, where the asymmetry is demonstrated in code rather than asserted
-by a theorem. The practical relevance of Milstein in this project will
-arise in Block~4 (pathwise sensitivity), where the strong order
+by a theorem. The practical relevance of Milstein in this project
+lies in pathwise sensitivity (Monte Carlo Greeks), where the strong order
 matters because the simulated path must be a faithful pathwise
 approximation of the true process for path-derivative estimators to
 make sense.
@@ -212,7 +214,8 @@ The Monte Carlo Milstein estimator of the European call price is
 \hat C_{M, h}^{\mathrm{Milstein}} \;\eqdef\; \frac{1}{M} \sum_{i=1}^{M}
 e^{-rT}\, (\hat S_T^{(i), \,\mathrm{Milstein}} - K)^+.
 \end{equation}
-The bias-variance decomposition of Block~1.2.1, equation~(8), applies
+The bias-variance decomposition of the Euler--Maruyama note,
+equation~(8), applies
 here verbatim: total mean square error decomposes as variance/$M$
 plus bias-squared, with bias $O(h)$.
 
@@ -257,8 +260,8 @@ counts and using the \emph{same} Brownian paths. The protocol:
 
 \begin{enumerate}
 \item Choose a logarithmic grid of step counts $N_k$ matching the
-strong-order grid of Block~1.2.1, $N \in \{10, 30, 100, 300, 1000,
-3000\}$.
+strong-order grid of the Euler--Maruyama pricer, $N \in \{10, 30, 100,
+300, 1000, 3000\}$.
 \item For each $N_k$, sample $M$ matrices of Brownian increments
 $\Delta W$ of shape $(M, N_k)$.
 \item Run the Euler scheme on these increments to obtain $\hat S_T^{
@@ -282,21 +285,21 @@ times smaller than Euler's, an order of magnitude or more.
 
 \subsection{Test 2: weak order under common random numbers}
 
-A direct adaptation of the Block~1.2.1 weak test, applied to
+A direct adaptation of the Euler--Maruyama weak test, applied to
 Milstein. The expected slope is $1$, the same as Euler. This test
 serves as the empirical confirmation that Milstein \emph{does not}
 improve the European pricer: same weak order, same asymptotic
 quality.
 
-The grid restriction discussed in the Block~1.2.1 numerical lesson
+The grid restriction discussed in the Euler--Maruyama numerical lesson
 applies here: the bias must dominate the residual MC noise of the
 CRN-corrected difference. With $M = 200{,}000$ and $N \in \{10, 20,
 50, 100\}$, both schemes resolve the slope cleanly.
 
 \subsection{Tests 3 and 4: coherence and validation}
 
-Identical in structure to the corresponding tests of Block~1.2.1,
-applied to the Milstein pricer. No conceptual novelty.
+Identical in structure to the corresponding tests of the Euler--Maruyama
+pricer, applied to the Milstein pricer. No conceptual novelty.
 
 \section{Algorithmic specification}
 \label{sec:algorithm}
@@ -329,11 +332,11 @@ $\quad D \gets e^{-rT}$
 
 The implementation vectorises the inner loop across paths (advance
 all $M$ states simultaneously) using \texttt{numpy.cumprod} on the
-matrix of factors, identical in structure to the Block~1.2.1 Euler
+matrix of factors, identical in structure to the Euler--Maruyama
 implementation. The only changes to the code are the addition of the
 quadratic corrector term in the factor and the corresponding
-docstrings; the Block~1.2.2 implementation is barely 30 lines longer
-than Block~1.2.1.
+docstrings; the Milstein implementation is barely 30 lines longer
+than the Euler--Maruyama one.
 
 \section{Bibliographic notes}
 \label{sec:biblio}

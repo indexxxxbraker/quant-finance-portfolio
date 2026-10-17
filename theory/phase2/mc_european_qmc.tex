@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -41,19 +42,19 @@
 % ---------- Document metadata ----------
 \title{Quasi-Monte Carlo for the European Call:\\
        Halton, Sobol, and RQMC}
-\author{Quant Finance Portfolio --- Phase 2, Block 3.1}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Building on the foundations established in Block~3.0, we apply
+Building on the note on quasi-Monte Carlo foundations, we apply
 quasi-Monte Carlo to the European call pricer. To make QMC
 non-trivially multi-dimensional we use the multi-step Euler
-discretisation of Block~1.2.1 with $N = 20$ time steps, giving an
-integration problem of dimension $d = 20$. We compare four
-estimators: IID Monte Carlo (baseline from Block~1.2.1), QMC with
+discretisation of the Euler--Maruyama pricer with $N = 20$ time steps,
+giving an integration problem of dimension $d = 20$. We compare four
+estimators: IID Monte Carlo (the Euler--Maruyama baseline), QMC with
 Halton, QMC with Sobol, and randomized QMC (RQMC) with Sobol plus
 digital shifting. The empirical convergence rates measured on a
 log-log slope plot are expected to confirm the theoretical
@@ -85,14 +86,15 @@ e^{-rT} \max\bigl(S_T^{(N)}(\Phi^{-1}(u_1), \ldots, \Phi^{-1}(u_{20}))
 This is the integral that QMC will attack.
 
 \paragraph{Why $N = 20$ rather than $N = 1$?} The exact GBM sampler
-of Block~1.1 needs only one normal per path, so the European call
+needs only one normal per path, so the European call
 under exact GBM is a $1$-dimensional integral. QMC at $d = 1$ is
 trivial (van der Corput) and not pedagogically rich. Choosing the
-Euler discretisation of Block~1.2.1 with $N = 20$ gives a
+Euler--Maruyama discretisation with $N = 20$ gives a
 genuine $20$-dimensional problem where QMC's advantage matters.
 
 The difference between exact and Euler is the $O(h)$ weak bias
-documented in Block~1.2.1; for $N = 20$ this bias is approximately
+documented in the note on the Euler--Maruyama pricer; for $N = 20$ this
+bias is approximately
 $0.05$ in absolute terms, large enough to be visible against MC
 error at $n \sim 10^4$ but small enough not to obscure the
 convergence-rate analysis. We accept this bias as a fixed offset
@@ -108,7 +110,7 @@ underlying $u_i \in [0, 1)^{20}$ points are produced.
 
 \paragraph{IID-MC.} Standard Monte Carlo. The points $u_i$ are
 pseudo-random uniform draws from a Mersenne-Twister generator. This
-is the Block~1.2.1 baseline.
+is the Euler--Maruyama baseline.
 
 \paragraph{QMC-Halton.} The points $u_i$ are the first $n$ entries
 of the $20$-dimensional Halton sequence with primes $p_1 = 2,
@@ -153,7 +155,8 @@ asymptote dominates, are what we are after.
 \section{Convergence rates: predictions}
 \label{sec:rates}
 
-The theoretical asymptotic rates from Block~3.0:
+The theoretical asymptotic rates from the note on quasi-Monte Carlo
+foundations:
 \begin{itemize}
 \item IID-MC: error $= O(n^{-1/2})$. Log-log slope $-0.5$.
 \item QMC-Halton: error $= O((\log n)^{20} / n)$. The $(\log n)^{20}$
@@ -196,8 +199,8 @@ fourth to $W_{T/4}$ and $W_{3T/4}$, and so on. This concentrates the
 QMC's discrepancy advantage is strongest. \emph{We do not apply
 the Brownian bridge construction in this writeup}: the natural
 left-to-right Euler discretisation already gives observable QMC
-advantage and the bridge optimisation can be added in a future
-block (it is most relevant for path-dependent options where the
+advantage and the bridge optimisation is left aside
+(it is most relevant for path-dependent options where the
 effective dimension can be much larger).
 
 \subsection{The convergence rate test}
@@ -237,8 +240,8 @@ with the half-width estimated from the $R$ replications.
 The pricers reuse the Euler step from \texttt{quantlib.gbm}: only
 the source of normals changes (from
 \texttt{rng.standard\_normal(...)} to $\Phi^{-1}$ applied to a QMC
-sequence). This is exactly the modular separation foreseen in
-Block~0 when we adopted inversion-based normal sampling.
+sequence). This is exactly the modular separation that motivates
+inversion-based normal sampling in the Monte Carlo foundations.
 
 \section{Empirical validation strategy}
 \label{sec:validation}

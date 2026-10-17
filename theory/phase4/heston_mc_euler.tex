@@ -2,6 +2,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
 \usepackage{microtype}
 \usepackage[margin=1in]{geometry}
@@ -28,9 +29,9 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-\title{Phase 4, Block 3 \\[0.3em]\Large Heston model: Monte Carlo simulation with full-truncation Euler}
-\author{Quant Finance Portfolio}
-\date{\today}
+\title{Heston model: Monte Carlo simulation with full-truncation Euler}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -41,23 +42,23 @@
 \section{Introduction and goals}
 %============================================================
 
-In Block 2 we built a Fourier-based pricer for European options under the Heston model. That pricer is fast, accurate, and effectively bias-free, but it is restricted to European-style payoffs whose Fourier inversion is tractable. For more general payoffs --- path-dependent contracts (Asian, lookback, barrier), early-exercise contracts (American, Bermudan), or any structure depending on the joint trajectory of $(S, v)$ --- we need Monte Carlo simulation.
+The note \emph{Heston Characteristic Function and Fourier Pricing} gives a Fourier-based pricer for European options under the Heston model. That pricer is fast, accurate, and effectively bias-free, but it is restricted to European-style payoffs whose Fourier inversion is tractable. For more general payoffs --- path-dependent contracts (Asian, lookback, barrier), early-exercise contracts (American, Bermudan), or any structure depending on the joint trajectory of $(S, v)$ --- we need Monte Carlo simulation.
 
 The first non-trivial step of any Heston MC implementation is the discretisation of the variance process. The square-root diffusion of the CIR process,
 \[
     dv_t = \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^2_t,
 \]
-has a diffusion coefficient that fails to be Lipschitz at $v = 0$. As a consequence, naive discretisations can produce sample paths $\hat v_n < 0$ even though the continuous process is non-negative; subsequent evaluations of $\sqrt{\hat v_n}$ become ill-defined and the simulation breaks. Several remedies have been proposed; the cleanest, given its simplicity and performance, is the \emph{full-truncation} Euler scheme of Lord, Koekkoek and van Dijk (2010), which is the focus of this block.
+has a diffusion coefficient that fails to be Lipschitz at $v = 0$. As a consequence, naive discretisations can produce sample paths $\hat v_n < 0$ even though the continuous process is non-negative; subsequent evaluations of $\sqrt{\hat v_n}$ become ill-defined and the simulation breaks. Several remedies have been proposed; the cleanest, given its simplicity and performance, is the \emph{full-truncation} Euler scheme of Lord, Koekkoek and van Dijk (2010), which is the focus of this note.
 
-This block has four goals.
+This note has four goals.
 
 \paragraph{Theoretical foundations.} We discuss why naive Euler-Maruyama on the CIR process fails, what kinds of bias and error each remedy introduces, and why the full-truncation choice gives the smallest weak bias among the family of ``fix-up'' schemes.
 
 \paragraph{The full-truncation Euler scheme.} We derive its update rules for the Heston system, including the discretisation of the log-spot $\log S$ (Cholesky-correlated with the variance Brownian motion) and the proper handling of the non-negative variance.
 
-\paragraph{Convergence theory.} We discuss the weak and strong convergence rates of full-truncation Euler. The non-Lipschitz coefficient prevents the standard Itô-Taylor analysis from applying directly, and the rate is degraded relative to the Lipschitz case --- a fact that motivates the Andersen quadratic-exponential scheme of Block 4.
+\paragraph{Convergence theory.} We discuss the weak and strong convergence rates of full-truncation Euler. The non-Lipschitz coefficient prevents the standard Itô-Taylor analysis from applying directly, and the rate is degraded relative to the Lipschitz case --- a fact that motivates the Andersen quadratic-exponential scheme (see the QE note).
 
-\paragraph{Validation and use.} We design a validation strategy that uses the Fourier pricer of Block 2 as ground truth, characterise the bias-variance tradeoff of the MC estimator, and lay out the implementation pipeline for both Python and C++.
+\paragraph{Validation and use.} We design a validation strategy that uses the Fourier pricer as ground truth, characterise the bias-variance tradeoff of the MC estimator, and lay out the implementation pipeline for both Python and C++.
 
 %============================================================
 \section{The discretisation problem}
@@ -160,7 +161,7 @@ Sampling two independent standard normals $Z^1_n, Z^2_n$ and setting
 \end{equation}
 gives the desired joint distribution.
 
-A subtle but important consequence: \emph{the same} $Z^1_n$ enters both Brownian increments. This implies that at each step $n$ we need exactly two independent standard normal draws per path. In the QMC extension of Phase 2 Block 3, this means each step consumes two coordinates of the low-discrepancy sequence; over $N$ steps and $M$ paths, the total dimension is $2N$.
+A subtle but important consequence: \emph{the same} $Z^1_n$ enters both Brownian increments. This implies that at each step $n$ we need exactly two independent standard normal draws per path. In a QMC extension with the low-discrepancy points of \texttt{quantlib.qmc}, this means each step consumes two coordinates of the low-discrepancy sequence; over $N$ steps and $M$ paths, the total dimension is $2N$.
 
 \subsection{The full discretisation}
 
@@ -194,7 +195,7 @@ i.e., truncation almost never fires when $v$ is at typical levels. However, at s
 \]
 about 2\% per step. Over $T = 1$ year with $\Delta t = 0.01$ (i.e., $N = 100$ steps), the per-path probability of \emph{at least one} truncation event becomes appreciable. The truncation is genuinely a remedy for low-variance regimes, not a placeholder for ``shouldn't happen but just in case''.
 
-\paragraph{Implication for parameter regimes.} The truncation bias becomes significant when the simulation spends meaningful time near $v = 0$. This happens when (a) the Feller parameter $\nu = 2\kappa\theta/\sigma^2$ is small (process spends time at the lower boundary), (b) when $v_0 \ll \theta$ (initial transient through low-variance region), or (c) when paths happen to fluctuate close to zero due to the noise. Andersen's quadratic-exponential scheme of Block 4 is designed precisely to handle these regimes more accurately.
+\paragraph{Implication for parameter regimes.} The truncation bias becomes significant when the simulation spends meaningful time near $v = 0$. This happens when (a) the Feller parameter $\nu = 2\kappa\theta/\sigma^2$ is small (process spends time at the lower boundary), (b) when $v_0 \ll \theta$ (initial transient through low-variance region), or (c) when paths happen to fluctuate close to zero due to the noise. Andersen's quadratic-exponential scheme (see the QE note) is designed precisely to handle these regimes more accurately.
 
 %============================================================
 \section{Convergence theory}
@@ -244,7 +245,7 @@ For the full-truncation Euler scheme on the actual CIR (not just abstract H\"old
 \]
 with $c$ a problem-dependent constant. We will verify this empirically in the validation section.
 
-For short-maturity options, parameters with small Feller parameter $\nu$, or for digital and indicator-type payoffs, the bias may scale more slowly than $\Delta t$ --- and this is precisely the regime where the Andersen QE scheme of Block 4 will offer a clean improvement.
+For short-maturity options, parameters with small Feller parameter $\nu$, or for digital and indicator-type payoffs, the bias may scale more slowly than $\Delta t$ --- and this is precisely the regime where the Andersen QE scheme offers a clean improvement.
 
 \subsection{The bias-variance budget}
 
@@ -258,7 +259,7 @@ For weak rate $1$ this is
 \]
 The two terms are equal when $M \asymp N^2$, i.e., when the work is balanced. The total work of the simulation scales as $W \asymp M N$, giving $W \asymp N^3$ at the optimal balance. To halve the RMSE, one quadruples the work --- the same scaling as plain Monte Carlo, but with the additional discretisation overhead.
 
-This calculus is implicit in the Block 6 calibration but worth recording: the runtime of an MC pricer is essentially set by the bias requirement, not the variance requirement, once you start asking for high accuracy. This is one of the structural reasons exotic-options calibration via plain MC is expensive.
+This calculus is implicit in the note on calibration and exotic option pricing but worth recording: the runtime of an MC pricer is essentially set by the bias requirement, not the variance requirement, once you start asking for high accuracy. This is one of the structural reasons exotic-options calibration via plain MC is expensive.
 
 %============================================================
 \section{Variance reduction}
@@ -300,17 +301,17 @@ when $\beta = \mathrm{Cov}(f, V)/\mathrm{Var}(V)$ is the optimal coefficient.
 
 For Heston, a natural control variate is the European call under \emph{constant-volatility GBM} with $\sigma = \sqrt{\bar v}$, where $\bar v$ is some average of $v_t$ over the path. The control's expectation is the Black--Scholes price, available in closed form. The correlation between Heston and GBM payoffs is typically very high (in the 0.9--0.99 range for at-the-money options), giving variance reductions of 25--100$\times$.
 
-In Phase 2 Block 1.4 we built an end-to-end variance-reduction harness for plain GBM. The harness extends to Heston with minor modifications; we use it in this block for sanity-checking the convergence of the MC estimator.
+The end-to-end variance-reduction harness for plain GBM (\texttt{quantlib.variance\_reduction}) extends to Heston with minor modifications; we use it in this note for sanity-checking the convergence of the MC estimator.
 
 %============================================================
 \section{Validation strategy}
 %============================================================
 
-The Fourier pricer of Block 2 is bias-free (modulo numerical quadrature error, which is below $10^{-6}$ for typical parameters and well below typical MC statistical errors). Hence we use it as ground truth.
+The Fourier pricer (\texttt{quantlib.heston\_fourier}) is bias-free (modulo numerical quadrature error, which is below $10^{-6}$ for typical parameters and well below typical MC statistical errors). Hence we use it as ground truth.
 
 \subsection{The four-pillar validation}
 
-\paragraph{1. Reduction to GBM as $\sigma \to 0$.} As we saw in Block 2, the Heston variance becomes deterministic in this limit. The MC pricer should then reduce to GBM Monte Carlo, and the call price should converge to Black--Scholes. This is the cheapest sanity check: if the MC pricer fails this, there is a structural bug.
+\paragraph{1. Reduction to GBM as $\sigma \to 0$.} As shown in the Fourier pricing note, the Heston variance becomes deterministic in this limit. The MC pricer should then reduce to GBM Monte Carlo, and the call price should converge to Black--Scholes. This is the cheapest sanity check: if the MC pricer fails this, there is a structural bug.
 
 \paragraph{2. Convergence study at fixed $M$.} Fix the number of paths $M = 10^5$ (or higher). Vary the number of steps $N \in \{50, 100, 200, 400, 800, 1600\}$. For each $N$, compute the MC estimate $\widehat C(N)$ and its 95\% confidence half-width. The Fourier reference $C_{\mathrm{ref}}$ is fixed. Plot $|\widehat C(N) - C_{\mathrm{ref}}|$ vs $N$. The expected behaviour is:
 \[
@@ -341,7 +342,7 @@ The module \texttt{quantlib.heston\_mc} exposes:
 \begin{itemize}[topsep=2pt]
     \item \texttt{simulate\_heston\_paths(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, seed=None, rng=None, antithetic=False)}: generate $M$ paths of $(\log \hat S, \hat v)$ on a grid of $N$ steps. Returns a tuple of arrays of shape $(N+1, M)$ each. Reuses \texttt{\_resolve\_rng} and the inversion-based normal generator from \texttt{quantlib.monte\_carlo} for QMC compatibility.
     \item \texttt{simulate\_terminal\_heston(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: convenience that returns only the terminal $\hat S_N$ values. Internally calls the path simulator and returns the last row.
-    \item \texttt{mc\_european\_call\_heston(S0, K, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: high-level pricer that orchestrates the simulator, the discounted call payoff, and \texttt{mc\_estimator} from Block 2's reused infrastructure. Returns an \texttt{MCResult}.
+    \item \texttt{mc\_european\_call\_heston(S0, K, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: high-level pricer that orchestrates the simulator, the discounted call payoff, and \texttt{mc\_estimator} from \texttt{quantlib.monte\_carlo}. Returns an \texttt{MCResult}.
 \end{itemize}
 
 The validation script \texttt{validate\_heston\_mc.py} runs all four pillars and reports pass/fail with tolerances tied to the half-widths. The cross-method check against the Fourier pricer is the strongest pillar and serves as the entry point of the script.
@@ -350,7 +351,7 @@ The validation script \texttt{validate\_heston\_mc.py} runs all four pillars and
 
 The C++ implementation in \texttt{cpp/include/quant/heston\_mc.hpp} and \texttt{cpp/src/heston\_mc.cpp} mirrors the Python interface but adapts to C++ conventions:
 \begin{itemize}[topsep=2pt]
-    \item Reuses the existing \texttt{HestonParams} struct from Block 2.
+    \item Reuses the existing \texttt{HestonParams} struct from \texttt{heston\_fourier.hpp}.
     \item Uses \texttt{std::mt19937\_64} as the RNG, with explicit seed control.
     \item The path simulator returns a \texttt{std::vector<double>} flattened in column-major order (paths contiguous), matching the Python \texttt{ndarray} layout.
     \item The high-level pricer returns a \texttt{MCResult} struct (point estimate, half-width, sample variance, $M$).
@@ -369,7 +370,7 @@ The Catch2 tests in \texttt{cpp/tests/test\_heston\_mc.cpp} verify the four pill
     \item Berkaoui, Bossy, Diop (2008) \cite{BerkaouiBossyDiop2008}: strong convergence of Euler for CIR, including the full Feller-parameter dependence.
     \item Kloeden, Platen (1992) \cite{KloedenPlaten1992}: classical reference for SDE discretisation theory under Lipschitz assumptions.
     \item Yamada (1976) \cite{Yamada1976}: foundational work on H\"older-$1/2$ uniqueness, which underlies the convergence theory for CIR.
-    \item Andersen (2008) \cite{Andersen2008}: the QE scheme of Block 4, which improves on full-truncation Euler in low-Feller regimes.
+    \item Andersen (2008) \cite{Andersen2008}: the QE scheme (see the QE note), which improves on full-truncation Euler in low-Feller regimes.
 \end{itemize}
 
 \begin{thebibliography}{99}

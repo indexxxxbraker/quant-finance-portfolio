@@ -1,6 +1,6 @@
-% block1_ftcs.tex
+% ftcs.tex
 %
-% Phase 3, Block 1: the explicit FTCS scheme for the Black-Scholes PDE.
+% The explicit FTCS scheme for the Black-Scholes PDE.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
 
@@ -20,19 +20,20 @@
 \newtheorem{definition}[proposition]{Definition}
 \newtheorem{remark}[proposition]{Remark}
 
-\title{Phase 3, Block 1:\\The explicit FTCS scheme\\for the Black--Scholes PDE}
-\author{Quant Finance Portfolio}
-\date{}
+\title{The explicit FTCS scheme\\for the Black--Scholes PDE}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \section{Setting}
 
-This block implements the Forward-Time, Centred-Space (FTCS) finite-
+This note implements the Forward-Time, Centred-Space (FTCS) finite-
 difference pricer for European calls and puts. We use the
 constant-coefficient transformed Black--Scholes equation derived in
-Block~0,
+the foundations note (\emph{Foundations of the finite-difference
+solution of the Black-Scholes PDE}),
 \begin{equation}
 \frac{\partial V}{\partial \tau}
 \;=\; \frac{\sigma^2}{2}\frac{\partial^2 V}{\partial x^2}
@@ -43,7 +44,7 @@ Block~0,
 \end{equation}
 with $x = \ln(S/K)$, $\tau = T - t$, on the truncated domain
 $[x_{\min}, x_{\max}] \times [0, T]$ with Dirichlet boundary
-conditions specified in Block~0. The deliverable is a pricer,
+conditions specified there. The deliverable is a pricer,
 validated against the Black--Scholes closed form and analysed in
 terms of stability and convergence.
 
@@ -80,7 +81,7 @@ a_+  = \alpha + \frac{\mu\,\Delta\tau}{2\,\Delta x},
 \label{eq:coeffs}
 \end{equation}
 where $\alpha = \frac{\sigma^2}{2}\,\Delta\tau / \Delta x^2$ is the
-Fourier number from Block~0. The coefficients do not depend on
+Fourier number of the foundations note. The coefficients do not depend on
 $j$ or $n$, by virtue of the constant-coefficient structure of
 \eqref{eq:transformed}: this is the structural pay-off of the
 logarithmic transformation.
@@ -122,7 +123,7 @@ V(x_j, \tau_{n+1})
 \]
 on a discrete state space, with $X_{n+1} - X_n$ taking the values
 $\pm\Delta x, 0$. This is exactly the structure of a trinomial tree.
-We will revisit this connection in Block~5: the Kamrad--Ritchken tree
+The trinomial-tree note develops this connection: the Kamrad--Ritchken tree
 is, after a precise reparametrisation, FTCS in disguise.
 
 The reading also highlights why the non-negativity of the coefficients
@@ -144,7 +145,7 @@ $a_0 \ge 0$ requires
 \end{equation}
 For $r\,\Delta\tau \ll 1$ (always true in this project: $r \le 0.1$
 and $\Delta\tau \le 10^{-2}$), \eqref{eq:cfl-strict} is essentially
-the CFL condition $\alpha \le 1/2$ from Block~0.
+the CFL condition $\alpha \le 1/2$ of the foundations note.
 
 \paragraph{Lateral coefficients.}
 $a_\pm \ge 0$ requires $\bigl|\,\mu\,\Delta\tau/(2\Delta x)\bigr|\le
@@ -170,7 +171,7 @@ of the convective term: replace
 $(V_{j+1} - V_{j-1}) / (2\Delta x)$ by $(V_j - V_{j-1})/\Delta x$ if
 $\mu > 0$ or $(V_{j+1} - V_j)/\Delta x$ if $\mu < 0$. This restores
 $L^\infty$ stability at the price of one order of accuracy in space
-($O(\Delta x)$ instead of $O(\Delta x^2)$). Out of scope for Phase~3.
+($O(\Delta x)$ instead of $O(\Delta x^2)$). Out of scope here.
 \end{remark}
 
 \paragraph{Summary.}
@@ -211,7 +212,7 @@ g(\theta) \;=\; (1 - r\,\Delta\tau)
 \label{eq:vn-factor}
 \end{equation}
 ($\beta$ is the unsymmetrised Courant number; it differs from the
-$\nu$ of Block~0 by a factor of $1/2$.) The factor is complex: the
+$\nu$ of the foundations note by a factor of $1/2$.) The factor is complex: the
 real part is the diffusive contribution shifted by the reactive term;
 the imaginary part is the convective contribution.
 
@@ -302,7 +303,7 @@ buffers $V$ and $V_{\text{new}}$ are needed, swapped after each step.
 
 \paragraph{Boundary conditions are not stencil applications.} The
 boundary nodes $j = 0$ and $j = N$ are fixed by the Dirichlet
-conditions of Block~0; the stencil is applied only to interior
+conditions of the foundations note; the stencil is applied only to interior
 nodes $j = 1, \dots, N-1$. Trying to apply the stencil at $j = 0$
 would require a phantom node $j = -1$ outside the domain.
 
@@ -327,7 +328,7 @@ First order in $\Delta\tau$ from the forward-Euler step; second order
 in $\Delta x$ from the centred space stencils.
 
 \paragraph{Global error and convergence rate.} By the Lax equivalence
-theorem (Block 0, §7), consistency plus stability gives convergence,
+theorem (foundations note, §9), consistency plus stability gives convergence,
 \[
 \bigl\|V_h - V\bigr\|_\infty \;=\; O(\Delta\tau) + O(\Delta x^2).
 \]
@@ -346,7 +347,7 @@ M \;\ge\; \frac{T\,\sigma^2}{\Delta x^2} \;\sim\; N^2.
 \]
 Total work: $O(N \cdot M) = O(N^3)$. Doubling $N$ multiplies the
 cost by $8$. This $N^3$ scaling is the price tag of explicit time
-stepping; Blocks~2 (BTCS) and~3 (Crank--Nicolson) will sidestep it
+stepping; BTCS and Crank--Nicolson sidestep it
 by allowing $\Delta\tau \sim \Delta x$ at the cost of solving a
 tridiagonal system per step.
 
@@ -380,7 +381,7 @@ exception.
 A separate diagnostic script, \texttt{demo\_ftcs\_explosion.py},
 disables the CFL check and runs the scheme at $\alpha = 0.6$, to
 visualise the sawtooth instability mode. The output is documented in
-the manual personal as the Phase~3 numerical lesson.
+the manual personal as the first finite-difference numerical lesson.
 
 % =====================================================================
 \section*{References}
@@ -422,7 +423,7 @@ B. Kamrad and P. Ritchken.
 \emph{Multinomial approximating models for options with $k$ state
 variables.}
 Management Science 37(12), 1640--1652, 1991. The original trinomial
-tree paper; will be revisited in Block~5.
+tree paper; see the trinomial-tree note.
 
 \end{thebibliography}
 

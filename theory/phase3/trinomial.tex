@@ -1,6 +1,6 @@
-% block5_trinomial.tex
+% trinomial.tex
 %
-% Phase 3, Block 5: Trinomial tree of Kamrad-Ritchken.
+% Trinomial tree of Kamrad-Ritchken.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
 
@@ -19,36 +19,37 @@
 \newtheorem{theorem}[proposition]{Theorem}
 \newtheorem{remark}[proposition]{Remark}
 
-\title{Phase 3, Block 5:\\The Kamrad--Ritchken trinomial tree\\and its equivalence to FTCS}
-\author{Quant Finance Portfolio}
-\date{}
+\title{The Kamrad--Ritchken trinomial tree\\and its equivalence to FTCS}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \section{Setting and motivation}
 
-Phase 2 Block 6 already implemented a CRR binomial tree for American
-options. Phase 3 has built four PDE-based pricers (FTCS, BTCS, CN,
+A CRR binomial tree for American options is already available
+(\texttt{quantlib.american}; see the note \emph{American Options by
+Longstaff-Schwartz}), together with four PDE-based pricers (FTCS, BTCS, CN,
 and CN-PSOR for American). What does the trinomial tree add?
 
 Not pricing capability: the binomial CRR already prices Americans;
 CN-PSOR already prices them more accurately. The contribution of
-Block 5 is conceptual --- it makes \emph{explicit the structural
+this note is conceptual --- it makes \emph{explicit the structural
 equivalence between lattice methods and finite-difference
-methods}. We have alluded to this equivalence in earlier blocks
+methods}. The earlier notes allude to this equivalence
 (``FTCS and the trinomial are the same calculation written in two
-languages''); Block 5 formalises it.
+languages''); this note formalises it.
 
 Two additional benefits:
 \begin{itemize}[leftmargin=2em]
-\item Block 6 will benchmark all the project's pricers on the
+\item The finite-difference/lattice benchmark (\texttt{benchmark\_phase3.py}) compares all the project's pricers on the
 American put. The trinomial gives one more independent point of
 comparison.
 \item The trinomial of Kamrad and Ritchken~\cite{KR1991} introduces
 a stretching parameter $\lambda$ that does not exist in the
 binomial. This adds a tuning knob to the family of lattice methods
-which will reappear in Block~6's comparison.
+which reappears in that benchmark.
 \end{itemize}
 
 % =====================================================================
@@ -79,7 +80,7 @@ distinct states are reachable (not $3^n$). This is what makes the
 backward induction tractable: $O(N^2)$ total work, not $O(3^N)$.
 \item \textbf{Symmetric in space}: the same $\Delta x$ for up and
 down. This simplifies the moment-matching algebra and makes the tree
-agree with the centred-difference FD scheme of Block~1, as we will
+agree with the centred-difference FTCS scheme, as we will
 see.
 \end{itemize}
 
@@ -183,14 +184,14 @@ array, memory is $O(N)$. Identical to CRR.
 % =====================================================================
 
 This is the structural insight that motivates including the trinomial
-in Phase 3. The European backward step \eqref{eq:european-step} can
+among the finite-difference methods. The European backward step \eqref{eq:european-step} can
 be rewritten as
 \begin{equation}
 V_j^n = e^{-r\Delta t}p_u\,V_{j+1}^{n+1} + e^{-r\Delta t}p_m\,V_j^{n+1} + e^{-r\Delta t}p_d\,V_{j-1}^{n+1}.
 \label{eq:trinomial-rewritten}
 \end{equation}
 Compare with the FTCS update for the transformed BS PDE
-$V_\tau = (\sigma^2/2)V_{xx} + \nu V_x - rV$ (Block 1, with $\Delta\tau = \Delta t$):
+$V_\tau = (\sigma^2/2)V_{xx} + \nu V_x - rV$ (see the FTCS note, with $\Delta\tau = \Delta t$):
 \begin{equation}
 V_j^{n+1} = (\alpha + \beta)V_{j+1}^n + (1 - 2\alpha - r\Delta t)V_j^n + (\alpha - \beta)V_{j-1}^n
 \label{eq:ftcs}
@@ -280,7 +281,7 @@ to global convergence.
 The trinomial converges to the BS price for European options, and
 to the true American price for American options, at rate
 $O(1/N)$ in the number of steps. This is the same rate as CRR
-binomial. The kink-related limitation discussed in Block~3 (the
+binomial. The kink-related limitation discussed in the Crank--Nicolson note (the
 payoff is not $C^1$) caps both lattice methods at first order
 regardless of the underlying scheme accuracy.
 
@@ -299,7 +300,7 @@ CN-PSOR              & $O(N^3 \log\epsilon^{-1})$ & $O(1/N)$ near the kink \\
 The binomial and trinomial have the same asymptotic order but
 trinomial typically gives slightly smaller errors at fixed $N$
 (thanks to the third-moment matching). CN-PSOR has the highest order
-but the highest cost. Block~6 will compare them numerically on a
+but the highest cost. The benchmark script \texttt{benchmark\_phase3.py} compares them numerically on a
 common American put benchmark.
 
 % =====================================================================
@@ -337,7 +338,7 @@ closed form on a parameter grid. Tolerance $\sim 10^{-3}$ at
 $N = 2000$.
 
 \item \textbf{Cross-validation (American)} against an embedded
-CRR binomial reference (the same approach as Block~4's test). Tolerance
+CRR binomial reference (the same approach as the CN-PSOR test). Tolerance
 $\sim 5 \times 10^{-3}$.
 
 \item \textbf{First-order convergence in $N$}: doubling $N$ should

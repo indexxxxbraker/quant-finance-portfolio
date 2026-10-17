@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -42,8 +43,8 @@
 % ---------- Document metadata ----------
 \title{Greeks by Monte Carlo:\\
        Bumping, Pathwise, and Likelihood Ratio}
-\author{Quant Finance Portfolio --- Phase 2, Block 4}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
@@ -57,9 +58,9 @@ ratio (differentiation of the kernel of the underlying density). All
 three are unbiased for the appropriate Greeks under appropriate
 regularity conditions; they trade off variance, bias, and
 applicability differently. We derive each from first principles,
-implement them under the exact GBM sampler of Block~1.1, and
+implement them under the exact GBM sampler, and
 validate against closed-form Black-Scholes Greeks at the canonical
-ATM point. The block also surfaces a delicate but important point:
+ATM point. The note also surfaces a delicate but important point:
 the pathwise method does \emph{not} apply to Gamma (the kink of
 $\max(\cdot, 0)$ produces a Dirac contribution after the second
 derivative), and the likelihood-ratio method is known to be
@@ -87,7 +88,8 @@ The Greeks of interest are
 \qquad
 \Gamma \;=\; \frac{\partial^2 C}{\partial S_0^2}.
 \end{equation}
-Black-Scholes provides closed forms (Block~1):
+Black-Scholes provides closed forms (see the note on the Black--Scholes
+Greeks):
 \begin{equation}
 \Delta^{\mathrm{BS}} = \Phi(d_1),
 \qquad
@@ -98,7 +100,7 @@ Black-Scholes provides closed forms (Block~1):
 with $\phi$ the standard normal pdf and $d_1 = (\log(S_0/K) + (r +
 \sigma^2/2)T)/(\sigma\sqrt T)$. We use these as ground truth.
 
-The MC pricer of Block~1.1 produces an estimate
+The exact GBM MC pricer produces an estimate
 $\hat C_n = \frac{1}{n}\sum_{i=1}^n e^{-rT}\max(S_T^{(i)} - K, 0)$
 where $S_T^{(i)} = S_0 \exp((r-\frac{1}{2}\sigma^2)T + \sigma\sqrt T
 Z_i)$ for $Z_i$ iid $\mathcal N(0,1)$. Greeks are MC estimators of
@@ -426,7 +428,7 @@ ratios at fixed budget.
 \paragraph{Test 4: input validation.} Mechanical: bad inputs
 should raise.
 
-The Block~4 implementation is a single new module
+The implementation is a single module
 \texttt{quantlib.greeks} containing nine pricers (3 methods
 $\times$ 3 Greeks, with the caveat that pathwise/LR Gamma is
 ``not implemented'' and falls back to bumping).

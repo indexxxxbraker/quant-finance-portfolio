@@ -3,7 +3,9 @@
 % ---------- Packages ----------
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{lmodern}
 \usepackage{microtype}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -38,14 +40,15 @@
 % ---------- Document metadata ----------
 \title{SDE Discretisation:\\
        It\^o-Taylor Expansions, Euler--Maruyama, and Milstein Schemes}
-\author{Quant Finance Portfolio --- Phase 2, Block 1, Algorithm 2 (theory)}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-The exact GBM sampler used in Block~1.1 exploited a closed-form
+The exact GBM sampler used for the exact-simulation pricer exploits a
+closed-form
 solution of the underlying SDE. Beyond Black--Scholes, closed forms
 are essentially unavailable: pricing under local volatility, stochastic
 volatility, jump-diffusion, or path-dependent payoffs all require
@@ -68,8 +71,9 @@ finance applications are spelled out.
 \section{Introduction}
 \label{sec:intro}
 
-Block~1.1 priced the European call by drawing $S_T$ from its exact
-distribution under geometric Brownian motion. The construction was
+The exact GBM Monte Carlo pricer prices the European call by drawing
+$S_T$ from its exact
+distribution under geometric Brownian motion. The construction is
 trivial because the GBM SDE
 \begin{equation}
 \dd S_t \;=\; r S_t \dd t + \sigma S_t \dd W_t
@@ -89,14 +93,14 @@ route to $\E[f(S_T)]$ is to simulate \emph{approximate} trajectories
 by discretising the SDE in time and then averaging.
 
 The discretisation introduces a new kind of error, qualitatively
-different from the statistical error of Block~1.1. The Monte Carlo
-estimator was unbiased: any deviation between $\hat C_n$ and
+different from the statistical error of the exact GBM pricer. That Monte Carlo
+estimator is unbiased: any deviation between $\hat C_n$ and
 $C_{\mathrm{BS}}$ was purely sampling error, controlled by $1/\sqrt{n}$.
 Once we replace the exact $S_T$ by a discretised $\hat S_T$, the
 estimator becomes \emph{biased}: even with $n = \infty$ paths, we
 estimate $\E[f(\hat S_T)]$, not $\E[f(S_T)]$. The size of the bias
 depends on the time step $h$ and on the scheme, and the central
-analytical question of this block is: at what rate does this bias
+analytical question of this note is: at what rate does this bias
 vanish as $h \to 0$?
 
 The answer is not a single number. SDE solutions admit two distinct
@@ -119,7 +123,7 @@ first-order truncation and states its convergence orders.
 Section~\ref{sec:milstein} does the same for the Milstein scheme as a
 second-order truncation. Section~\ref{sec:practical} discusses which
 scheme is appropriate in which context. Section~\ref{sec:roadmap}
-sets up the implementation work of Blocks~1.2.1 and~1.2.2.
+sets up the implementation of the Euler--Maruyama and Milstein pricers.
 
 \section{Setting and discretisation schemes}
 \label{sec:setting}
@@ -143,8 +147,8 @@ needed.
 Geometric Brownian motion is the running example: $a(x) = r x$,
 $b(x) = \sigma x$. We will refer back to it both for sanity checks and
 because the closed-form solution of GBM provides the reference path
-against which the discretised paths of Blocks~1.2.1 and~1.2.2 will be
-validated empirically.
+against which the discretised paths of the Euler--Maruyama and Milstein
+pricers are validated empirically.
 
 \subsection{Discretisation schemes}
 
@@ -244,7 +248,8 @@ The strong error~\eqref{eq:strong-defn} measures average pathwise
 deviation. It is the relevant quantity whenever a single trajectory of
 the discretised process is meant to stand in for a single trajectory
 of the true process: in pathwise sensitivity analysis (greeks via the
-pathwise method, see Block~4), in optimal control problems where the
+pathwise method, see the note on Monte Carlo Greeks), in optimal control
+problems where the
 control is adapted to the simulated path, and in any context where
 two related quantities must be evaluated on the \emph{same} simulated
 path.
@@ -327,27 +332,28 @@ exceed strong order, and we will see this happen for Euler--Maruyama
 For European option pricing under a risk-neutral measure, the quantity
 of interest is $\E[e^{-rT} \Phi(X_T)]$ for a payoff $\Phi$. This is
 weak: marginal distributions only. \emph{Strong convergence is
-irrelevant for the European pricing of Block~1.2.1 and~1.2.2.} What
-we require, and what we will measure empirically, is weak order.
+irrelevant for the European pricing of the Euler--Maruyama and Milstein
+pricers.} What we require, and what we measure empirically, is weak order.
 
-For path-dependent pricing in Block~5, the relevant question becomes
+For path-dependent pricing, the relevant question becomes
 the weak error on functionals of the entire path
 $\E[\Phi(X_{[0,T]})]$, not just on $\E[\Phi(X_T)]$. The marginals at
 the grid points are not enough; in particular, for barrier options the
 discretised supremum has its own bias of order $\sqrt{h}$ that adds to
-any scheme's marginal error, and a Brownian-bridge correction will be
-deployed. Strong convergence remains irrelevant to barrier pricing
+any scheme's marginal error; a Brownian-bridge correction is the
+standard remedy (it is not implemented here). Strong convergence remains irrelevant to barrier pricing
 \emph{per se}.
 
-For pathwise sensitivity analysis in Block~4, by contrast, strong
+For pathwise sensitivity analysis (Monte Carlo Greeks), by contrast, strong
 convergence becomes essential: the pathwise estimator differentiates
 the simulated path with respect to a parameter, and that
 differentiation requires the path to be a faithful pathwise
 approximation of the true process.
 
 We therefore care about both notions across the project, but in
-different blocks. For Block~1.2 specifically the operational
-conclusion is that we will measure both orders empirically (the strong
+different contexts. For the European pricers built on SDE discretisation
+the operational
+conclusion is that we measure both orders empirically (the strong
 order is interesting because it is the surprising one: $\tfrac{1}{2}$
 for Euler), but only the weak order is the metric that justifies
 using a given scheme for European pricing.
@@ -359,7 +365,7 @@ This section develops the device by which discretisation schemes for
 SDEs are derived systematically. The mechanics generalise the
 deterministic Taylor expansion, with the role of the chain rule
 played by It\^o's formula. The treatment is detailed because the
-expansion is the principal source of conceptual novelty in this block.
+expansion is the principal source of conceptual novelty in this note.
 
 \subsection{Reminder: Taylor expansion for ODEs}
 
@@ -539,8 +545,8 @@ integrals such as $\int\!\int \dd W^{(i)} \dd W^{(j)}$ with $i \neq j$
 Simulating these cross-iterated integrals exactly requires extra work
 (or a Brownian bridge construction), and this is the reason the
 Milstein scheme in dimension $d \geq 2$ is significantly more
-demanding than in dimension $1$. Phase~2 stays in the scalar setting,
-so~\eqref{eq:I11} is sufficient.
+demanding than in dimension $1$. The Monte Carlo notes stay in the
+scalar setting, so~\eqref{eq:I11} is sufficient.
 \end{remark}
 
 \subsection{The expansion to second order}
@@ -734,7 +740,7 @@ to Euler does not improve the weak error: the leading non-zero
 expectation term is unchanged. To get weak order $> 1$, one needs to
 correct further moments of the increment; this requires schemes like
 the order-$2$ weak scheme of Platen, which is genuinely more involved
-and beyond the scope of this block.
+and beyond the scope of this note.
 
 \subsection{Application to GBM}
 
@@ -773,12 +779,12 @@ in front of the $h$ asymptote, not an improved order.
 In practice for pricing under GBM (and for many local volatility
 models), the constant improvement is too small to justify the extra
 machinery: Euler with a slightly smaller $h$ achieves the same weak
-error at lower or comparable cost. Block~1.2.1 will demonstrate
-empirically that for European pricing under GBM, Euler at
+error at lower or comparable cost. Empirically, for European pricing
+under GBM, Euler at
 $h = T/200$ and Milstein at $h = T/100$ (matched cost) deliver
 comparable accuracy.
 
-\subsection{For pathwise sensitivity (Block~4)}
+\subsection{For pathwise sensitivity}
 
 The pathwise method estimates greeks by differentiating the simulated
 path with respect to a parameter, then averaging. For the
@@ -789,7 +795,7 @@ genuine advantage: Milstein needs $\sqrt{h}$ as many steps as Euler
 to attain the same strong error, an asymptotic factor that grows
 without bound as $h \to 0$.
 
-\subsection{For path-dependent payoffs (Block~5)}
+\subsection{For path-dependent payoffs}
 
 The expectation is now over the path, $\E[\Phi(S_{[0,T]})]$. Two
 sources of error: the marginal scheme error (weak, both schemes
@@ -801,20 +807,21 @@ bridge correction), not in the scheme.
 
 \subsection{Summary}
 
-The verdict is unambiguous: \emph{for the European pricing of
-Block~1.2, Euler--Maruyama is the right choice and Milstein is
+The verdict is unambiguous: \emph{for European pricing under
+SDE discretisation, Euler--Maruyama is the right choice and Milstein is
 implemented for completeness and as a comparison baseline rather than
-because it offers any operational advantage}. Block~1.2.1 will
-implement Euler as the working pricer; Block~1.2.2 will implement
-Milstein as a side-by-side benchmark. The empirical convergence
-study at the heart of validation will measure both strong and weak
+because it offers any operational advantage}. The Euler--Maruyama pricer
+is the working pricer; the Milstein pricer is
+a side-by-side benchmark. The empirical convergence
+study at the heart of validation measures both strong and weak
 orders for both schemes, confirming the predictions of
 Theorems~\ref{thm:euler-conv} and~\ref{thm:milstein-conv}.
 
-\section{Roadmap for Blocks 1.2.1 and 1.2.2}
+\section{Roadmap for the Euler--Maruyama and Milstein pricers}
 \label{sec:roadmap}
 
-Block~1.2.1 will implement Euler--Maruyama for GBM and validate it
+The Euler--Maruyama pricer (\texttt{mc\_european\_euler.tex}) implements
+Euler--Maruyama for GBM and validates it
 empirically. The validation has three components:
 \begin{enumerate}
 \item \textbf{Strong-order verification}: simulate $\hat S_T$ on the
@@ -826,24 +833,26 @@ against $h$, fit a line, expect slope $\tfrac{1}{2}$.
 e^{-rT}$, measure $|\E[\Phi(S_T)] - \E[\Phi(\hat S_T)]|$ across many
 paths and many $h$, plot in log-log, expect slope $1$.
 \item \textbf{Sanity checks}: containment of the BS price by the MC
-CI for moderate $h$, monotonicities, reduction to Block~1.1's exact
+CI for moderate $h$, monotonicities, reduction to the exact GBM
 sampler in the limit $h \to 0$ at fixed $n$.
 \end{enumerate}
 The first two are direct empirical confirmations of the convergence
 theorems; the third anchors the implementation in the existing
 infrastructure.
 
-Block~1.2.2 will implement Milstein under the same protocol. The
+The Milstein pricer (\texttt{mc\_european\_milstein.tex}) implements
+Milstein under the same protocol. The
 strong order should change from $\tfrac{1}{2}$ to $1$; the weak order
 should remain $1$, matching Euler. This is the canonical demonstration
 of the asymmetry between the two notions of convergence.
 
-Architecturally, both schemes will be added to the existing
-\texttt{quantlib.monte\_carlo} (Python) and \texttt{quant/monte\_carlo}
-(C++) modules, alongside the exact GBM sampler from Block~1.1. The
+Architecturally, both path samplers sit in \texttt{quantlib.gbm}
+(Python) and \texttt{quant/gbm} (C++), alongside the exact GBM sampler,
+and the pricers that use them in \texttt{quantlib.monte\_carlo} and
+\texttt{quant/monte\_carlo}. The
 \texttt{mc\_estimator} reducer is unchanged. The pricer wrappers
 (\texttt{mc\_european\_call\_euler}, \texttt{mc\_european\_call\_milstein})
-will be thin orchestrators on top of new path samplers.
+are thin orchestrators on top of the path samplers.
 
 \section{Bibliographic notes}
 \label{sec:biblio}
@@ -861,7 +870,7 @@ exactly the empirical convergence demonstration we will reproduce in
 the implementation. Glasserman~\cite[Chapter~6]{Glasserman} treats
 the topic from the financial Monte Carlo angle and includes
 discussion of the practical relevance of weak versus strong
-convergence in the contexts we will encounter in subsequent blocks.
+convergence in the contexts of the later Monte Carlo notes.
 
 \begin{thebibliography}{99}
 

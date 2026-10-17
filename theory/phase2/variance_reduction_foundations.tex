@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -42,15 +43,15 @@
 % ---------- Document metadata ----------
 \title{Variance Reduction in Monte Carlo:\\
        Theoretical Foundations}
-\author{Quant Finance Portfolio --- Phase 2, Block 2.0}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
 We develop the two foundational variance reduction techniques used
-throughout the rest of Phase~2: antithetic variates and control
+throughout the remaining Monte Carlo notes: antithetic variates and control
 variates. For each we derive the conditions under which it is
 guaranteed to reduce variance, the resulting variance formula, and
 the practical algorithm that implements it. The treatment is honest
@@ -60,7 +61,7 @@ but doubles the per-path cost is no improvement, and we make the
 guard against this confusion. We also derive the empirical
 control-variate coefficient and analyse the small bias it introduces,
 and we close with a brief catalogue of techniques we do not cover in
-the present block (stratified sampling, importance sampling,
+the present note (stratified sampling, importance sampling,
 multilevel MC) together with the reasons.
 \end{abstract}
 
@@ -128,9 +129,9 @@ budget. A variance reduction technique that halves the variance but
 doubles the per-sample cost is a wash: VxT unchanged, no actual
 improvement.
 
-This criterion will reappear in every validation script of Phase~2
-Block~2. Variance ratios alone are misleading; only the VxT ratio
-captures the practical comparison.
+This criterion reappears in every validation script of the
+variance-reduction pricers. Variance ratios alone are misleading; only
+the VxT ratio captures the practical comparison.
 
 \begin{remark}
 The VxT criterion assumes the per-sample cost is the same for every
@@ -229,7 +230,8 @@ For the European call under GBM, $S_T = S_0 \exp((r - \sigma^2/2) T
 payoff $(S_T - K)^+$ is monotone increasing in $S_T$, hence in $Z$.
 So the monotonicity condition holds and AV is guaranteed to reduce
 variance for the European call. By how much depends on how strong the
-negative correlation is, which we measure empirically in Block~2.1.
+negative correlation is, which is measured empirically in the note on
+antithetic variates.
 
 \section{Control variates}
 \label{sec:cv}
@@ -310,7 +312,7 @@ applied to Monte Carlo}. Multiple control variates correspond to
 multiple regression, and the same intuition (more controls help if
 they bring genuine new information beyond the existing controls,
 i.e.\ they are not collinear with them) applies. We do not pursue
-multiple controls in this block, but the framework extends
+multiple controls in this note, but the framework extends
 mechanically.
 
 \subsection{The empirical \texorpdfstring{$c^*$}{c-star} and its bias}

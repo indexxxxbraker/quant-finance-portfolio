@@ -1,6 +1,6 @@
-% block3_crank_nicolson.tex
+% crank_nicolson.tex
 %
-% Phase 3, Block 3: Crank-Nicolson, the theta-scheme, and Rannacher
+% Crank-Nicolson, the theta-scheme, and Rannacher
 % time-stepping.
 %
 % Self-contained writeup. Compiles standalone with pdflatex.
@@ -20,22 +20,22 @@
 \newtheorem{theorem}[proposition]{Theorem}
 \newtheorem{remark}[proposition]{Remark}
 
-\title{Phase 3, Block 3:\\Crank--Nicolson, the $\theta$-scheme,\\and Rannacher time-stepping}
-\author{Quant Finance Portfolio}
-\date{}
+\title{Crank--Nicolson, the $\theta$-scheme,\\and Rannacher time-stepping}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \section{Setting and motivation}
 
-Blocks 1 (FTCS) and 2 (BTCS) are first-order in time: their local
+FTCS and BTCS (previous two notes) are first-order in time: their local
 truncation error is $O(\Delta\tau) + O(\Delta x^2)$. To balance the
 spatial and temporal contributions one needs $\Delta\tau \sim
 \Delta x^2$, which forces $M \sim N^2$ and total cost $O(N^3)$ for
 both schemes (FTCS by CFL, BTCS by accuracy).
 
-This block implements \emph{Crank--Nicolson} (CN), the unique scheme
+This note implements \emph{Crank--Nicolson} (CN), the unique scheme
 in the convex family of FTCS and BTCS that is
 \emph{second-order in time}: $O(\Delta\tau^2) + O(\Delta x^2)$. With
 $M \sim N$, CN achieves $O(\Delta x^2)$ precision at $O(N^2)$ total
@@ -53,7 +53,7 @@ strike kink.
 \section{The $\theta$-family}
 % =====================================================================
 
-The three schemes of Phase 3 are particular cases of a single
+The three schemes FTCS, BTCS and CN are particular cases of a single
 parametric family:
 \begin{equation}
 \frac{V_j^{n+1} - V_j^n}{\Delta\tau}
@@ -82,7 +82,7 @@ $1$    & BTCS & Implicit & Unconditional & $O(\Delta\tau)$ \\
 \end{tabular}
 \end{center}
 The order jump at $\theta = 1/2$ is the central observation of this
-block. It is the pay-off of the symmetry between the new and old
+note. It is the pay-off of the symmetry between the new and old
 levels: when the right-hand side is the average of $\mathcal{L}_h V$
 at $\tau_n$ and $\tau_{n+1}$, the discrete equation is centred at the
 \emph{midpoint} $\tau_{n+1/2}$, and the midpoint rule is one order
@@ -313,7 +313,7 @@ signature of $\xi = \pi$).
 \end{itemize}
 The visible artefact is a sawtooth of small amplitude near the
 strike, distinct from the explosive sawtooth of FTCS instability
-(Phase~3 numerical lesson 1) by being bounded but visible. It
+(see the FTCS note) by being bounded but visible. It
 degrades local accuracy near the strike: the price has $O(\Delta x)$
 error there instead of $O(\Delta x^2)$, and the Greeks (gamma in
 particular) inherit the oscillation.
@@ -365,13 +365,13 @@ below 0.5\%. Negligible compared to the convergence gain.
 \section{Implementation outline}
 % =====================================================================
 
-The block ships two modules:
+The implementation consists of two modules:
 \begin{itemize}[leftmargin=2em]
 \item \texttt{quantlib.theta\_scheme} (Python) /
 \texttt{quant::pde::theta\_scheme\_*} (C++): a generic $\theta$-stepper
 parametrised by $\theta$. Internally pre-factors the LHS matrix and
 runs a configurable number of time steps. Reusable as scaffolding
-for Block 4 (where the LHS solve is replaced by PSOR).
+for the American put (where the LHS solve is replaced by PSOR).
 \item \texttt{quantlib.cn} (Python) /
 \texttt{quant::pde::cn\_*} (C++): the user-facing CN pricer for
 European options, with Rannacher smoothing enabled by default
@@ -392,11 +392,9 @@ CN pricer calls twice for the Rannacher protocol: once with
 $\theta = 1$ for the initial half-stepped BTCS warm-up, then with
 $\theta = 1/2$ for the rest.
 
-\paragraph{No replacement of FTCS/BTCS.} The FTCS and BTCS modules of
-Blocks 1 and 2 are unchanged. The $\theta$-scheme infrastructure is a
+\paragraph{No replacement of FTCS/BTCS.} The FTCS and BTCS modules
+do not use it. The $\theta$-scheme infrastructure is a
 parallel mechanism intended for CN and any future generalisations.
-The previous granular commits remain valid; this block adds, does not
-modify.
 
 % =====================================================================
 \section{Validation strategy}
@@ -405,7 +403,7 @@ modify.
 Six tests certify the new pricer:
 \begin{enumerate}[leftmargin=2em]
 \item Cross-validation against Black--Scholes closed form on a
-parameter grid (the standard battery of Blocks 1--2).
+parameter grid (the standard battery used for FTCS and BTCS).
 \item \textbf{Quadratic convergence in time:} halving $\Delta\tau$
 at fixed (small) $\Delta x$ should reduce the error by a factor of
 $\approx 4$, not $\approx 2$ as BTCS would. This is \emph{the} test
@@ -418,12 +416,12 @@ running the same problem with \texttt{rannacher\_steps=0} should show
 a noticeably worse convergence ratio. This is the empirical evidence
 of the kink-induced oscillation.
 \item Reproduction of BTCS via $\theta = 1$ in the $\theta$-scheme:
-verifies the generic stepper against the Block~2 pricer.
+verifies the generic stepper against the BTCS pricer.
 \item Put-call parity, input validation, etc.
 \end{enumerate}
 
-The fourth test is the operational signature of Block~3's numerical
-lesson, analogous to the CFL-violation diagnostic of Block~1: a
+The fourth test is the operational signature of the kink-induced
+oscillation, analogous to the CFL-violation diagnostic of FTCS: a
 configuration that produces visibly degraded output, captured as a
 passing assertion to prevent regression.
 

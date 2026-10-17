@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -42,16 +43,17 @@
 % ---------- Document metadata ----------
 \title{Monte Carlo Pricing of a European Call:\\
        Antithetic Variates}
-\author{Quant Finance Portfolio --- Phase 2, Block 2, Algorithm 1}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We apply the antithetic variates technique of the Block~2.0 writeup
+We apply the antithetic variates technique of the note on
+variance-reduction foundations
 to the Monte Carlo pricer of the European call under the exact GBM
-sampler of Block~1.1. The monotonicity condition holds trivially, so
+sampler. The monotonicity condition holds trivially, so
 the AV estimator is guaranteed to reduce variance over the IID
 estimator at equal sample size, and to reduce VxT over the IID
 estimator at equal computational budget. We predict the variance
@@ -65,7 +67,7 @@ VxT ratio.
 \section{Introduction}
 \label{sec:intro}
 
-Block~1.1 produced our baseline European-call pricer:
+The exact GBM Monte Carlo pricer is our baseline European-call pricer:
 \begin{equation}
 \hat C_M^{\mathrm{IID}} \;=\; \frac{1}{M} \sum_{i=1}^M
 e^{-rT} (S_T^{(i)} - K)^+,
@@ -77,7 +79,7 @@ canonical parameters ($S_0 = K = 100$, $r = 0.05$, $\sigma = 0.20$,
 $T = 1$) is $\sigma^2_Y \approx 217$, giving a half-width of about
 $0.09$ at $M = 10^5$.
 
-In this block we replace this estimator with its antithetic-variates
+In this note we replace this estimator with its antithetic-variates
 counterpart, derive the resulting variance under GBM, predict the
 reduction factor as a function of moneyness, and validate empirically.
 
@@ -102,7 +104,8 @@ with $Z_i \sim \mathcal{N}(0,1)$ i.i.d. The estimator is
 \end{equation}
 Each $Y_i^{\mathrm{AV}}$ requires \emph{two} payoff evaluations (one
 at $Z_i$, one at $-Z_i$), so the per-pair computational cost is
-roughly twice that of an IID payoff. Per the VxT criterion of Block~2.0,
+roughly twice that of an IID payoff. Per the VxT criterion of the
+variance-reduction foundations,
 the relevant comparison is between $\hat C_M^{\mathrm{AV}}$ (using $2M$
 payoff evaluations) and $\hat C_{2M}^{\mathrm{IID}}$ (also using $2M$
 payoff evaluations).
@@ -116,7 +119,8 @@ increasing on $\{s > K\}$. The composition $z \mapsto f(z)$ is
 therefore monotone non-decreasing, strictly increasing on $\{z : S(z)
 > K\}$.
 
-By Theorem~3.2 of the Block~2.0 writeup, $\Cov(f(Z), f(-Z)) \leq 0$
+By Theorem~3.2 of the note on variance-reduction foundations,
+$\Cov(f(Z), f(-Z)) \leq 0$
 with strict inequality (since $f$ is not essentially constant: the
 ITM and OTM regions both have positive probability under the standard
 normal). The antithetic estimator is therefore strictly superior to
@@ -124,7 +128,7 @@ the IID estimator at equal sample size.
 
 \subsection{Variance and reduction factor}
 
-By Theorem~3.1 of the Block~2.0 writeup,
+By Theorem~3.1 of the note on variance-reduction foundations,
 \begin{equation}
 \label{eq:av-variance-call}
 \Var(\hat C_M^{\mathrm{AV}}) \;=\; \frac{1}{2M}\bigl(\, \sigma^2_f + \Cov(f(Z), f(-Z)) \,\bigr),

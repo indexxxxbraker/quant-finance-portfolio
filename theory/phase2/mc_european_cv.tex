@@ -6,6 +6,7 @@
 \usepackage{microtype}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{xcolor}
 \usepackage[colorlinks=true,
             linkcolor=blue!50!black,
             urlcolor=blue!50!black,
@@ -42,16 +43,17 @@
 % ---------- Document metadata ----------
 \title{Monte Carlo Pricing of a European Call:\\
        Control Variates}
-\author{Quant Finance Portfolio --- Phase 2, Block 2, Algorithm 2}
-\date{\today}
+\author{Roberto Cepeda Rocandio}
+\date{May 2026; revised October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We apply the control variates technique of the Block~2.0 writeup to
+We apply the control variates technique of the note on
+variance-reduction foundations to
 the Monte Carlo pricer of the European call under the exact GBM
-sampler of Block~1.1. Two controls are introduced: the discounted
+sampler. Two controls are introduced: the discounted
 underlying $X_1 = e^{-rT} S_T$ and the discounted asset-or-nothing
 payoff $X_2 = e^{-rT} S_T \indic_{\{S_T > K\}}$. Both have closed-form
 expectations under GBM. \emph{A naive shape-matching argument suggests
@@ -71,7 +73,8 @@ example: structural similarity does not imply linear correlation.
 \section{Introduction}
 \label{sec:intro}
 
-Block~2.0 derived the control-variate framework: given a target $Y$
+The note on variance-reduction foundations derives the control-variate
+framework: given a target $Y$
 with unknown $\E[Y]$ and a control $X$ with known $\E[X]$ correlated
 with $Y$, the adjusted estimator
 \begin{equation}
@@ -163,7 +166,7 @@ C^{\mathrm{BS}} \;=\; S_0 \Phi(d_1) - K e^{-rT} \Phi(d_2),
 \quad d_2 = d_1 - \sigma\sqrt T,
 \end{equation}
 so $\E[X_2]$ is available for free as a byproduct of the BS pricer
-code we already implemented in Phase~1.
+code in \texttt{quantlib.black\_scholes}.
 
 \subsection{The naive intuition: ``shape matching''}
 
@@ -344,7 +347,7 @@ produce the estimator. Given samples $\{(Y_i, X_i)\}_{i=1}^M$:
 The bias of $\hat C_M^{\mathrm{CV}}$ is $O(1/M)$, while the standard
 error is $O(1/\sqrt M)$, so the bias is asymptotically negligible
 for any $M$ at which the standard error is acceptable. See
-Block~2.0 writeup, Proposition~4.4.
+the note on variance-reduction foundations, Proposition~4.4.
 
 \subsection{Connection with OLS regression}
 
