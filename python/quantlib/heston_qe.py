@@ -15,9 +15,10 @@ scheme uses two regimes:
 
 The log-spot is integrated using Andersen's central discretisation,
 which uses both v_n and v_{n+1} (the latter being available from QE),
-giving a higher-order log-spot scheme than the simple Euler of Block 3.
+giving a higher-order log-spot scheme than the simple Euler of
+quantlib.heston_mc.
 
-Refer to ``theory/phase4/block4_heston_qe.tex`` for the derivation,
+Refer to ``theory/phase4/heston_qe.tex`` for the derivation,
 including the conditional moments of CIR, the moment-matching
 construction of both regimes, and the log-spot scheme.
 
@@ -155,7 +156,7 @@ def _qe_variance_step(v_n, kappa, theta, sigma, dt, psi_c, U, Z):
         m = theta + (v_n - theta) * exp(-kappa * dt),
         s^2 = v_n * sigma^2 * exp(-kappa*dt) * (1 - exp(-kappa*dt)) / kappa
               + theta * sigma^2 * (1 - exp(-kappa*dt))^2 / (2 * kappa).
-    See block4_heston_qe.tex Section 4 for the derivation.
+    See heston_qe.tex Section 4 for the derivation.
     """
     exp_neg = np.exp(-kappa * dt)
     one_minus_exp = 1.0 - exp_neg
@@ -225,7 +226,7 @@ def _qe_logS_step(log_S_n, v_n, v_next, r, rho, kappa, theta, sigma,
         K4 = gamma2 dt (1 - rho^2).
     Z_indep is a standard normal independent of the variance increment.
 
-    See block4_heston_qe.tex Section 6 for the derivation.
+    See heston_qe.tex Section 6 for the derivation.
     """
     # K coefficients (computed once per step — pass as args from caller
     # if profiling shows this is hot; for clarity we recompute here,
@@ -379,7 +380,8 @@ def mc_european_call_heston_qe(S0, K, v0, r, kappa, theta, sigma, rho, T,
     With ``antithetic=True``, the n_paths discounted payoffs are paired
     and averaged into n_paths/2 antithetic samples BEFORE being passed
     to mc_estimator, exactly as in the full-truncation Euler version of
-    Block 3. The MCResult.n_paths field reports n_paths/2 in that case.
+    quantlib.heston_mc. The MCResult.n_paths field reports n_paths/2 in
+    that case.
 
     Parameters
     ----------
@@ -396,10 +398,10 @@ def mc_european_call_heston_qe(S0, K, v0, r, kappa, theta, sigma, rho, T,
     The estimator carries a discretisation bias of order O(dt^2) in
     benign regimes (high Feller parameter) and approximately O(dt^2)
     even in low-Feller regimes thanks to QE's atom-at-zero handling.
-    Compared to the Block 3 full-truncation Euler estimator
+    Compared to the full-truncation Euler estimator
     (``mc_european_call_heston``), QE achieves the same precision with
     typically 4-10x fewer time steps, with the gap widening for low
-    Feller parameter (see block4_heston_qe.tex Section 7).
+    Feller parameter (see heston_qe.tex Section 7).
     """
     _validate_strike(K)
 
@@ -417,62 +419,3 @@ def mc_european_call_heston_qe(S0, K, v0, r, kappa, theta, sigma, rho, T,
         Y = 0.5 * (Y[:half] + Y[half:])
 
     return mc_estimator(Y, confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    S0, K, v0, r = 100.0, 100.0, 0.04, 0.05
-    kappa, theta, sigma, rho = 1.5, 0.04, 0.3, -0.7
-    T = 0.5
-
-    n_steps = 50  # QE works well with few steps; FT-Euler needs more
-    n_paths = 100_000
-
-    print("Heston Monte Carlo: Andersen QE smoke test")
-    print(f"S0={S0}, K={K}, T={T}, r={r}")
-    print(f"kappa={kappa}, theta={theta}, sigma={sigma}, "
-          f"rho={rho}, v0={v0}")
-    print(f"n_steps={n_steps}, n_paths={n_paths}")
-    print()
-
-    result = mc_european_call_heston_qe(
-        S0, K, v0, r, kappa, theta, sigma, rho, T,
-        n_steps, n_paths, seed=42,
-    )
-    print(f"QE estimate     : {result.estimate:.6f}")
-    print(f"Half-width (95%): {result.half_width:.6f}")
-    print(f"Sample variance : {result.sample_variance:.6f}")
-    print(f"Sample size     : {result.n_paths}")
-
-    try:
-        from quantlib.heston_fourier import heston_call_lewis
-        C_ref = heston_call_lewis(K, T, S0, v0, r,
-                                   kappa, theta, sigma, rho)
-        print()
-        print(f"Fourier reference: {C_ref:.6f}")
-        print(f"QE - Fourier     : {result.estimate - C_ref:+.6f}")
-        print(f"In half-width    : "
-              f"{abs(result.estimate - C_ref) < result.half_width}")
-    except ImportError:
-        print("(quantlib.heston_fourier not available for cross-check)")
-
-    # Compare with FT-Euler at the same n_steps
-    try:
-        from quantlib.heston_mc import mc_european_call_heston
-        result_fte = mc_european_call_heston(
-            S0, K, v0, r, kappa, theta, sigma, rho, T,
-            n_steps, n_paths, seed=42,
-        )
-        print()
-        print(f"FT-Euler (same n_steps={n_steps}):")
-        print(f"  estimate: {result_fte.estimate:.6f}")
-        print(f"  HW:       {result_fte.half_width:.6f}")
-        print(f"  bias vs Fourier: "
-              f"{result_fte.estimate - C_ref:+.6f}")
-        print(f"  QE bias vs Fourier: "
-              f"{result.estimate - C_ref:+.6f}")
-    except ImportError:
-        pass

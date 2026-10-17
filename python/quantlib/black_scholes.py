@@ -120,7 +120,7 @@ def put_rho(S, K, r, sigma, T):
 
 
 # ---------------------------------------------------------------------------
-# Payoff statistics (Phase 2 Block 1.1)
+# Payoff statistics
 # ---------------------------------------------------------------------------
 def call_payoff_variance(S, K, r, sigma, T):
     """Closed-form variance of the discounted European call payoff
@@ -143,7 +143,7 @@ def call_payoff_variance(S, K, r, sigma, T):
     1. A-priori sample-size selection in vanilla Monte Carlo:
        n_eps ~ (z / eps)^2 * Var(Y) for half-width eps.
     2. As the denominator of the variance reduction factor reported
-       throughout Phase 2 Block 2.
+       for the variance-reduced pricers of quantlib.variance_reduction.
 
     Derivation in theory/phase2/mc_european_exact.tex,
     Proposition 5.1.
@@ -166,21 +166,3 @@ def call_payoff_variance(S, K, r, sigma, T):
     bs_call = call_price(S, K, r, sigma, T)
 
     return second_moment_of_Y - bs_call * bs_call
-
-
-if __name__ == "__main__":
-    # Hull example 15.6 reference values for the price.
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-
-    print(f"S={S}, K={K}, r={r}, sigma={sigma}, T={T}\n")
-    print(f"Call price : {call_price(S, K, r, sigma, T):.6f}")
-    print(f"Put price  : {put_price (S, K, r, sigma, T):.6f}\n")
-
-    print(f"Call Delta : {call_delta(S, K, r, sigma, T):.6f}")
-    print(f"Put  Delta : {put_delta (S, K, r, sigma, T):.6f}")
-    print(f"Gamma      : {gamma     (S, K, r, sigma, T):.6f}")
-    print(f"Vega       : {vega      (S, K, r, sigma, T):.6f}")
-    print(f"Call Theta : {call_theta(S, K, r, sigma, T):.6f}")
-    print(f"Put  Theta : {put_theta (S, K, r, sigma, T):.6f}")
-    print(f"Call Rho   : {call_rho  (S, K, r, sigma, T):.6f}")
-    print(f"Put  Rho   : {put_rho   (S, K, r, sigma, T):.6f}")

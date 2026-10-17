@@ -11,11 +11,12 @@ Dirac after the second derivative; the LR method has very high
 variance for Gamma and is not pursued here.
 
 Each estimator returns an MCResult with the same conventions as the
-Block 1.1 pricers (estimate, half_width, sample_variance, n_paths).
+exact GBM pricer in quantlib.monte_carlo (estimate, half_width,
+sample_variance, n_paths).
 
 References
 ----------
-Phase 2 Block 4 writeup. Broadie and Glasserman, "Estimating security
+theory/phase2/greeks_mc.tex. Broadie and Glasserman, "Estimating security
 price derivatives using simulation", Management Science 42(2),
 269-285, 1996. Glasserman, *Monte Carlo Methods in Financial
 Engineering*, Chapter 7.
@@ -267,49 +268,3 @@ def vega_lr(S, K, r, sigma, T, n_paths,
     vega_per_path = payoff * score
 
     return mc_estimator(vega_per_path, confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test
-# =====================================================================
-
-if __name__ == "__main__":
-    from quantlib.black_scholes import (
-        call_delta, call_rho, gamma, vega,
-    )
-
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
-    n = 100_000
-
-    # BS reference Greeks.
-    bs_delta = call_delta(S, K, r, sigma, T)
-    bs_vega  = vega(S, K, r, sigma, T)
-    bs_gamma = gamma(S, K, r, sigma, T)
-    print(f"BS Delta = {bs_delta:.6f}")
-    print(f"BS Vega  = {bs_vega:.6f}")
-    print(f"BS Gamma = {bs_gamma:.6f}\n")
-
-    # Delta with three methods.
-    print("Delta:")
-    for name, fn in [
-        ("bump    ", delta_bump),
-        ("pathwise", delta_pathwise),
-        ("LR      ", delta_lr),
-    ]:
-        result = fn(S, K, r, sigma, T, n, seed=42)
-        print(f"  {name}: est = {result.estimate:.6f}  hw = {result.half_width:.6f}")
-
-    # Vega with three methods.
-    print("\nVega:")
-    for name, fn in [
-        ("bump    ", vega_bump),
-        ("pathwise", vega_pathwise),
-        ("LR      ", vega_lr),
-    ]:
-        result = fn(S, K, r, sigma, T, n, seed=42)
-        print(f"  {name}: est = {result.estimate:.6f}  hw = {result.half_width:.6f}")
-
-    # Gamma with bump only.
-    print("\nGamma:")
-    result = gamma_bump(S, K, r, sigma, T, n, seed=42)
-    print(f"  bump (only): est = {result.estimate:.6f}  hw = {result.half_width:.6f}")

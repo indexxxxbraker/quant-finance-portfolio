@@ -2,7 +2,7 @@
 Generic theta-scheme finite-difference stepper for the transformed
 Black-Scholes PDE.
 
-Phase 3 Block 3. The theta-scheme parametrises a one-parameter family
+The theta-scheme parametrises a one-parameter family
 of FD methods for
 
     V_tau = (sigma^2 / 2) V_xx + mu V_x - r V
@@ -37,7 +37,7 @@ At each step, V^{n+1} on interior nodes is obtained by tridiagonal
 solve of A V_int^{n+1} = (B V_int^n) + boundary terms, where the
 boundary terms incorporate Dirichlet values from levels n and n+1.
 
-Used downstream by quantlib.cn (Block 3) and quantlib.psor (Block 4).
+Used downstream by quantlib.cn and quantlib.cn_american.
 """
 
 from dataclasses import dataclass
@@ -179,33 +179,3 @@ def theta_march(grid, V0, theta, bc_lower, bc_upper, *,
         V[N]   = bc_upper[n + 1]
 
     return V
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Reproduce BTCS via theta_march with theta=1, and CN via theta=0.5.
-    # Hull example 15.6.
-    from quantlib.pde import (
-        build_grid, call_initial_condition,
-        call_boundary_lower, call_boundary_upper,
-    )
-
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-    N, M = 200, 200
-    g = build_grid(N=N, M=M, T=T, sigma=sigma, r=r, K=K)
-    V0 = call_initial_condition(g.xs, g.K)
-    bc_lo = call_boundary_lower(g)
-    bc_hi = call_boundary_upper(g)
-
-    V_btcs_via_theta = theta_march(g, V0, 1.0, bc_lo, bc_hi)
-    V_cn             = theta_march(g, V0, 0.5, bc_lo, bc_hi)
-
-    x_0 = np.log(S / K)
-    c_btcs = float(np.interp(x_0, g.xs, V_btcs_via_theta))
-    c_cn   = float(np.interp(x_0, g.xs, V_cn))
-
-    print(f"Hull 15.6 (S={S}, K={K}, T={T}): BS reference 4.7594")
-    print(f"  theta=1   (BTCS via theta-stepper): {c_btcs:.6f}")
-    print(f"  theta=0.5 (CN, no Rannacher):       {c_cn:.6f}")

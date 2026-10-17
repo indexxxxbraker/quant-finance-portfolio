@@ -9,16 +9,16 @@ exotic options under Heston:
     - Up-and-out barrier call
 
 All three share the same simulation infrastructure --- the QE scheme
-of Block 4 --- and differ only in the path-functional accumulated
+of quantlib.heston_qe --- and differ only in the path-functional accumulated
 during the time loop. The pattern mirrors the "infrastructure reusable,
-recipe replaceable" lesson from Block 3-4: the simulator structure is
-shared, the payoff is the recipe.
+recipe replaceable" design of quantlib.heston_mc and quantlib.heston_qe:
+the simulator structure is shared, the payoff is the recipe.
 
 For early-exercise payoffs (American puts), see the PDE-based PSOR
 extension in a separate module; Monte Carlo with forward-only paths
 cannot natively price early exercise.
 
-See ``theory/phase4/block6_heston_calibration_exotics.tex`` for the
+See ``theory/phase4/heston_calibration_exotics.tex`` for the
 mathematical statement of each payoff and the discussion of
 discrete-monitoring biases for lookback and barrier options.
 
@@ -98,7 +98,7 @@ def _validate_qe_scheme_params(psi_c, gamma1, gamma2):
 # QE step kernels (vectorised over paths)
 # =====================================================================
 #
-# Reproduce the QE kernels from Block 4 here for self-containment.
+# Reproduce the QE kernels of quantlib.heston_qe here for self-containment.
 # An alternative would be to import them from quantlib.heston_qe, but
 # their underscore-prefixed names mean they're not part of the stable
 # public API; copying the small kernel keeps this module robust to
@@ -436,69 +436,3 @@ def mc_barrier_call_heston(S0, K, H, v0, r, kappa, theta, sigma, rho, T,
         np.exp(-r * T) * np.maximum(S_T - K, 0.0),
     )
     return mc_estimator(payoffs, confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    S0, v0, r = 100.0, 0.04, 0.05
-    kappa, theta, sigma, rho = 1.5, 0.04, 0.3, -0.7
-    T = 0.5
-
-    print("Heston exotics: smoke test")
-    print(f"S0={S0}, T={T}, r={r}")
-    print(f"kappa={kappa}, theta={theta}, sigma={sigma}, "
-          f"rho={rho}, v0={v0}\n")
-
-    print("=" * 60)
-    print("Asian call (arithmetic average)")
-    print("=" * 60)
-    K = 100.0
-    n_steps = 100
-    n_paths = 100_000
-    n_avg_options = [10, 50, 100]
-    for n_avg in n_avg_options:
-        result = mc_asian_call_heston(
-            S0, K, v0, r, kappa, theta, sigma, rho, T,
-            n_steps, n_paths, n_avg=n_avg, seed=42)
-        print(f"  K={K}, n_avg={n_avg:>3}: "
-              f"{result.estimate:.4f} +/- {result.half_width:.4f}")
-
-    print()
-    print("=" * 60)
-    print("Lookback call (floating strike)")
-    print("=" * 60)
-    for n_steps in [50, 100, 200]:
-        result = mc_lookback_call_heston(
-            S0, v0, r, kappa, theta, sigma, rho, T,
-            n_steps, n_paths, seed=42)
-        print(f"  n_steps={n_steps:>3}: "
-              f"{result.estimate:.4f} +/- {result.half_width:.4f}")
-    # Convergence note: lookback price increases as n_steps -> infinity
-    # because the discrete-monitoring bias is positive (true min is smaller).
-
-    print()
-    print("=" * 60)
-    print("Up-and-out barrier call")
-    print("=" * 60)
-    K = 100.0
-    n_steps = 100
-    print(f"  K={K}, varying barrier H:")
-    for H in [110.0, 120.0, 150.0, 1e6]:
-        result = mc_barrier_call_heston(
-            S0, K, H, v0, r, kappa, theta, sigma, rho, T,
-            n_steps, n_paths, seed=42)
-        h_label = "infty" if H >= 1e5 else f"{H:.0f}"
-        print(f"    H={h_label:>6}: "
-              f"{result.estimate:.4f} +/- {result.half_width:.4f}")
-    # Note: H=infty should match the European call price.
-
-    try:
-        from quantlib.heston_fourier import heston_call_lewis
-        C_eur = heston_call_lewis(K, T, S0, v0, r,
-                                   kappa, theta, sigma, rho)
-        print(f"\n  European reference (H -> infty): {C_eur:.4f}")
-    except ImportError:
-        pass

@@ -1,7 +1,7 @@
 """
 Heston model: American put pricing via 2D PDE with operator-splitting projection.
 
-This module extends the European 2D PDE pricer of Block 5 to handle
+This module extends the European 2D PDE pricer (quantlib.heston_pde) to handle
 the early-exercise constraint of American puts. The numerical strategy
 is operator splitting: after each Douglas ADI time step (which solves
 the European PDE), we project onto the constraint
@@ -17,9 +17,9 @@ where payoff(X) = max(K - exp(X), 0).
 The American constraint applies for puts because they have positive
 intrinsic value when S < K. American calls without dividends have the
 same value as European calls (no early-exercise premium); they are
-covered by Block 5's European pricer.
+covered by the European pricer of quantlib.heston_pde.
 
-See ``theory/phase4/block6_heston_calibration_exotics.tex`` Section 4.4
+See ``theory/phase4/heston_calibration_exotics.tex`` Section 4.4
 for the rationale of choosing PSOR-on-PDE over Longstaff-Schwartz MC.
 
 The kernel functions (Thomas batched solver, operator coefficients,
@@ -329,55 +329,3 @@ def heston_american_put_pde(S0, K, T, kappa, theta, sigma, rho, v0, r,
 
     # Undo the discount substitution: V = exp(-r T) W
     return float(np.exp(-r * T) * W_interp)
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    S0, K, T = 100.0, 100.0, 0.5
-    kappa, theta, sigma, rho = 1.5, 0.04, 0.3, -0.7
-    v0, r = 0.04, 0.05
-
-    print("Heston American put: PDE smoke test")
-    print(f"S0={S0}, K={K}, T={T}, r={r}")
-    print(f"kappa={kappa}, theta={theta}, sigma={sigma}, "
-          f"rho={rho}, v0={v0}\n")
-
-    # Compute European put via put-call parity from Fourier call
-    try:
-        from quantlib.heston_fourier import heston_call_lewis
-        C_eur = heston_call_lewis(K, T, S0, v0, r,
-                                   kappa, theta, sigma, rho)
-        # Put-call parity: C - P = S - K * exp(-rT)
-        P_eur = C_eur - S0 + K * np.exp(-r * T)
-        print(f"European put (via parity from Fourier call): {P_eur:.6f}")
-    except ImportError:
-        P_eur = None
-
-    print()
-    import time
-    print(f"{'Grid':>20}  {'Am put price':>14}  {'EEP':>10}  {'time(s)':>8}")
-    for (N_X, N_v, N_tau) in [(50, 25, 50), (100, 50, 100), (200, 100, 200)]:
-        t0 = time.time()
-        price = heston_american_put_pde(S0, K, T, kappa, theta, sigma, rho,
-                                          v0, r, N_X, N_v, N_tau)
-        elapsed = time.time() - t0
-        eep = price - P_eur if P_eur is not None else float('nan')
-        print(f"  {N_X:>3} x {N_v:>3} x {N_tau:>3}    "
-              f"{price:>14.6f}  {eep:>10.4f}  {elapsed:>8.2f}")
-
-    # Sanity: deep OTM put should be close to European (no exercise advantage)
-    print()
-    print("Sanity check: deep OTM put (K=80, far from exercise region):")
-    K_otm = 80.0
-    P_am_otm = heston_american_put_pde(
-        S0, K_otm, T, kappa, theta, sigma, rho, v0, r, 100, 50, 100)
-    if P_eur is not None:
-        C_eur_otm = heston_call_lewis(K_otm, T, S0, v0, r,
-                                        kappa, theta, sigma, rho)
-        P_eur_otm = C_eur_otm - S0 + K_otm * np.exp(-r * T)
-        print(f"  American put K={K_otm}: {P_am_otm:.6f}")
-        print(f"  European put K={K_otm}: {P_eur_otm:.6f}")
-        print(f"  EEP (should be small): {P_am_otm - P_eur_otm:.6f}")

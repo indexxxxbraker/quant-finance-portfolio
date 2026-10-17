@@ -21,7 +21,7 @@ volatility sigma_eff and effective rate r_eff; see
 
 References
 ----------
-Phase 2 Block 5 writeup. Kemna and Vorst (1990), J. Banking and
+theory/phase2/mc_asian.tex. Kemna and Vorst (1990), J. Banking and
 Finance, 14(1):113-129. Glasserman, Section 4.5.
 """
 
@@ -213,41 +213,3 @@ def mc_asian_call_arithmetic_cv(S, K, r, sigma, T, n_paths,
 
     return _apply_cv(Pi_A, Pi_G, cv_mean,
                      confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test
-# =====================================================================
-
-if __name__ == "__main__":
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
-    N = 50
-    n = 100_000
-
-    cg_closed = geometric_asian_call_closed_form(S, K, r, sigma, T, N)
-    print(f"Geometric Asian closed form (N={N}): {cg_closed:.6f}\n")
-
-    res_g = mc_asian_call_geometric_iid(S, K, r, sigma, T, n,
-                                         n_steps=N, seed=42)
-    err = abs(res_g.estimate - cg_closed) / res_g.half_width
-    print(f"Geometric IID (n={n}):")
-    print(f"  estimate   = {res_g.estimate:.6f}")
-    print(f"  half-width = {res_g.half_width:.6f}")
-    print(f"  closed     = {cg_closed:.6f}")
-    print(f"  err / hw   = {err:.2f}\n")
-
-    res_a_iid = mc_asian_call_arithmetic_iid(S, K, r, sigma, T, n,
-                                              n_steps=N, seed=42)
-    print(f"Arithmetic IID (n={n}):")
-    print(f"  estimate   = {res_a_iid.estimate:.6f}")
-    print(f"  half-width = {res_a_iid.half_width:.6f}\n")
-
-    res_a_cv = mc_asian_call_arithmetic_cv(S, K, r, sigma, T, n,
-                                            n_steps=N, seed=42)
-    print(f"Arithmetic with geometric CV (n={n}):")
-    print(f"  estimate   = {res_a_cv.estimate:.6f}")
-    print(f"  half-width = {res_a_cv.half_width:.6f}\n")
-
-    vrf = (res_a_iid.half_width / res_a_cv.half_width) ** 2
-    print(f"Variance reduction factor (CV vs IID): {vrf:.0f}x")
-    print(f"Half-width ratio (IID / CV)          : {res_a_iid.half_width / res_a_cv.half_width:.1f}x")

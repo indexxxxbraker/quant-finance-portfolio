@@ -4,7 +4,7 @@ Heston model: Monte Carlo simulation via full-truncation Euler.
 This module implements the full-truncation Euler discretisation of
 Lord, Koekkoek, van Dijk (2010) for the Heston stochastic-volatility
 model under the risk-neutral measure. See
-``theory/phase4/block3_heston_mc_basic.tex`` for the derivation,
+``theory/phase4/heston_mc_euler.tex`` for the derivation,
 convergence theory, and discussion of the truncation choice.
 
 Public interface
@@ -370,8 +370,8 @@ def mc_european_call_heston(S0, K, v0, r, kappa, theta, sigma, rho, T,
     O(dt) (where dt = T/n_steps) and a statistical error of
     O(n_paths^{-1/2}). The reported half-width covers only the latter.
     For high-precision pricing, increase n_steps and n_paths in
-    tandem; see Block 3 writeup, Section 4.4 for the bias-variance
-    budget.
+    tandem; see theory/phase4/heston_mc_euler.tex, Section 4.4 for the
+    bias-variance budget.
     """
     _validate_strike(K)
 
@@ -393,46 +393,3 @@ def mc_european_call_heston(S0, K, v0, r, kappa, theta, sigma, rho, T,
         Y = 0.5 * (Y[:half] + Y[half:])
 
     return mc_estimator(Y, confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    # Standard equity parameter set (matches Block 2 reference).
-    S0, K, v0, r = 100.0, 100.0, 0.04, 0.05
-    kappa, theta, sigma, rho = 1.5, 0.04, 0.3, -0.7
-    T = 0.5
-
-    n_steps = 200
-    n_paths = 100_000
-
-    print(f"Heston Monte Carlo: full-truncation Euler smoke test")
-    print(f"S0={S0}, K={K}, T={T}, r={r}")
-    print(f"kappa={kappa}, theta={theta}, sigma={sigma}, rho={rho}, v0={v0}")
-    print(f"n_steps={n_steps}, n_paths={n_paths}")
-    print()
-
-    result = mc_european_call_heston(
-        S0, K, v0, r, kappa, theta, sigma, rho, T,
-        n_steps, n_paths,
-        seed=42,
-    )
-    print(f"MC estimate     : {result.estimate:.6f}")
-    print(f"Half-width (95%): {result.half_width:.6f}")
-    print(f"Sample variance : {result.sample_variance:.6f}")
-    print(f"Sample size     : {result.n_paths}")
-
-    # Compare against Fourier reference (from Block 2).
-    try:
-        from quantlib.heston_fourier import heston_call_lewis
-        C_ref = heston_call_lewis(K, T, S0, v0, r,
-                                   kappa, theta, sigma, rho)
-        print()
-        print(f"Fourier reference: {C_ref:.6f}")
-        print(f"MC - Fourier     : {result.estimate - C_ref:+.6f}")
-        print(f"In half-width    : "
-              f"{abs(result.estimate - C_ref) < result.half_width}")
-    except ImportError:
-        print("(quantlib.heston_fourier not available for cross-check)")

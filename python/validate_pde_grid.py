@@ -15,9 +15,8 @@ Runs the following checks:
 6.  Input validation: build_grid raises ValueError on every kind of
     bad input.
 
-The exit code is 0 on success, 1 on failure. Designed to be run with
-    python -m quantlib.validate_pde_grid
-or directly.
+The exit code is 0 on success, 1 on failure. Run from python/:
+    python validate_pde_grid.py
 """
 
 import numpy as np

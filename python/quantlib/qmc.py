@@ -1,9 +1,10 @@
 """Quasi-Monte Carlo and Randomized QMC pricers for the European call.
 
-This module implements the Block 3 part of the variance-reduction
-toolkit: deterministic QMC sequences (Halton, Sobol) for pricing the
-European call under the Euler discretisation, plus a randomized
-QMC variant with digital shifting that recovers a usable half-width.
+This module implements the quasi-Monte Carlo part of the
+variance-reduction toolkit: deterministic QMC sequences (Halton,
+Sobol) for pricing the European call under the Euler discretisation,
+plus a randomized QMC variant with digital shifting that recovers a
+usable half-width.
 
 The integration problem is d-dimensional with d = N (the number of
 Euler steps). We use d = 20 as the canonical setup for validation;
@@ -33,9 +34,9 @@ mc_european_call_euler_rqmc:
 
 References
 ----------
-Phase 2 Block 3.0 writeup (foundations); Block 3.1 writeup (this
-implementation). Glasserman, *Monte Carlo Methods in Financial
-Engineering*, Chapter 5.
+theory/phase2/qmc_foundations.tex (foundations);
+theory/phase2/mc_european_qmc.tex (this implementation). Glasserman,
+*Monte Carlo Methods in Financial Engineering*, Chapter 5.
 """
 
 import math
@@ -353,37 +354,3 @@ def mc_european_call_euler_rqmc(S, K, r, sigma, T, n_paths,
         sample_variance=sample_variance,
         n_paths=n_replications,
     )
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.00
-    N = 20
-
-    # Deterministic QMC pricers. Using a power of 2 for Sobol's
-    # optimal balance properties (no warning emitted by scipy).
-    est_halton = mc_european_call_euler_qmc(
-        S, K, r, sigma, T, n_paths=8192,
-        n_steps=N, sequence="halton",
-    )
-    print(f"QMC Halton (n=8192, N={N}): estimate = {est_halton:.6f}")
-
-    est_sobol = mc_european_call_euler_qmc(
-        S, K, r, sigma, T, n_paths=8192,
-        n_steps=N, sequence="sobol",
-    )
-    print(f"QMC Sobol  (n=8192, N={N}): estimate = {est_sobol:.6f}")
-
-    # RQMC pricer.
-    result_rqmc = mc_european_call_euler_rqmc(
-        S, K, r, sigma, T, n_paths=4096,
-        n_steps=N, n_replications=20, seed=42,
-    )
-    print(f"\nRQMC Sobol (n=4096, R=20, N={N}, total payoffs=81920):")
-    print(f"  estimate     : {result_rqmc.estimate:.6f}")
-    print(f"  half-width   : {result_rqmc.half_width:.6f}")
-    print(f"  sample var   : {result_rqmc.sample_variance:.6f}")
-    print(f"  n (= R)      : {result_rqmc.n_paths}")

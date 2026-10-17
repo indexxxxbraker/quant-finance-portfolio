@@ -2,7 +2,7 @@
 Crank-Nicolson finite-difference pricer for European options, with
 Rannacher time-stepping to suppress strike-induced oscillations.
 
-Phase 3 Block 3. Built on the theta-scheme infrastructure of
+Built on the theta-scheme infrastructure of
 quantlib.theta_scheme. The pricer is unconditionally stable and
 second-order in time and space, achieving O(dx^2 + dtau^2)
 convergence at O(N * M) cost.
@@ -182,20 +182,3 @@ def _interpolate_at_spot(grid, V_final, S):
             f"Increase n_sigma or pick a closer-to-K spot."
         )
     return float(np.interp(x_0, grid.xs, V_final))
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-    print(f"Hull 15.6 (S={S}, K={K}, T={T}): BS reference 4.7594\n")
-
-    for label, R in [("CN with Rannacher (default)", 2),
-                     ("CN without Rannacher",       0)]:
-        c = cn_european_call(S, K, r, sigma, T, N=200, M=200,
-                              rannacher_steps=R)
-        p = cn_european_put (S, K, r, sigma, T, N=200, M=200,
-                              rannacher_steps=R)
-        print(f"  {label}:")
-        print(f"    call = {c:.6f}    put = {p:.6f}")

@@ -1,19 +1,19 @@
 """
 Finite-difference grid infrastructure for the Black-Scholes PDE.
 
-Phase 3 Block 0. This module is the scaffolding on which the pricers
-of Blocks 1 (FTCS), 2 (BTCS + Thomas), 3 (Crank-Nicolson) and 4 (PSOR)
-are built. It contains no pricer; it constructs the (x, tau) grid,
-provides Dirichlet boundary conditions and initial-condition vectors,
-and exposes stability-number utilities used by the explicit scheme of
-Block 1.
+This module is the scaffolding on which the finite-difference pricers
+(FTCS, BTCS + Thomas, Crank-Nicolson and PSOR) are built. It contains
+no pricer; it constructs the (x, tau) grid, provides Dirichlet
+boundary conditions and initial-condition vectors, and exposes
+stability-number utilities used by the explicit scheme of
+quantlib.ftcs.
 
-The transformed BS PDE solved by all schemes of Phase 3 is
+The transformed BS PDE solved by all finite-difference schemes is
 
     V_tau = (sigma^2 / 2) V_xx + mu V_x - r V,    mu = r - sigma^2/2,
 
 with x = ln(S/K) and tau = T - t. Derivation in
-theory/phase3/block0_pde_foundations.tex.
+theory/phase3/pde_foundations.tex.
 
 Conventions
 -----------
@@ -230,13 +230,13 @@ def put_boundary_upper(grid):
 
 
 # ---------------------------------------------------------------------------
-# Stability numbers (used by the explicit pricer in Block 1)
+# Stability numbers (used by the explicit pricer in quantlib.ftcs)
 # ---------------------------------------------------------------------------
 def fourier_number(sigma, dtau, dx):
     """Diffusive Fourier number alpha = (sigma^2 / 2) * dtau / dx^2.
 
-    The FTCS scheme (Block 1) is von Neumann stable iff alpha <= 1/2.
-    BTCS (Block 2) and Crank-Nicolson (Block 3) are unconditionally
+    The FTCS scheme is von Neumann stable iff alpha <= 1/2.
+    BTCS and Crank-Nicolson are unconditionally
     stable in alpha.
     """
     return 0.5 * sigma * sigma * dtau / (dx * dx)
@@ -248,7 +248,7 @@ def courant_number(mu, dtau, dx):
     With centred space differences for the convective term, the FTCS
     von Neumann factor for the full BS PDE is
         g(theta) = 1 - 4*alpha*sin^2(theta/2) + i*nu*sin(theta).
-    For typical Phase 3 parameters the diffusive bound alpha <= 1/2
+    For typical parameters the diffusive bound alpha <= 1/2
     dominates over the convective constraint.
     """
     return 0.5 * abs(mu) * dtau / dx
@@ -256,36 +256,6 @@ def courant_number(mu, dtau, dx):
 
 def is_explicit_stable(alpha):
     """Return True iff the FTCS scheme is stable for this Fourier number,
-    i.e. iff alpha <= 0.5. Diagnostic helper for Block 1.
+    i.e. iff alpha <= 0.5. Diagnostic helper for quantlib.ftcs.
     """
     return alpha <= 0.5
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Standard smoke test: build a moderate grid for the canonical
-    # parameters of Phase 1 / 2 and print the relevant summary.
-    g = build_grid(N=200, M=400, T=1.0, sigma=0.20, r=0.05, K=100.0)
-
-    print(f"Grid: N={g.N}, M={g.M}")
-    print(f"x   in [{g.x_min:+.4f}, {g.x_max:+.4f}], dx   = {g.dx:.6f}")
-    print(f"tau in [{g.taus[0]:.4f}, {g.taus[-1]:.4f}], dtau = {g.dtau:.6f}")
-    print(f"mu  = r - sigma^2/2 = {g.mu:+.6f}")
-    print()
-
-    alpha = fourier_number(g.sigma, g.dtau, g.dx)
-    nu    = courant_number (g.mu,    g.dtau, g.dx)
-    print(f"Fourier number alpha = {alpha:.6f}  (FTCS stable: {is_explicit_stable(alpha)})")
-    print(f"Courant number nu    = {nu:.6f}")
-    print()
-
-    ic_call = call_initial_condition(g.xs, g.K)
-    bc_call_hi = call_boundary_upper(g)
-    print(f"Call IC at S = K (x = 0): V = {ic_call[g.N // 2]:.6f}  (expected 0)")
-    print(f"Call IC at S = K * e (x = 1, j approx 3N/4): V = "
-          f"{ic_call[int(0.75 * g.N)]:.4f}")
-    print(f"Call upper BC at tau = 0: {bc_call_hi[0]:.4f}  "
-          f"(equals IC at j=N: {ic_call[g.N]:.4f})")
-    print(f"Call upper BC at tau = T: {bc_call_hi[-1]:.4f}")

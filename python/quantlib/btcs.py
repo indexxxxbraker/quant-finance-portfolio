@@ -2,9 +2,8 @@
 Implicit Backward-Time Centred-Space (BTCS) finite-difference pricer for
 European calls and puts.
 
-Phase 3 Block 2. Builds on the grid infrastructure of Block 0
-(quantlib.pde) and the tridiagonal solver of Block 2
-(quantlib.thomas). The pricer is unconditionally stable: any
+Builds on the grid infrastructure in quantlib.pde and the tridiagonal
+solver in quantlib.thomas. The pricer is unconditionally stable: any
 combination (N, M) with N >= 2 and M >= 1 produces a finite, convergent
 solution. There is no CFL constraint to enforce.
 
@@ -28,7 +27,7 @@ The matrix A formed from these coefficients is constant in time, so
 its Thomas factorisation is computed once at setup and applied at
 each of the M time steps.
 
-See theory/phase3/block2_btcs.tex for the full analysis.
+See theory/phase3/btcs.tex for the full analysis.
 """
 
 import numpy as np
@@ -176,25 +175,3 @@ def _interpolate_at_spot(grid, V_final, S):
             f"Increase n_sigma or pick a closer-to-K spot."
         )
     return float(np.interp(x_0, grid.xs, V_final))
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Hull example 15.6: S = 42, K = 40, r = 0.10, sigma = 0.20, T = 0.5.
-    # Closed-form prices: call = 4.7594, put = 0.8086.
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-
-    print(f"Hull example 15.6: S={S}, K={K}, r={r}, sigma={sigma}, T={T}\n")
-
-    # First, conventional grid (N=200, M=200), satisfies CFL with margin.
-    print("Conventional grid (N=200, M=200):")
-    print(f"  BTCS call : {btcs_european_call(S, K, r, sigma, T, N=200, M=200):.6f}  (BS 4.7594)")
-    print(f"  BTCS put  : {btcs_european_put (S, K, r, sigma, T, N=200, M=200):.6f}  (BS 0.8086)")
-
-    # Same N, very few time steps. FTCS would refuse this configuration
-    # (CFL would be violated). BTCS produces a finite, sensible answer.
-    print("\nLarge-dtau test (N=200, M=10): would explode in FTCS")
-    print(f"  BTCS call : {btcs_european_call(S, K, r, sigma, T, N=200, M=10):.6f}  (less precise but stable)")
-    print(f"  BTCS put  : {btcs_european_put (S, K, r, sigma, T, N=200, M=10):.6f}")

@@ -2,7 +2,7 @@
 Projected Successive Over-Relaxation (PSOR) solver for tridiagonal
 linear complementarity problems.
 
-Phase 3 Block 4. Solves the LCP
+Solves the LCP
 
     A x >= rhs           (componentwise)
     x   >= obstacle      (componentwise)
@@ -24,7 +24,7 @@ omega is approximately 2 / (1 + sqrt(1 - rho_J^2)) where rho_J is
 the spectral radius of the Jacobi iteration, typically in [1.2, 1.5]
 for the project's CN matrices.
 
-Used by quantlib.cn_american (Block 4) for the per-step solve in
+Used by quantlib.cn_american for the per-step solve in
 American option pricing.
 """
 
@@ -188,38 +188,3 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
         f"Try a different omega (current {omega}) or check that "
         f"the matrix is diagonally dominant."
     )
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # 4x4 problem with no active constraint: should reduce to a
-    # standard linear solve and match numpy.linalg.solve.
-    n = 4
-    sub  = np.full(n - 1, -1.0)
-    diag = np.full(n,      4.0)
-    sup  = np.full(n - 1, -1.0)
-    rhs  = np.array([1.0, 2.0, 3.0, 4.0])
-    obstacle = np.full(n, -1e10)   # essentially no constraint
-
-    A = np.diag(diag) + np.diag(sup, 1) + np.diag(sub, -1)
-    x_ref = np.linalg.solve(A, rhs)
-    x_psor, n_iter = psor_solve(sub, diag, sup, rhs, obstacle,
-                                 omega=1.2)
-    print(f"4x4 unconstrained LCP (should match linear solve):")
-    print(f"  numpy.linalg.solve: {x_ref}")
-    print(f"  psor_solve:         {x_psor}  (n_iter = {n_iter})")
-    print(f"  max |diff|        = {np.max(np.abs(x_psor - x_ref)):.2e}")
-
-    # Active constraint: obstacle = [1.0, 1.0, 1.0, 1.0]. Only the
-    # first node has reference solution below the obstacle, so the
-    # constraint is active there.
-    print()
-    obstacle = np.full(n, 1.0)
-    x_psor, n_iter = psor_solve(sub, diag, sup, rhs, obstacle,
-                                 omega=1.2)
-    print(f"4x4 LCP with obstacle = 1.0 (some constraints active):")
-    print(f"  unconstrained solution: {x_ref}")
-    print(f"  PSOR solution:          {x_psor}  (n_iter = {n_iter})")
-    print(f"  active set:             {np.isclose(x_psor, 1.0)}")

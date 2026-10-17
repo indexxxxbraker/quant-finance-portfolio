@@ -21,7 +21,7 @@ implementations.
 
 References
 ----------
-Phase 2 Block 6 writeup. Longstaff and Schwartz (2001), Review of
+theory/phase2/lsm_american.tex. Longstaff and Schwartz (2001), Review of
 Financial Studies 14(1):113-147. Cox, Ross and Rubinstein (1979),
 JFE 7(3):229-263. Glasserman, Chapter 8.
 """
@@ -153,7 +153,7 @@ def lsm_american_put(S, K, r, sigma, T, n_paths,
                      confidence_level=0.95):
     """American put by the Longstaff-Schwartz algorithm.
 
-    Algorithm (see Phase 2 Block 6 writeup, Section 3):
+    Algorithm (see theory/phase2/lsm_american.tex, Section 3):
 
       1. Simulate n_paths exact GBM paths on the equispaced grid
          t_k = k*T/n_steps, k = 0, ..., n_steps.
@@ -239,40 +239,3 @@ def lsm_american_put(S, K, r, sigma, T, n_paths,
             n_paths=n_paths,
         )
     return cont_result
-
-
-# =====================================================================
-# Smoke test
-# =====================================================================
-
-if __name__ == "__main__":
-    from quantlib.black_scholes import put_price
-
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
-
-    # European put for reference (no early exercise).
-    eu_put = put_price(S, K, r, sigma, T)
-    print(f"European put (BS):                      {eu_put:.6f}")
-
-    # Binomial American convergence.
-    print("\nBinomial American put convergence:")
-    for N in [100, 500, 1000, 5000, 10000]:
-        v = binomial_american_put(S, K, r, sigma, T, N)
-        print(f"  N = {N:>5d}  ->  {v:.6f}")
-
-    # Reference (high-N binomial).
-    v_ref = binomial_american_put(S, K, r, sigma, T, 10000)
-    print(f"\nReference American put (binomial N=10000): {v_ref:.6f}")
-    print(f"Early exercise premium:                  {v_ref - eu_put:.6f}")
-
-    # LSM
-    n = 100_000
-    print(f"\nLSM American put (n={n}, N_LSM=50, basis=4):")
-    res = lsm_american_put(S, K, r, sigma, T, n,
-                            n_steps=50, basis_size=4, seed=42)
-    print(f"  estimate    = {res.estimate:.6f}")
-    print(f"  half-width  = {res.half_width:.6f}")
-    print(f"  reference   = {v_ref:.6f}")
-    err = res.estimate - v_ref
-    err_in_hw = err / res.half_width if res.half_width > 0 else float('inf')
-    print(f"  err to ref  = {err:+.6f} ({err_in_hw:+.2f} hw)")

@@ -7,12 +7,12 @@ strike-maturity pairs, finds Heston parameters
 (kappa, theta, sigma, rho, v0) that minimise an aggregate distance
 between model and market.
 
-The pricer is the closed-form Fourier method of Block 2, which is
-fast enough to evaluate inside the optimisation loop. The optimiser is
-Levenberg-Marquardt (via scipy.optimize.least_squares with method='trf'
-to respect bound constraints). The objective is the vega-weighted
-price residual, which is computationally cheap and approximates
-implied-vol RMSE on liquid quotes.
+The pricer is the closed-form Fourier method of quantlib.heston_fourier,
+which is fast enough to evaluate inside the optimisation loop. The
+optimiser is Levenberg-Marquardt (via scipy.optimize.least_squares with
+method='trf' to respect bound constraints). The objective is the
+vega-weighted price residual, which is computationally cheap and
+approximates implied-vol RMSE on liquid quotes.
 
 For production-grade calibration of arbitrary surfaces, this LM
 optimiser should be wrapped in a global search (e.g.,
@@ -20,7 +20,7 @@ scipy.optimize.differential_evolution) to escape local minima before
 LM refinement. We provide LM-only here; the wrapping is a few lines
 documented in the calibrate_heston docstring.
 
-See ``theory/phase4/block6_heston_calibration_exotics.tex`` for the
+See ``theory/phase4/heston_calibration_exotics.tex`` for the
 mathematical statement of the calibration problem and the discussion
 of identifiability.
 
@@ -45,7 +45,7 @@ import numpy as np
 from scipy.optimize import brentq, least_squares
 from scipy.stats import norm
 
-from quantlib.heston_fourier import heston_call_lewis, black_scholes_call
+from quantlib.heston_fourier import heston_call_lewis
 
 
 # =====================================================================
@@ -177,7 +177,7 @@ def _heston_prices_on_surface(params, market_data, S0, r):
 
     Notes
     -----
-    The Fourier pricer of Block 2 is called per (K, T); a fully
+    The Fourier pricer (quantlib.heston_fourier) is called per (K, T); a fully
     vectorised version that exploits shared characteristic-function
     evaluations across strikes for a fixed maturity would be
     significantly faster but is left as a future refinement.
@@ -286,7 +286,7 @@ def calibrate_heston(market_data, S0, r,
                                        initial_guess=de_result.x_dict,
                                        ...)
 
-    See block6_heston_calibration_exotics.tex Section 2.4 for
+    See heston_calibration_exotics.tex Section 2.4 for
     discussion of the global vs local optimisation strategy.
     """
     if len(market_data) < 5:
@@ -355,66 +355,3 @@ def calibrate_heston(market_data, S0, r,
         success=result.success,
         message=result.message,
     )
-
-
-# =====================================================================
-# Smoke test entry point
-# =====================================================================
-
-if __name__ == "__main__":
-    print("Heston calibration: smoke test (round-trip on synthetic data)")
-    print("=" * 65)
-
-    # Truth parameters
-    truth = {"kappa": 1.5, "theta": 0.04, "sigma": 0.3,
-              "rho": -0.7, "v0": 0.04}
-    S0, r = 100.0, 0.05
-
-    print(f"\nTruth parameters: {truth}")
-    print(f"S0 = {S0}, r = {r}")
-
-    # Generate synthetic market data (3 strikes x 3 maturities)
-    market_data = []
-    for K in [90.0, 100.0, 110.0]:
-        for T in [0.25, 0.5, 1.0]:
-            C = heston_call_lewis(
-                K, T, S0, truth["v0"], r,
-                truth["kappa"], truth["theta"],
-                truth["sigma"], truth["rho"])
-            market_data.append({"K": K, "T": T, "C_market": C})
-
-    print(f"\nGenerated {len(market_data)} synthetic market quotes")
-
-    # Calibrate from a perturbed initial guess
-    initial = {"kappa": 1.0, "theta": 0.05, "sigma": 0.5,
-                "rho": -0.3, "v0": 0.05}
-    print(f"Initial guess  : {initial}")
-
-    import time
-    t0 = time.time()
-    result = calibrate_heston(market_data, S0, r,
-                                initial_guess=initial, verbose=True)
-    elapsed = time.time() - t0
-
-    print(f"\nResults after {elapsed:.2f}s:")
-    print(f"  Calibrated parameters: {result.params}")
-    print(f"  Truth parameters     : {truth}")
-    print(f"  Per-parameter error  :")
-    for name in ["kappa", "theta", "sigma", "rho", "v0"]:
-        err = result.params[name] - truth[name]
-        print(f"    {name:>6}: {result.params[name]:>+10.6f} "
-              f"vs truth {truth[name]:>+10.6f}, err = {err:>+8.5f}")
-    print(f"  RMSE residual: {result.rmse:.6e}")
-    print(f"  Success: {result.success}, n_iter: {result.n_iter}")
-
-    print()
-    print("=" * 65)
-    print("IV inversion smoke test")
-    print("=" * 65)
-    sigma_truth = 0.25
-    K, T = 100.0, 0.5
-    C = black_scholes_call(S0, K, T, r, sigma_truth)
-    iv = implied_vol_bs(C, K, T, S0, r)
-    print(f"BS price at sigma={sigma_truth}: {C:.6f}")
-    print(f"Inverted IV from price        : {iv:.6f}")
-    print(f"|recovered - truth|           : {abs(iv - sigma_truth):.2e}")

@@ -10,11 +10,9 @@ This module contains:
 
 High-level European call pricers (one per discretisation scheme):
 
-- ``mc_european_call_exact``: exact GBM sampler (Block 1.1).
-- ``mc_european_call_euler``: Euler-Maruyama discretisation
-  (Block 1.2.1).
-- ``mc_european_call_milstein``: Milstein discretisation
-  (Block 1.2.2).
+- ``mc_european_call_exact``: exact GBM sampler.
+- ``mc_european_call_euler``: Euler-Maruyama discretisation.
+- ``mc_european_call_milstein``: Milstein discretisation.
 
 The samplers themselves live in ``quantlib.gbm``. This split reflects
 the architectural separation between the model-and-scheme-specific
@@ -23,11 +21,12 @@ and the model-and-payoff-agnostic work (statistical estimation).
 
 References
 ----------
-Phase 2 Block 0 writeup (Monte Carlo foundations); Block 1.1 writeup
-(exact pricer); Block 1.2.0 writeup (SDE discretisation theory);
-Block 1.2.1 writeup (Euler pricer); Block 1.2.2 writeup (Milstein
-pricer). Glasserman, *Monte Carlo Methods in Financial Engineering*,
-Chapters 1, 3, and 6.
+theory/phase2/monte_carlo_foundations.tex (Monte Carlo foundations);
+theory/phase2/mc_european_exact.tex (exact pricer);
+theory/phase2/sde_discretisation.tex (SDE discretisation theory);
+theory/phase2/mc_european_euler.tex (Euler pricer);
+theory/phase2/mc_european_milstein.tex (Milstein pricer). Glasserman,
+*Monte Carlo Methods in Financial Engineering*, Chapters 1, 3, and 6.
 """
 
 from typing import NamedTuple
@@ -93,7 +92,7 @@ def mc_estimator(Y, confidence_level=0.95):
     the universal statistical reducer used by every Monte Carlo
     pricer in the project.
 
-    See Phase 2 Block 0 writeup, Section 2.4.
+    See theory/phase2/monte_carlo_foundations.tex, Section 2.4.
     """
     Y = np.asarray(Y, dtype=np.float64)
 
@@ -140,7 +139,7 @@ def mc_european_call_exact(S, K, r, sigma, T, n_paths,
     the GBM SDE, evaluate the discounted payoff
     ``e^{-rT} * (S_T - K)^+`` on each path, reduce via mc_estimator.
 
-    See Phase 2 Block 1.1 writeup. Glasserman, Section 1.1.2.
+    See theory/phase2/mc_european_exact.tex. Glasserman, Section 1.1.2.
     """
     validate_model_params(S, r, sigma, T)
     validate_strike(K)
@@ -164,7 +163,7 @@ def mc_european_call_euler(S, K, r, sigma, T, n_steps, n_paths,
     ``n_steps`` is increased, the estimate converges to the BS price
     at weak rate 1.
 
-    See Phase 2 Block 1.2.1 writeup, Section 3.
+    See theory/phase2/mc_european_euler.tex, Section 3.
     """
     validate_model_params(S, r, sigma, T)
     validate_strike(K)
@@ -189,11 +188,11 @@ def mc_european_call_milstein(S, K, r, sigma, T, n_steps, n_paths,
     so this estimator is statistically indistinguishable from
     ``mc_european_call_euler`` at any practical sample size. The
     Milstein scheme exists for cases where strong order matters
-    (pathwise sensitivity, Block 4) and is exposed here for
+    (pathwise sensitivity, quantlib.greeks) and is exposed here for
     completeness and for the empirical convergence study in
     ``validate_mc_european_milstein.py``.
 
-    See Phase 2 Block 1.2.2 writeup.
+    See theory/phase2/mc_european_milstein.tex.
     """
     validate_model_params(S, r, sigma, T)
     validate_strike(K)
@@ -205,35 +204,3 @@ def mc_european_call_milstein(S, K, r, sigma, T, n_steps, n_paths,
     Y = np.exp(-r * T) * np.maximum(S_T - K, 0.0)
 
     return mc_estimator(Y, confidence_level=confidence_level)
-
-
-# =====================================================================
-# Smoke test entry point (run via `python -m quantlib.monte_carlo`)
-# =====================================================================
-
-if __name__ == "__main__":
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.00
-
-    # Block 1.1 pricer.
-    exact = mc_european_call_exact(
-        S, K, r, sigma, T, n_paths=100_000, seed=42,
-    )
-    print(f"Exact MC pricer (Block 1.1):")
-    print(f"  estimate    : {exact.estimate:.6f}")
-    print(f"  half-width  : {exact.half_width:.6f}\n")
-
-    # Block 1.2.1 pricer.
-    euler = mc_european_call_euler(
-        S, K, r, sigma, T, n_steps=100, n_paths=100_000, seed=42,
-    )
-    print(f"Euler MC pricer (Block 1.2.1, n_steps=100):")
-    print(f"  estimate    : {euler.estimate:.6f}")
-    print(f"  half-width  : {euler.half_width:.6f}\n")
-
-    # Block 1.2.2 pricer.
-    milstein = mc_european_call_milstein(
-        S, K, r, sigma, T, n_steps=100, n_paths=100_000, seed=42,
-    )
-    print(f"Milstein MC pricer (Block 1.2.2, n_steps=100):")
-    print(f"  estimate    : {milstein.estimate:.6f}")
-    print(f"  half-width  : {milstein.half_width:.6f}")

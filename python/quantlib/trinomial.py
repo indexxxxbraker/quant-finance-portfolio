@@ -1,7 +1,7 @@
 """
 Trinomial tree of Kamrad-Ritchken for European and American options.
 
-Phase 3 Block 5. Implements the lambda-parametrised trinomial tree:
+Implements the lambda-parametrised trinomial tree:
 
     x -> x + dx  with prob p_u = 1/(2 lambda) + nu sqrt(dt) / (2 sigma sqrt(lambda))
     x -> x       with prob p_m = 1 - 1/lambda
@@ -10,14 +10,16 @@ Phase 3 Block 5. Implements the lambda-parametrised trinomial tree:
 with dx = sigma sqrt(lambda dt) and nu = r - sigma^2/2.
 
 The default lambda = 3 corresponds to (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6),
-the weights of Simpson's rule, which match the third moment of the
-GBM step. For lambda = 1, p_m = 0 and the tree degenerates to a
+the weights of Simpson's rule. The odd moments of the step match for
+any lambda (up to the drift term); the fourth moment is
+lambda sigma^4 dt^2, so lambda = 3 is the value that also matches the
+Gaussian fourth moment 3 sigma^4 dt^2. For lambda = 1, p_m = 0 and the tree degenerates to a
 binomial-equivalent.
 
 The trinomial backward induction is structurally equivalent to the
-FTCS finite-difference scheme of Block 1 with alpha = 1/(2 lambda).
-This is a structural insight, not a coincidence: see Block 5 writeup
-for the explicit identification of coefficients.
+FTCS finite-difference scheme (quantlib.ftcs) with alpha = 1/(2 lambda).
+This is a structural insight, not a coincidence: see
+theory/phase3/trinomial.tex for the explicit identification of coefficients.
 
 References
 ----------
@@ -195,26 +197,3 @@ def trinomial_american_put(S, K, r, sigma, T, *, n_steps,
     _validate_inputs(S, K, r, sigma, T, n_steps, lambda_param)
     return _trinomial_backward(S, K, r, sigma, T, n_steps, lambda_param,
                                 'american_put')
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Hull example 15.6: S=42, K=40, r=0.10, sigma=0.20, T=0.5
-    # BS European call: 4.7594, put: 0.8086
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-    print(f"Hull 15.6: S={S}, K={K}, r={r}, sigma={sigma}, T={T}")
-    print(f"  BS reference: call=4.7594, put=0.8086\n")
-
-    print("Trinomial KR (lambda=3, default):")
-    print(f"  European call (n=2000): "
-          f"{trinomial_european_call(S, K, r, sigma, T, n_steps=2000):.6f}")
-    print(f"  European put  (n=2000): "
-          f"{trinomial_european_put (S, K, r, sigma, T, n_steps=2000):.6f}")
-    print(f"  American put  (n=2000): "
-          f"{trinomial_american_put (S, K, r, sigma, T, n_steps=2000):.6f}")
-    print()
-    print("Trinomial KR (lambda=1, binomial-equivalent):")
-    print(f"  European call (n=2000): "
-          f"{trinomial_european_call(S, K, r, sigma, T, n_steps=2000, lambda_param=1.0):.6f}")

@@ -1,8 +1,8 @@
 """
 American put option pricing by Crank-Nicolson with PSOR.
 
-Phase 3 Block 4. The pricer is built on the theta-scheme infrastructure
-of Block 3 (quantlib.theta_scheme) but replaces the per-step Thomas
+The pricer is built on the theta-scheme infrastructure
+of quantlib.theta_scheme but replaces the per-step Thomas
 solve with a PSOR solve of the discrete LCP
 
     A V^{n+1} >= B V^n + b_bnd
@@ -91,7 +91,7 @@ def _cn_american_march(grid, V0, bc_lower, bc_upper, *,
     iter_counts = np.empty(M, dtype=np.int64)
 
     for n in range(M):
-        # Build RHS: same as in Block 3's theta_march.
+        # Build RHS: same as in theta_scheme.theta_march.
         rhs = (c.gamma_minus * V[0:N-1]
              + c.gamma_zero  * V[1:N]
              + c.gamma_plus  * V[2:N+1])
@@ -193,28 +193,3 @@ def _interpolate_at_spot(grid, V_final, S):
             f"{grid.K * np.exp(grid.x_max):.4f}]."
         )
     return float(np.interp(x_0, grid.xs, V_final))
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Standard ATM American put. Reference value from a high-N CRR
-    # binomial: roughly 5.92 (we will cross-validate in the suite).
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
-    print(f"American put: S={S}, K={K}, r={r}, sigma={sigma}, T={T}")
-
-    price, diag = cn_american_put(
-        S, K, r, sigma, T, N=400, M=200,
-        return_diagnostics=True,
-    )
-    print(f"  CN-PSOR price:           {price:.6f}")
-    print(f"  Total PSOR iterations:   {diag['total_iterations']}")
-    print(f"  Mean iter / time step:   {diag['mean_iter_per_step']:.1f}")
-    print(f"  Max iter / time step:    {diag['max_iter_per_step']}")
-
-    # Cross-check against binomial.
-    from quantlib.american import binomial_american_put
-    p_crr = binomial_american_put(S, K, r, sigma, T, n_steps=2000)
-    print(f"  CRR n=2000 reference:    {p_crr:.6f}")
-    print(f"  |CN-PSOR - CRR|:         {abs(price - p_crr):.4e}")

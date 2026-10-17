@@ -10,18 +10,17 @@ and the reducer.
 Public samplers:
 
 - ``simulate_terminal_gbm``: exact sampler of the terminal price
-  ``S_T`` under GBM, using the closed-form solution of the SDE
-  (Block 1.1).
+  ``S_T`` under GBM, using the closed-form solution of the SDE.
 
 - ``simulate_path_euler``: Euler-Maruyama path sampler returning the
-  full path including the initial value (Block 1.2.1).
+  full path including the initial value.
 - ``simulate_terminal_euler``: convenience that returns only the
-  terminal column of ``simulate_path_euler`` (Block 1.2.1).
+  terminal column of ``simulate_path_euler``.
 
 - ``simulate_path_milstein``: Milstein path sampler returning the
-  full path (Block 1.2.2).
+  full path.
 - ``simulate_terminal_milstein``: terminal-value convenience for
-  Milstein (Block 1.2.2).
+  Milstein.
 
 Public validators (used by the pricers in ``monte_carlo.py``):
 
@@ -33,10 +32,12 @@ Public validators (used by the pricers in ``monte_carlo.py``):
 
 References
 ----------
-Phase 2 Block 0 writeup (foundations); Block 1.1 writeup (exact);
-Block 1.2.0 writeup (SDE discretisation theory); Block 1.2.1 writeup
-(Euler); Block 1.2.2 writeup (Milstein). Glasserman, *Monte Carlo
-Methods in Financial Engineering*, Chapters 1, 3, and 6.
+theory/phase2/monte_carlo_foundations.tex (foundations);
+theory/phase2/mc_european_exact.tex (exact);
+theory/phase2/sde_discretisation.tex (SDE discretisation theory);
+theory/phase2/mc_european_euler.tex (Euler);
+theory/phase2/mc_european_milstein.tex (Milstein). Glasserman, *Monte
+Carlo Methods in Financial Engineering*, Chapters 1, 3, and 6.
 """
 
 import numpy as np
@@ -96,8 +97,9 @@ def _standard_normals(n, rng):
     Inversion is used (rather than the faster Ziggurat method that
     NumPy provides via ``rng.standard_normal``) to maintain
     coordinate-by-coordinate compatibility with low-discrepancy
-    sequences, which will be introduced in Phase 2 Block 3 (QMC).
-    See the Phase 2 Block 0 writeup, Section 3.3, for the rationale.
+    sequences, as used in quantlib.qmc.
+    See theory/phase2/monte_carlo_foundations.tex, Section 3.3, for
+    the rationale.
     """
     u = rng.uniform(size=n)
     return norm.ppf(u)
@@ -122,7 +124,7 @@ def _gbm_exact_from_brownian(S0, r, sigma, T, W_T):
 
 
 # =====================================================================
-# Exact GBM sampler (Block 1.1)
+# Exact GBM sampler
 # =====================================================================
 
 def simulate_terminal_gbm(S0, r, sigma, T, n_paths, rng):
@@ -134,7 +136,7 @@ def simulate_terminal_gbm(S0, r, sigma, T, n_paths, rng):
     with ``Z ~ N(0, 1)`` sampled by inversion. No time-discretisation
     error.
 
-    See Phase 2 Block 1.1 writeup, Section 3.
+    See theory/phase2/mc_european_exact.tex, Section 3.
     """
     validate_model_params(S0, r, sigma, T)
     validate_n_paths(n_paths)
@@ -175,7 +177,7 @@ def _resolve_increments(n_paths, n_steps, h, rng, delta_W):
 
 
 # =====================================================================
-# Euler-Maruyama scheme (Block 1.2.1)
+# Euler-Maruyama scheme
 # =====================================================================
 
 def simulate_path_euler(S0, r, sigma, T, n_steps, n_paths,
@@ -209,7 +211,7 @@ def simulate_path_euler(S0, r, sigma, T, n_steps, n_paths,
     Euler does not preserve positivity in principle: a sufficiently
     negative ``delta_W`` can produce a negative ``S``. For typical
     finance parameters this is astronomically rare and not handled
-    here. See Phase 2 Block 1.2.1 writeup, Section 2.2.
+    here. See theory/phase2/mc_european_euler.tex, Section 2.2.
     """
     validate_model_params(S0, r, sigma, T)
     validate_n_steps(n_steps)
@@ -244,7 +246,7 @@ def simulate_terminal_euler(S0, r, sigma, T, n_steps, n_paths,
 
 
 # =====================================================================
-# Milstein scheme (Block 1.2.2)
+# Milstein scheme
 # =====================================================================
 
 def simulate_path_milstein(S0, r, sigma, T, n_steps, n_paths,
@@ -274,7 +276,7 @@ def simulate_path_milstein(S0, r, sigma, T, n_steps, n_paths,
     ``1 + r*h + sigma*dW_n - 0.5 * sigma^2 * h``. For typical finance
     parameters, neither scheme produces nonpositive prices.
 
-    See Phase 2 Block 1.2.2 writeup.
+    See theory/phase2/mc_european_milstein.tex.
     """
     validate_model_params(S0, r, sigma, T)
     validate_n_steps(n_steps)

@@ -9,7 +9,7 @@ the risk-neutral measure, with two pricing routes:
 
 The characteristic function uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
 "Little Trap" formulation, which avoids the branch-cut issue of the original
-Heston (1993) formulation. See ``theory/phase4/block2_heston_fourier.tex``
+Heston (1993) formulation. See ``theory/phase4/heston_fourier.tex``
 for the derivation and discussion.
 
 Notation
@@ -219,7 +219,7 @@ def heston_call_lewis(K, tau, S0, v0, r, kappa, theta, sigma, rho,
     characteristic function with X_t = 0 (i.e., S_t = 1). This is
     equivalent to the standard Lewis formula but expressed in terms of
     phi_norm rather than the centered char function of log(F_T/F_0); see
-    block2_heston_fourier.tex for the derivation.
+    heston_fourier.tex for the derivation.
 
     For single-strike pricing this typically beats Carr-Madan in both
     accuracy and speed; for many strikes, Carr-Madan FFT wins.

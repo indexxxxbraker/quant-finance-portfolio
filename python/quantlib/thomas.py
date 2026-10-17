@@ -1,7 +1,7 @@
 """
 Thomas algorithm for tridiagonal linear systems.
 
-Phase 3 Block 2. Provides an O(n) solver for systems of the form
+Provides an O(n) solver for systems of the form
 
     diag[0]   sup[0]                                   x[0]   = rhs[0]
     sub[0]    diag[1]   sup[1]                         x[1]   = rhs[1]
@@ -12,7 +12,7 @@ Phase 3 Block 2. Provides an O(n) solver for systems of the form
 The implementation does Gaussian elimination *without pivoting*. This
 is provably backward-stable when the matrix is diagonally dominant
 (|diag[i]| >= |sub[i-1]| + |sup[i]|; Higham 2002 Theorem 9.5). For the
-BTCS application of Block 2, diagonal dominance follows from the grid
+BTCS application in quantlib.btcs, diagonal dominance follows from the grid
 Pe'clet condition |mu| * dx / sigma^2 <= 1, which holds with comfortable
 margin in our parameter range.
 
@@ -245,35 +245,3 @@ def thomas_solve_factored(factor, rhs):
         x[i] = d_prime[i] - factor.c_prime[i] * x[i + 1]
 
     return x
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Hand-checkable 4x4 system. Diagonally dominant.
-    #
-    #   4 -1  0  0   x0    1
-    #  -1  4 -1  0   x1  = 2
-    #   0 -1  4 -1   x2    3
-    #   0  0 -1  4   x3    4
-    #
-    # Reference solution via numpy.linalg.solve:
-    n = 4
-    sub  = np.full(n - 1, -1.0)
-    diag = np.full(n,      4.0)
-    sup  = np.full(n - 1, -1.0)
-    rhs  = np.array([1.0, 2.0, 3.0, 4.0])
-
-    A = np.diag(diag) + np.diag(sup, 1) + np.diag(sub, -1)
-    x_ref = np.linalg.solve(A, rhs)
-    x_thomas = thomas_solve(sub, diag, sup, rhs)
-    factor = thomas_factor(sub, diag, sup)
-    x_factored = thomas_solve_factored(factor, rhs)
-
-    print("4x4 reference test:")
-    print(f"  numpy.linalg.solve:        {x_ref}")
-    print(f"  thomas_solve:              {x_thomas}")
-    print(f"  thomas_solve_factored:     {x_factored}")
-    print(f"  max |thomas - numpy|     = {np.max(np.abs(x_thomas - x_ref)):.2e}")
-    print(f"  max |factored - numpy|   = {np.max(np.abs(x_factored - x_ref)):.2e}")

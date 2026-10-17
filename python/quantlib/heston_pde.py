@@ -23,7 +23,7 @@ The operator splits as L = L_X + L_v + L_Xv. Douglas treats L_Xv
 explicitly and inverts L_X, L_v sequentially, each as a batch of
 tridiagonal systems solved by the Thomas algorithm.
 
-See ``theory/phase4/block5_heston_pde.tex`` for the derivation,
+See ``theory/phase4/heston_pde.tex`` for the derivation,
 boundary condition analysis, and stability discussion.
 
 Public interface
@@ -401,34 +401,3 @@ def heston_call_pde(S0, K, T, kappa, theta, sigma, rho, v0, r,
 
     # Undo the discount substitution: W = e^{r tau} U, V = e^{-r T} W
     return float(np.exp(-r * T) * W_interp)
-
-
-# =====================================================================
-# Smoke test
-# =====================================================================
-
-if __name__ == "__main__":
-    S0, K, T = 100.0, 100.0, 0.5
-    kappa, theta, sigma, rho = 1.5, 0.04, 0.3, -0.7
-    v0, r = 0.04, 0.05
-
-    print("Heston PDE: Douglas ADI smoke test")
-    print(f"S0={S0}, K={K}, T={T}, r={r}")
-    print(f"kappa={kappa}, theta={theta}, sigma={sigma}, "
-          f"rho={rho}, v0={v0}\n")
-
-    import time
-    for (N_X, N_v, N_tau) in [(50, 25, 50), (100, 50, 100), (200, 100, 200)]:
-        t0 = time.time()
-        price = heston_call_pde(S0, K, T, kappa, theta, sigma, rho, v0, r,
-                                  N_X, N_v, N_tau)
-        elapsed = time.time() - t0
-        print(f"N_X={N_X:>3}, N_v={N_v:>3}, N_tau={N_tau:>3}: "
-              f"PDE = {price:.6f}  ({elapsed:.2f}s)")
-
-    try:
-        from quantlib.heston_fourier import heston_call_lewis
-        C_ref = heston_call_lewis(K, T, S0, v0, r, kappa, theta, sigma, rho)
-        print(f"\nFourier reference: {C_ref:.6f}")
-    except ImportError:
-        pass

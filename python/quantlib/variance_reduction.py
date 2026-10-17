@@ -11,22 +11,22 @@ are problem-specific optimisations.
 Currently implemented:
 
 - ``mc_european_call_exact_av``: antithetic-variates pricer for the
-  European call under exact GBM (Block 2.1).
+  European call under exact GBM.
 
 - ``mc_european_call_exact_cv_underlying``: control-variate pricer
   using the discounted underlying e^{-rT} S_T as the control.
-  Expectation S_0 by the martingale property (Block 2.2).
+  Expectation S_0 by the martingale property.
 
 - ``mc_european_call_exact_cv_aon``: control-variate pricer using the
   discounted asset-or-nothing payoff e^{-rT} S_T * 1_{S_T > K}.
-  Expectation S_0 * Phi(d_1) from the BS formula building block
-  (Block 2.2).
+  Expectation S_0 * Phi(d_1) from the BS formula building block.
 
 References
 ----------
-Phase 2 Block 2.0 writeup (foundations); Block 2.1 writeup (AV);
-Block 2.2 writeup (CV). Glasserman, *Monte Carlo Methods in
-Financial Engineering*, Sections 4.1 and 4.2.
+theory/phase2/variance_reduction_foundations.tex (foundations);
+theory/phase2/mc_european_av.tex (AV); theory/phase2/mc_european_cv.tex
+(CV). Glasserman, *Monte Carlo Methods in Financial Engineering*,
+Sections 4.1 and 4.2.
 """
 
 import numpy as np
@@ -42,7 +42,7 @@ from quantlib.monte_carlo import mc_estimator, _resolve_rng
 
 
 # =====================================================================
-# Antithetic-variates pricer (Block 2.1)
+# Antithetic-variates pricer
 # =====================================================================
 
 def mc_european_call_exact_av(S, K, r, sigma, T, n_paths,
@@ -57,7 +57,7 @@ def mc_european_call_exact_av(S, K, r, sigma, T, n_paths,
     where f(z) = e^{-rT} * max(S_0 * exp((r-0.5*sigma^2)*T + sigma*sqrt(T)*z) - K, 0)
     and Z_i ~ N(0, 1) i.i.d. across i.
 
-    See Phase 2 Block 2.1 writeup for the derivation and the
+    See theory/phase2/mc_european_av.tex for the derivation and the
     moneyness-dependent prediction of VRF.
     """
     validate_model_params(S, r, sigma, T)
@@ -85,7 +85,7 @@ def mc_european_call_exact_av(S, K, r, sigma, T, n_paths,
 
 
 # =====================================================================
-# Control-variates: shared helper (Block 2.2)
+# Control-variates: shared helper
 # =====================================================================
 
 def _apply_cv(Y, X, EX, confidence_level):
@@ -114,8 +114,8 @@ def _apply_cv(Y, X, EX, confidence_level):
     For the empirical c_hat used here, the estimator picks up an
     O(1/M) bias from the correlation between c_hat and the Y_i;
     this is asymptotically negligible compared to the standard
-    error O(1/sqrt(M)). See Phase 2 Block 2.0 writeup,
-    Proposition 4.4.
+    error O(1/sqrt(M)). See
+    theory/phase2/variance_reduction_foundations.tex, Proposition 4.4.
     """
     Y = np.asarray(Y, dtype=np.float64)
     X = np.asarray(X, dtype=np.float64)
@@ -146,7 +146,7 @@ def _apply_cv(Y, X, EX, confidence_level):
 
 
 # =====================================================================
-# Control-variates: discounted underlying (Block 2.2)
+# Control-variates: discounted underlying
 # =====================================================================
 
 def mc_european_call_exact_cv_underlying(S, K, r, sigma, T, n_paths,
@@ -163,10 +163,9 @@ def mc_european_call_exact_cv_underlying(S, K, r, sigma, T, n_paths,
     Adjusted estimator: Y_tilde_i = Y_i - c_hat * (X_i - S_0),
     where c_hat is the OLS slope of Y on X.
 
-    The correlation rho_1 = Corr(Y, X_1) is moderate for European
-    calls (the call is constant on the OTM half of paths but X_1 is
-    not), giving a predicted VRF of approximately 1.4-2.0 at the ATM
-    point. See Phase 2 Block 2.2 writeup, Section 2.
+    At the ATM point rho_1 = Corr(Y, X_1) is about 0.92, which gives
+    VRF = 1 / (1 - rho_1^2) of about 6.9. See
+    theory/phase2/mc_european_cv.tex, Sections 2 and 4.
 
     Parameters and return value mirror ``mc_european_call_exact``.
     """
@@ -193,7 +192,7 @@ def mc_european_call_exact_cv_underlying(S, K, r, sigma, T, n_paths,
 
 
 # =====================================================================
-# Control-variates: asset-or-nothing payoff (Block 2.2)
+# Control-variates: asset-or-nothing payoff
 # =====================================================================
 
 def mc_european_call_exact_cv_aon(S, K, r, sigma, T, n_paths,
@@ -210,10 +209,12 @@ def mc_european_call_exact_cv_aon(S, K, r, sigma, T, n_paths,
 
     Adjusted estimator: Y_tilde_i = Y_i - c_hat * (X_i - S_0 * Phi(d_1)).
 
-    The control matches the target on its two structural features:
-    zero on {S_T <= K} and linear on {S_T > K}. The correlation
-    rho_2 is typically > 0.95, giving VRF >= 10. See Phase 2 Block
-    2.2 writeup, Section 3.
+    The control matches the target's shape (zero on {S_T <= K}, linear
+    on {S_T > K}), but X_2 - Y = K e^{-rT} 1{S_T > K} adds the variance
+    of a digital payoff that the call does not have. At the ATM point
+    rho_2 is only about 0.77 (VRF about 2.5), so this control is weaker
+    than the underlying. See theory/phase2/mc_european_cv.tex,
+    Sections 3 and 4.
 
     Parameters and return value mirror ``mc_european_call_exact``.
     """
@@ -238,35 +239,3 @@ def mc_european_call_exact_cv_aon(S, K, r, sigma, T, n_paths,
     EX = float(S * norm.cdf(d1))
 
     return _apply_cv(Y, X, EX, confidence_level)
-
-
-# =====================================================================
-# Smoke test entry point (run via `python -m quantlib.variance_reduction`)
-# =====================================================================
-
-if __name__ == "__main__":
-    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.00
-
-    # AV pricer.
-    result_av = mc_european_call_exact_av(
-        S, K, r, sigma, T, n_paths=50_000, seed=42,
-    )
-    print(f"AV MC pricer (Block 2.1, n_pairs=50000):")
-    print(f"  estimate    : {result_av.estimate:.6f}")
-    print(f"  half-width  : {result_av.half_width:.6f}\n")
-
-    # CV pricer with control 1: discounted underlying.
-    result_cv1 = mc_european_call_exact_cv_underlying(
-        S, K, r, sigma, T, n_paths=100_000, seed=42,
-    )
-    print(f"CV MC pricer (Block 2.2, control=underlying, n_paths=100000):")
-    print(f"  estimate    : {result_cv1.estimate:.6f}")
-    print(f"  half-width  : {result_cv1.half_width:.6f}\n")
-
-    # CV pricer with control 2: asset-or-nothing.
-    result_cv2 = mc_european_call_exact_cv_aon(
-        S, K, r, sigma, T, n_paths=100_000, seed=42,
-    )
-    print(f"CV MC pricer (Block 2.2, control=AON, n_paths=100000):")
-    print(f"  estimate    : {result_cv2.estimate:.6f}")
-    print(f"  half-width  : {result_cv2.half_width:.6f}")

@@ -2,13 +2,13 @@
 Explicit Forward-Time Centred-Space (FTCS) finite-difference pricer for
 European calls and puts.
 
-Phase 3 Block 1. Built on top of the grid infrastructure of Block 0
+Built on top of the finite-difference grid infrastructure
 (quantlib.pde). The pricer marches the discrete Black-Scholes PDE
 forward in tau = T - t from the payoff at tau = 0 to the price at
 tau = T, then interpolates at the user-supplied spot S to recover
 V(S, 0).
 
-The transformed BS PDE solved by all schemes of Phase 3 is
+The transformed BS PDE solved by all finite-difference schemes is
 
     V_tau = (sigma^2 / 2) V_xx + mu V_x - r V,    mu = r - sigma^2 / 2,
 
@@ -27,7 +27,7 @@ where alpha = (sigma^2 / 2) * dtau / dx^2 is the Fourier number.
 
 Stability: alpha <= 1/2 is required (CFL). The pricer enforces this
 strictly and raises ValueError otherwise. See
-theory/phase3/block1_ftcs.tex for the full analysis.
+theory/phase3/ftcs.tex for the full analysis.
 """
 
 import numpy as np
@@ -220,31 +220,3 @@ def ftcs_min_M_for_cfl(*, N, T, sigma, n_sigma=4.0, target_alpha=0.4):
     dx = 2.0 * half_width / N
     dtau_max = 2.0 * target_alpha * dx ** 2 / sigma ** 2
     return int(np.ceil(T / dtau_max))
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Hull example 15.6: S = 42, K = 40, r = 0.10, sigma = 0.20, T = 0.5.
-    # Closed-form BS price: call = 4.7594, put = 0.8086.
-    S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
-
-    N = 200
-    M = ftcs_min_M_for_cfl(N=N, T=T, sigma=sigma, target_alpha=0.4)
-    print(f"Hull example 15.6: S={S}, K={K}, r={r}, sigma={sigma}, T={T}")
-    print(f"Grid: N={N}, M={M} (target_alpha=0.4)\n")
-
-    c = ftcs_european_call(S, K, r, sigma, T, N=N, M=M)
-    p = ftcs_european_put (S, K, r, sigma, T, N=N, M=M)
-
-    print(f"FTCS call price : {c:.6f}  (BS reference 4.7594)")
-    print(f"FTCS put  price : {p:.6f}  (BS reference 0.8086)")
-
-    # Put-call parity check: C - P = S - K * exp(-r * T).
-    parity_lhs = c - p
-    parity_rhs = S - K * np.exp(-r * T)
-    print(f"\nPut-call parity:")
-    print(f"  C - P              = {parity_lhs:.6f}")
-    print(f"  S - K * exp(-r*T)  = {parity_rhs:.6f}")
-    print(f"  difference         = {parity_lhs - parity_rhs:.2e}")
