@@ -101,5 +101,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(quant_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-enable_testing()
-add_test(NAME black_scholes_tests COMMAND quant_tests)
+# Register every Catch2 TEST_CASE with CTest individually, so that
+# `ctest --output-on-failure` reports failures by name.
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(CTest)
+include(Catch)
+catch_discover_tests(quant_tests)
