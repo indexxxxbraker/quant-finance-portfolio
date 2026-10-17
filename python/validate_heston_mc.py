@@ -4,7 +4,7 @@ validate_heston_mc.py
 
 Validation suite for the Heston Monte Carlo pricer in
 ``quantlib.heston_mc``. Implements the four-pillar validation
-described in ``theory/phase4/block3_heston_mc_basic.tex``, Section 6:
+described in ``theory/phase4/heston_mc_euler.tex``, Section 6:
 
     1. Black-Scholes limit:       sigma -> 0 reduces Heston to BS.
     2. Cross-method consistency:  Heston MC matches Fourier reference
@@ -15,10 +15,10 @@ described in ``theory/phase4/block3_heston_mc_basic.tex``, Section 6:
     4. Antithetic variance reduction: paired payoffs reduce sample
                                       variance vs plain MC.
 
-The Fourier pricer of Block 2 is the ground truth: it is bias-free
-(modulo numerical quadrature error of order 1e-6, well below typical
-MC half-widths), so any MC estimate falling within its half-width of
-the Fourier price counts as agreement.
+The Fourier pricer (quantlib.heston_fourier) is the ground truth: it
+is bias-free (modulo numerical quadrature error of order 1e-6, well
+below typical MC half-widths), so any MC estimate falling within its
+half-width of the Fourier price counts as agreement.
 
 Run from the ``python/`` directory:
 
@@ -94,9 +94,11 @@ def test_bs_limit():
     The reduction is in distribution: the Heston variance becomes
     deterministic and equal to v_0, and S_T becomes lognormal with the
     BS parameters. At small but nonzero sigma_H, the leverage effect
-    introduces a linear-in-sigma_H bias (see Block 2 manual chapter,
-    Numerical Lesson 3); we use sigma_H = 0.01 as the sweet spot
-    between bias and numerical precision.
+    introduces a bias that is linear in sigma_H (the first-order
+    correction to the Black-Scholes price is proportional to rho * sigma_H;
+    the limit itself is discussed in theory/phase4/heston_fourier.tex).
+    We use sigma_H = 0.01 as a compromise between that bias and the
+    Monte Carlo error.
     """
     print("Test 1: Black-Scholes limit (sigma -> 0)")
 

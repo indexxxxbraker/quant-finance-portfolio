@@ -22,9 +22,9 @@ pillars:
                                 barrier knockout probability also
                                 changes monotonically with n_steps.
 
-The Fourier pricer of Block 2 is the ground truth for the European
-limits; the European put is computed via put-call parity from the
-Fourier call.
+The Fourier pricer (quantlib.heston_fourier) is the ground truth for
+the European limits; the European put is computed via put-call parity
+from the Fourier call.
 
 Run from the ``python/`` directory:
 

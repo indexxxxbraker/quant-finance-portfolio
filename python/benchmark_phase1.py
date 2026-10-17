@@ -1,6 +1,6 @@
 """
-Phase 1 benchmark: reproducible visual artifacts for the Black-Scholes
-pricer, the Greeks, and the implied-volatility solver.
+Black-Scholes benchmark: reproducible visual artifacts for the pricer,
+the Greeks, and the implied-volatility solver.
 
 Run from the repository root:
     python python/benchmark_phase1.py
@@ -329,7 +329,7 @@ def build_iv_recovery(verbose: bool = True):
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate reproducible visual artifacts for Phase 1.")
+        description="Generate reproducible Black-Scholes visual artifacts.")
     parser.add_argument(
         "--seed", type=int, default=42,
         help="Seed for the random tuples in the put-call parity figure "

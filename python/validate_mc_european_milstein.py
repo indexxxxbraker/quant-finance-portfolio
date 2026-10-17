@@ -1,14 +1,14 @@
 """Validation suite for the Milstein Monte Carlo pricer of the
 European call under geometric Brownian motion.
 
-Implements four tests as in Phase 2 Block 1.2.2 writeup, Section 4.
+Implements four tests as in theory/phase2/mc_european_milstein.tex, Section 4.
 
 The most distinctive of these is Test 1, which runs Euler and
 Milstein on the *same* grid of step sizes and on the *same* Brownian
 paths, and reports both fitted slopes side by side. The expected
 result is slope +0.5 for Euler and slope +1.0 for Milstein, the
 direct empirical confirmation of the strong-order asymmetry that is
-the conceptual heart of Block 1.2.
+the conceptual heart of SDE discretisation theory.
 
 Run from python/:
 
@@ -120,7 +120,7 @@ def test_strong_order_side_by_side() -> bool:
 def test_weak_order() -> bool:
     """Verify weak order 1 of Milstein on the call payoff.
 
-    Same CRN methodology as the Block 1.2.1 weak order test: drive
+    Same CRN methodology as the Euler-Maruyama weak order test: drive
     both Milstein and exact with the same Brownian path, look at
     the pathwise difference of payoffs.
     """

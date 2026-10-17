@@ -9,7 +9,7 @@ Implements four tests for each of the two controls:
 
   Test 1: empirical correlation Corr(Y, X) and VRF = 1/(1 - rho^2),
           measured on a single large sample. Checks the predicted
-          ranges from the Block 2.2 writeup.
+          ranges from theory/phase2/mc_european_cv.tex.
 
   Test 2: BS coherence within a few half-widths.
 
@@ -48,7 +48,7 @@ BS_PRICE = call_price(S0, K, r, sigma, T)
 def test_empirical_rho_and_vrf() -> bool:
     """Measure Corr(Y, X) for both controls and compute predicted VRF.
 
-    Predictions (from Block 2.2 writeup, Section 4):
+    Predictions (from theory/phase2/mc_european_cv.tex, Section 4):
       Control 1 (underlying):  rho approx 0.92, VRF approx 6.9.
       Control 2 (AON):         rho approx 0.77, VRF approx 2.5.
 

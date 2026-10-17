@@ -1,7 +1,7 @@
 """Validation suite for the Monte Carlo European call pricer with
 exact GBM simulation.
 
-Triangulated validation (Phase 2 Block 1.1 writeup, Section 6):
+Triangulated validation (theory/phase2/mc_european_exact.tex, Section 6):
 
     Test 1: containment frequency of the BS price by the MC CI.
     Test 2: empirical convergence rate (slope -1/2 in log-log).

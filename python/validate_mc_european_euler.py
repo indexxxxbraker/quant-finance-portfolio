@@ -1,7 +1,7 @@
 """Validation suite for the Euler-Maruyama Monte Carlo pricer of the
 European call under geometric Brownian motion.
 
-Implements the four tests of Phase 2 Block 1.2.1 writeup, Section 4:
+Implements the four tests of theory/phase2/mc_european_euler.tex, Section 4:
 
     Test 1: empirical strong order. Slope -1/2 in log-log of
             E[|S_T_exact - S_T_euler|] vs h.
@@ -106,8 +106,8 @@ def test_weak_order() -> bool:
     paths, which has dramatically smaller variance than estimating
     each estimator independently and subtracting.
 
-    See Block 1.2.1 writeup, Section 4.3, for the variance argument
-    that motivates CRN here.
+    See theory/phase2/mc_european_euler.tex, Section 4.3, for the
+    variance argument that motivates CRN here.
     """
     print("\n" + "=" * 68)
     print("TEST 2: Empirical weak order under CRN (expected slope = -1)")

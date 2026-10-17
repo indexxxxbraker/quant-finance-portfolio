@@ -1,6 +1,5 @@
 """
-Validation script for the FTCS finite-difference pricer of Phase 3
-Block 1.
+Validation script for the FTCS finite-difference pricer.
 
 Performs five checks:
 
@@ -260,7 +259,7 @@ def test_explosion_demo():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 1 - FTCS pricer validation")
+    print("FTCS pricer validation")
     print("=" * 72)
 
     test_cross_validation()

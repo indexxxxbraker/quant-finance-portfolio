@@ -1,7 +1,7 @@
 """Validation suite for the antithetic-variates pricer of the
 European call under exact GBM.
 
-Implements four tests as in Phase 2 Block 2.1 writeup, Section 5:
+Implements four tests as in theory/phase2/mc_european_av.tex, Section 5:
 
   Test 1: empirical variance reduction factor (VRF), measuring the
           correlation Corr(f(Z), f(-Z)) and computing the predicted

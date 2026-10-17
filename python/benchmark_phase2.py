@@ -1,9 +1,9 @@
 """
-Phase 2 Block 6 - Final benchmark.
+Monte Carlo benchmark.
 
 Orchestrates the variance-reduction techniques, SDE schemes, and
-QMC samplers of Phase 2 to produce reproducible visual artefacts
-of the headline results.
+QMC samplers to produce reproducible visual artefacts of the
+headline results.
 
 Outputs:
   - vr_scoreboard.png + vr_scoreboard.csv
@@ -456,7 +456,7 @@ def plot_strong_convergence(results: Dict[str, Tuple[List[float],
                   r"$\sqrt{\,\mathbb{E}[\,(S_T^{\Delta t}"
                   r" - S_T^{\mathrm{exact}})^2\,]\,}$",
                   fontsize=11)
-    ax.set_title("Phase 2: Euler vs Milstein strong convergence "
+    ax.set_title("Euler vs Milstein strong convergence "
                  "(Brownian-coupled paths)",
                  fontsize=12)
     ax.grid(True, which="both", alpha=0.3)
@@ -580,7 +580,7 @@ def plot_qmc_vs_mc(results: Dict[str, Tuple[List[int], List[float]]]
     ax.set_ylabel("RMS error vs Black-Scholes "
                   f"(over {N_SEEDS_QMC} seeds)",
                   fontsize=11)
-    ax.set_title("Phase 2: convergence rate of IID MC vs Sobol RQMC",
+    ax.set_title("Convergence rate of IID MC vs Sobol RQMC",
                  fontsize=12)
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(loc="lower left", fontsize=9)
@@ -610,7 +610,7 @@ def plot_qmc_vs_mc(results: Dict[str, Tuple[List[int], List[float]]]
 # ==========================================================================
 def main() -> None:
     t_start = time.perf_counter()
-    print(f"Phase 2 Block 6 - Final benchmark")
+    print(f"Monte Carlo benchmark")
     print(f"Output directory: {RESULTS_DIR}")
 
     # --- Artefact 1 ---

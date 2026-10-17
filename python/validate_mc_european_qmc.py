@@ -1,5 +1,4 @@
-"""Validation suite for the QMC and RQMC European call pricers
-(Phase 2 Block 3.1).
+"""Validation suite for the QMC and RQMC European call pricers.
 
 Implements four tests:
 
@@ -304,7 +303,7 @@ def test_input_validation() -> bool:
 
 def main():
     print("\n" + "=" * 78)
-    print("VALIDATION: Phase 2 Block 3.1 -- QMC and RQMC pricers")
+    print("VALIDATION: QMC and RQMC pricers")
     print("=" * 78)
     print(f"\nParameters: S = {S0}, K = {K}, r = {r}, sigma = {sigma}, T = {T}")
     print(f"Discretisation: Euler with N = {N_STEPS} steps")

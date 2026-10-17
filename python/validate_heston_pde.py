@@ -13,7 +13,7 @@ Implements a four-pillar validation:
     4. Sanity vs QE:            PDE and QE Monte Carlo agree within
                                  the MC half-width.
 
-The Fourier pricer of Block 2 is the bias-free ground truth.
+The Fourier pricer (quantlib.heston_fourier) is the bias-free ground truth.
 
 Run from the ``python/`` directory:
 
@@ -92,8 +92,8 @@ def test_bs_limit():
     )
     err = abs(price - C_bs)
 
-    # Tolerance: same logic as in Block 3, but here the PDE bias is
-    # deterministic (~ 0.005 at this grid), so 0.05 is comfortable.
+    # Tolerance: same logic as in validate_heston_mc.py, but here the PDE
+    # bias is deterministic (~ 0.005 at this grid), so 0.05 is comfortable.
     return [report(
         "PDE (sigma=0.01) close to BS",
         err < 0.05,

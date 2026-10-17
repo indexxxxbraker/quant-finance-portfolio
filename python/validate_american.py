@@ -1,4 +1,4 @@
-"""Validation suite for the American-option pricers (Phase 2 Block 6).
+"""Validation suite for the American-option pricers.
 
 Implements four tests:
 
@@ -182,7 +182,7 @@ def test_input_validation():
 
 def main():
     print("\n" + "=" * 78)
-    print("VALIDATION: Phase 2 Block 6 -- American options")
+    print("VALIDATION: American options")
     print("=" * 78)
     print(f"\nParameters: S = {S0}, K = {K}, r = {r}, sigma = {sigma}, T = {T}")
 

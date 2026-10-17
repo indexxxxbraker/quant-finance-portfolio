@@ -1,8 +1,8 @@
 """
-Phase 3 Block 6 - Final benchmark.
+Finite-difference and lattice benchmark.
 
-Orchestrates all available pricers in `quantlib` to produce the closing
-report of Phase 3:
+Orchestrates all available pricers in `quantlib` to produce the
+finite-difference and lattice benchmark report:
 
   - Section 1: pricing comparison at canonical and stress cases
   - Section 2: convergence study (log-log plots)
@@ -35,7 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # --------------------------------------------------------------------------
-# Pricer imports (verified by preflight_phase3.py)
+# Pricer imports
 # --------------------------------------------------------------------------
 from quantlib.black_scholes import call_price as bs_call, put_price as bs_put
 from quantlib.monte_carlo import (
@@ -564,7 +564,7 @@ def plot_convergence(eur_results: dict, amer_results: dict) -> None:
             add_ref_line(ax, xs, ys[0], -0.5, "slope -1/2")
     ax.legend(fontsize=8, loc="best")
 
-    fig.suptitle("Phase 3 Block 6: convergence study (canonical case)")
+    fig.suptitle("Convergence study (canonical case)")
     fig.tight_layout()
     out = RESULTS_DIR / "convergence.png"
     fig.savefig(out, dpi=120, bbox_inches="tight")
@@ -606,7 +606,7 @@ def plot_cost_precision(eur_run: dict, amer_run: dict) -> None:
         ax.grid(True, which="both", alpha=0.3)
         ax.legend(fontsize=7, loc="best")
 
-    fig.suptitle("Phase 3 Block 6: cost-precision frontier (canonical)")
+    fig.suptitle("Cost-precision frontier (canonical case)")
     fig.tight_layout()
     out = RESULTS_DIR / "cost_precision.png"
     fig.savefig(out, dpi=120, bbox_inches="tight")
@@ -817,7 +817,7 @@ def save_convergence_csv(eur: dict, amer: dict) -> None:
 # ==========================================================================
 def main():
     t_start = time.perf_counter()
-    print(f"Phase 3 Block 6 - Final benchmark")
+    print(f"Finite-difference and lattice benchmark")
     print(f"Output directory: {RESULTS_DIR}")
 
     # ----- References -----

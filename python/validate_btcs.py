@@ -177,7 +177,7 @@ def test_unconditional_stability():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 2 - BTCS pricer validation")
+    print("BTCS pricer validation")
     print("=" * 72)
 
     test_cross_validation()

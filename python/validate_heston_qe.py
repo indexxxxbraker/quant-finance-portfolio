@@ -12,13 +12,13 @@ Validation suite for the Heston QE Monte Carlo pricer in
                                   constant.
     4. Antithetic variance reduction.
     5. Bias comparison vs FT-Euler:  the central empirical claim of
-                                     the block. QE should have bias
+                                     the QE scheme. QE should have bias
                                      substantially smaller than FT-Euler
                                      at the same (n_steps, n_paths),
                                      especially in the low-Feller
                                      regime.
 
-The Fourier pricer of Block 2 is the ground truth.
+The Fourier pricer (quantlib.heston_fourier) is the ground truth.
 
 Run from the ``python/`` directory:
 
@@ -239,7 +239,7 @@ def test_antithetic():
 # =====================================================================
 
 def test_bias_vs_fte():
-    """The central empirical claim of Block 4: QE has bias substantially
+    """The central empirical claim of the QE scheme: QE has bias substantially
     smaller than full-truncation Euler at the same (n_steps, n_paths),
     most dramatically so in the low-Feller regime.
 

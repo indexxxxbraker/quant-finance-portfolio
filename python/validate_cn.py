@@ -1,5 +1,5 @@
 """
-Validation script for the Crank-Nicolson pricer of Phase 3 Block 3.
+Validation script for the Crank-Nicolson pricer.
 
 Six checks:
 
@@ -11,7 +11,7 @@ Six checks:
    the kink: the ratio drops from ~4 toward ~2. This is the empirical
    evidence of the strike-induced oscillation phenomenon.
 4. Reproduction of BTCS via theta_march with theta=1: the generic
-   stepper agrees with the dedicated BTCS pricer of Block 2 to
+   stepper agrees with the dedicated BTCS pricer in quantlib.btcs to
    round-off.
 5. Put-call parity holds.
 6. Input validation.
@@ -117,7 +117,8 @@ def test_quadratic_time_convergence():
 
 def test_kink_oscillation_signature():
     """Without Rannacher, the kink artefact degrades convergence
-    toward first order. This is the empirical signature of Block 3.
+    toward first order. This is the empirical signature that motivates
+    Rannacher smoothing.
     """
     print("[3] CN without Rannacher: degraded convergence (kink artefact)")
     S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
@@ -151,7 +152,7 @@ def test_kink_oscillation_signature():
 
 
 def test_btcs_reproduced_via_theta_scheme():
-    """theta_march(theta=1) should reproduce Block 2's BTCS pricer."""
+    """theta_march(theta=1) should reproduce the quantlib.btcs pricer."""
     print("[4] Reproduction of BTCS via theta-scheme with theta=1")
     S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
     K_, N, M = 100.0, 200, 800
@@ -222,7 +223,7 @@ def test_input_validation():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 3 - CN pricer validation")
+    print("CN pricer validation")
     print("=" * 72)
 
     test_cross_validation()

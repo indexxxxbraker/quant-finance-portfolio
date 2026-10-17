@@ -212,7 +212,7 @@ def test_max_iter_exceeded():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 4 - PSOR solver validation")
+    print("PSOR solver validation")
     print("=" * 72)
 
     test_unconstrained_matches_linear_solve()

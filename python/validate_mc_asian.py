@@ -1,4 +1,4 @@
-"""Validation suite for the Asian-option pricers (Phase 2 Block 5).
+"""Validation suite for the Asian-option pricers.
 
 Implements four tests:
 
@@ -185,7 +185,7 @@ def test_input_validation() -> bool:
 
 def main():
     print("\n" + "=" * 78)
-    print("VALIDATION: Phase 2 Block 5 -- Asian options by Monte Carlo")
+    print("VALIDATION: Asian options by Monte Carlo")
     print("=" * 78)
     print(f"\nParameters: S = {S0}, K = {K}, r = {r}, sigma = {sigma}, T = {T}, N = {N}")
 

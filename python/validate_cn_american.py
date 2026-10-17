@@ -3,7 +3,8 @@ Validation script for the CN-American put pricer.
 
 Seven checks:
 
-1. Cross-validation against the CRR binomial reference (Phase 2 Block 6).
+1. Cross-validation against the CRR binomial reference (as in
+   quantlib.american).
 2. American put price >= European put price at every spot.
 3. Spatial refinement reduces the error toward the CRR reference
    (qualitative monotonic decrease over a moderate bracket; American
@@ -44,7 +45,7 @@ def check(label, condition, *, detail=""):
 
 # ---------------------------------------------------------------------------
 # Reference: standalone CRR binomial American put. Independent of any
-# Phase 2 imports so the validator stands on its own.
+# quantlib.american imports so the validator stands on its own.
 # ---------------------------------------------------------------------------
 def crr_american_put(S, K, r, sigma, T, n_steps):
     dt = T / n_steps
@@ -249,7 +250,7 @@ def test_input_validation():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 4 - CN-American put pricer validation")
+    print("CN-American put pricer validation")
     print("=" * 72)
 
     test_cross_validation_crr()

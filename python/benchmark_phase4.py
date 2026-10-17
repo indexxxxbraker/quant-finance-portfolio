@@ -1,18 +1,18 @@
 """
-Phase 4 Block 7 - Final benchmark.
+Heston benchmark.
 
 Orchestrates all Heston pricers in `quantlib` to produce reproducible
 artifacts in python/results/phase4/ demonstrating:
 
-  - Section 1 (essential): cross-validation of 4 pricing methods
+  - Section 1: cross-validation of 4 pricing methods
         (Fourier, MC Euler, MC QE, PDE ADI) at K in [80, 120]
-  - Section 2 (essential): calibration to synthetic noisy vol surface
+  - Section 2: calibration to synthetic noisy vol surface
         (LM with vega weighting, 4 maturities)
-  - Section 3 (essential): empirical verification of PDE O(h^2)
+  - Section 3: empirical verification of PDE O(h^2)
         convergence rate (log-log)
-  - Section 4 (optional):  exotic option prices (Asian, Lookback,
+  - Section 4: exotic option prices (Asian, Lookback,
         Barrier up-and-out, American put)
-  - Section 5 (optional):  Andersen QE vs full-truncation Euler bias
+  - Section 5: Andersen QE vs full-truncation Euler bias
         as a function of n_steps
 
 Outputs: per-section CSV (machine-readable) and PNG (presentation) in
@@ -861,7 +861,7 @@ def save_qe_vs_euler_csv(rows, ref):
 
 def main():
     t_start = time.perf_counter()
-    print(f"Phase 4 Block 7 - Final benchmark")
+    print(f"Heston benchmark")
     print(f"Output directory: {RESULTS_DIR}")
 
     # Section 1: cross-validation

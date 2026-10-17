@@ -1,5 +1,5 @@
 """
-Validation script for the Phase 3 Block 0 grid infrastructure.
+Validation script for the finite-difference grid infrastructure.
 
 Runs the following checks:
 
@@ -254,7 +254,7 @@ def test_input_validation():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 0 - Grid infrastructure validation")
+    print("Grid infrastructure validation")
     print("=" * 72)
 
     test_grid_construction()

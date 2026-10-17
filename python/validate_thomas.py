@@ -210,7 +210,7 @@ def test_input_validation():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 2 - Thomas algorithm validation")
+    print("Thomas algorithm validation")
     print("=" * 72)
 
     test_random_systems()

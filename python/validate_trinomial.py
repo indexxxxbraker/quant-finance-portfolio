@@ -46,7 +46,8 @@ def check(label, condition, *, detail=""):
 
 # ---------------------------------------------------------------------------
 # Reference: standalone CRR American put for cross-validation. Same
-# pattern as Block 4: keeps the test independent of any other module.
+# pattern as validate_cn_american.py: keeps the test independent of
+# any other module.
 # ---------------------------------------------------------------------------
 def crr_american_put(S, K, r, sigma, T, n_steps):
     dt = T / n_steps
@@ -236,7 +237,7 @@ def test_input_validation():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
-    print("Phase 3 Block 5 - Trinomial KR pricer validation")
+    print("Trinomial KR pricer validation")
     print("=" * 72)
 
     test_european_cross_validation()

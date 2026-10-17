@@ -1,4 +1,4 @@
-"""Validation suite for the Monte Carlo Greeks (Phase 2 Block 4).
+"""Validation suite for the Monte Carlo Greeks.
 
 Implements four tests:
 
@@ -219,7 +219,7 @@ def test_input_validation() -> bool:
 
 def main():
     print("\n" + "=" * 78)
-    print("VALIDATION: Phase 2 Block 4 -- Greeks by Monte Carlo")
+    print("VALIDATION: Greeks by Monte Carlo")
     print("=" * 78)
     print(f"\nParameters: S = {S0}, K = {K}, r = {r}, sigma = {sigma}, T = {T}")
 
