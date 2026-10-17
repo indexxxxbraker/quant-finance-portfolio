@@ -378,10 +378,10 @@ within twice the discretisation tolerance;
 exception.
 \end{enumerate}
 
-A separate diagnostic script, \texttt{demo\_ftcs\_explosion.py},
-disables the CFL check and runs the scheme at $\alpha = 0.6$, to
-visualise the sawtooth instability mode. The output is documented in
-the manual personal as the first finite-difference numerical lesson.
+A final diagnostic in \texttt{validate\_ftcs.py} disables the CFL check
+and runs the scheme at $\alpha \approx 0.6$ to show the sawtooth
+instability mode: the error at the highest grid frequency grows without
+bound, as predicted by the von Neumann analysis.
 
 % =====================================================================
 \section*{References}
