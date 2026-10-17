@@ -1,6 +1,6 @@
 // cn.hpp
 //
-// Phase 3 Block 3: Crank-Nicolson finite-difference pricer for
+// Crank-Nicolson finite-difference pricer for
 // European options under Black-Scholes, with Rannacher time-stepping
 // to suppress strike-induced oscillations.
 //

@@ -1,6 +1,6 @@
 // test_heston_american_pde.cpp
 //
-// Catch2 tests for the Heston American put PDE pricer of Phase 4 Block 6.
+// Catch2 tests for the Heston American put PDE pricer.
 //
 // Without a Fourier ground truth for American options, the tests focus
 // on structural bounds and limit cases:
@@ -96,7 +96,7 @@ TEST_CASE("American put: deep OTM close to European",
 
 TEST_CASE("American put: spatial convergence with halving",
           "[heston_american][convergence]") {
-    // The same halving pattern as Block 5: doubling N_X and N_v
+    // The same halving pattern as test_heston_pde.cpp: doubling N_X and N_v
     // should reduce error in successive estimates by a factor close
     // to 4. We do not have a Fourier truth for the American put, so
     // we use the finest grid as a pseudo-truth and check that
@@ -127,7 +127,7 @@ TEST_CASE("American put: spatial convergence with halving",
     SECTION("ratio close to 4 (consistent with O(h^2) on smooth region)") {
         // The American projection introduces non-smoothness near the
         // exercise boundary, so the ratio may be < 4. Allow a wider
-        // window than Block 5.
+        // window than test_heston_pde.cpp.
         const double ratio = err_50 / err_100;
         INFO("err_50 / err_100 = " << ratio);
         REQUIRE(ratio > 2.0);

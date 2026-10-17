@@ -2,7 +2,7 @@
 
 // trinomial.hpp - Kamrad-Ritchken trinomial tree for European and American options.
 //
-// Phase 3, Block 5. The lambda-parametrised trinomial:
+// The lambda-parametrised trinomial:
 //
 //     x -> x + dx  with prob p_u = 1/(2L) + nu sqrt(dt) / (2 sigma sqrt(L))
 //     x -> x       with prob p_m = 1 - 1/L
@@ -13,7 +13,7 @@
 // The default lambda = 3 corresponds to (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6),
 // the weights of Simpson's rule for numerical integration.
 //
-// This scheme is structurally equivalent to FTCS (Block 1) with
+// This scheme is structurally equivalent to FTCS (ftcs.hpp) with
 // alpha = 1/(2 lambda) up to an O(dt) discount-treatment difference.
 
 namespace quant {

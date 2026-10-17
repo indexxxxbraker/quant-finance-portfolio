@@ -1,5 +1,4 @@
-// test_american.cpp -- Catch2 tests for the American options module
-// (Phase 2 Block 6).
+// test_american.cpp -- Catch2 tests for the American options module.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -15,7 +14,7 @@ using Catch::Matchers::WithinRel;
 
 
 // =====================================================================
-// Block 6: binomial CRR sanity
+// Binomial CRR sanity
 // =====================================================================
 
 TEST_CASE("Binomial American put: convergence stabilises by N=10000",
@@ -76,7 +75,7 @@ TEST_CASE("Binomial American put: ITM put exercises immediately deep enough",
 
 
 // =====================================================================
-// Block 6: LSM matches binomial
+// LSM matches binomial
 // =====================================================================
 
 TEST_CASE("LSM American put matches binomial within 3 hw at canonical params",
@@ -112,7 +111,7 @@ TEST_CASE("LSM American put: early exercise premium positive",
 
 
 // =====================================================================
-// Block 6: input validation
+// Input validation
 // =====================================================================
 
 TEST_CASE("American: input validation",
@@ -163,7 +162,7 @@ TEST_CASE("American: input validation",
 
 
 // =====================================================================
-// Block 6: determinism
+// Determinism
 // =====================================================================
 
 TEST_CASE("American: identical seeds yield identical LSM results",

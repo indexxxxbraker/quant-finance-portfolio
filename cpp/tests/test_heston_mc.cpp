@@ -1,7 +1,6 @@
 // test_heston_mc.cpp
 //
-// Catch2 tests for the Heston Monte Carlo pricer (full-truncation Euler)
-// of Phase 4 Block 3.
+// Catch2 tests for the Heston Monte Carlo pricer (full-truncation Euler).
 //
 // Tests are statistical: we cannot compare a Monte Carlo estimate
 // bit-for-bit against any other implementation (different RNGs and

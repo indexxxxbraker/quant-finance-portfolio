@@ -5,13 +5,13 @@
 //
 // Mirrors quantlib.heston_qe on the Python side. Reuses HestonParams from
 // heston_fourier.hpp and MCResult from monte_carlo.hpp, just like the
-// full-truncation Euler module of Block 3.
+// full-truncation Euler module (heston_mc.hpp).
 //
 // The QE scheme matches the first two conditional moments of v_{t+dt}|v_t
 // exactly, with two regimes (quadratic for psi <= psi_c, exponential for
 // psi > psi_c). The log-spot uses Andersen's central discretisation, which
 // uses both v_n and v_{n+1} for higher-order accuracy than the simple
-// Euler of Block 3. See theory/phase4/block4_heston_qe.tex for the full
+// Euler of heston_mc.hpp. See theory/phase4/heston_qe.tex for the full
 // derivation.
 
 #pragma once
@@ -69,7 +69,7 @@ simulate_terminal_heston_qe(double S0,
 // half-width correctly reflects the variance reduction.
 //
 // QE typically achieves the same precision as full-truncation Euler
-// (Block 3) at 4-10x fewer time steps, with the gap widening for low
+// (heston_mc.hpp) at 4-10x fewer time steps, with the gap widening for low
 // Feller parameter. For benign parameters (Feller >> 1) the gap is
 // modest; for aggressive parameters (Feller << 1) it can exceed 30x.
 //

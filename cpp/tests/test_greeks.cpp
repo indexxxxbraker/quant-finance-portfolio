@@ -1,4 +1,4 @@
-// test_greeks.cpp -- Catch2 tests for the Greeks module (Block 4).
+// test_greeks.cpp -- Catch2 tests for the Greeks module.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -13,7 +13,7 @@ using Catch::Matchers::WithinAbs;
 
 
 // =====================================================================
-// Block 4: BS coherence for all 7 estimators
+// BS coherence for all 7 estimators
 // =====================================================================
 
 TEST_CASE("Greeks: Delta bump consistent with BS",

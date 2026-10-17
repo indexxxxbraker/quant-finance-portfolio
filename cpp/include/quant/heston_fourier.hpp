@@ -14,7 +14,7 @@
 //      on the Python side. This avoids a dependency on FFTW / pocketfft.
 //
 // The characteristic function uses the Albrecher-Mayer-Schoutens-Tistaert
-// (2007) "Little Trap" formulation; see theory/phase4/block2_heston_fourier.tex
+// (2007) "Little Trap" formulation; see theory/phase4/heston_fourier.tex
 // for the derivation.
 
 #pragma once

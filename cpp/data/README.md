@@ -96,4 +96,4 @@ recurrence given in Joe & Kuo (2008), implemented in
 - `cpp/src/qmc.cpp`: the loader and the Sobol sequence generator
   using these direction numbers.
 - `theory/phase2/qmc_foundations.tex`: theoretical background on
-  QMC sequences (Phase 2 Block 3.0).
+  QMC sequences.

@@ -1,6 +1,6 @@
 // test_heston_calibration.cpp
 //
-// Catch2 tests for the Heston calibration pipeline of Phase 4 Block 6.
+// Catch2 tests for the Heston calibration pipeline.
 //
 // The cornerstone test is the round-trip: synthesize prices from known
 // parameters, calibrate, and verify recovery to high precision. The

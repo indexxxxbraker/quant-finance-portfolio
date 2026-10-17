@@ -1,6 +1,6 @@
 // psor.hpp
 //
-// Phase 3 Block 4: Projected Successive Over-Relaxation (PSOR) solver
+// Projected Successive Over-Relaxation (PSOR) solver
 // for tridiagonal linear complementarity problems.
 //
 // Solves the LCP

@@ -1,21 +1,22 @@
 // pde.hpp
 //
-// Phase 3 Block 0: finite-difference grid infrastructure for the
+// Finite-difference grid infrastructure for the
 // Black-Scholes PDE. Declares the public interface; the implementation
 // lives in pde.cpp.
 //
 // This module is the scaffolding for the FTCS, BTCS, Crank-Nicolson and
-// PSOR schemes implemented in Phase 3 Blocks 1-4. It contains no pricer:
+// PSOR schemes implemented in this library. It contains no pricer:
 // it constructs the (x, tau) grid, returns Dirichlet boundary
 // conditions and initial-condition vectors, and exposes the
 // stability-number utilities used by the explicit scheme.
 //
-// The transformed Black-Scholes PDE solved by all Phase 3 schemes is
+// The transformed Black-Scholes PDE solved by all finite-difference
+// schemes is
 //
 //     V_tau = (sigma^2 / 2) V_xx + mu V_x - r V,   mu = r - sigma^2/2,
 //
 // with x = ln(S/K), tau = T - t. Derivation in
-// theory/phase3/block0_pde_foundations.tex.
+// theory/phase3/pde_foundations.tex.
 //
 // Conventions:
 //   - xs has length N+1: xs[0] = x_min, xs[N] = x_max.
@@ -130,8 +131,8 @@ std::vector<double> put_boundary_upper(const Grid& g);
 
 /// Diffusive Fourier number alpha = (sigma^2 / 2) * dtau / dx^2.
 ///
-/// FTCS (Block 1) is von Neumann stable iff alpha <= 1/2. BTCS
-/// (Block 2) and Crank-Nicolson (Block 3) are unconditionally stable
+/// FTCS (ftcs.hpp) is von Neumann stable iff alpha <= 1/2. BTCS
+/// (btcs.hpp) and Crank-Nicolson (cn.hpp) are unconditionally stable
 /// in alpha.
 double fourier_number(double sigma, double dtau, double dx) noexcept;
 
@@ -140,12 +141,12 @@ double fourier_number(double sigma, double dtau, double dx) noexcept;
 /// With centred space differences for the convective term, the FTCS
 /// von Neumann factor for the full BS PDE is
 ///     g(theta) = 1 - 4*alpha*sin^2(theta/2) + i*nu*sin(theta).
-/// For typical Phase 3 parameters the diffusive bound alpha <= 1/2
-/// dominates over the convective constraint.
+/// For typical finite-difference parameters the diffusive bound
+/// alpha <= 1/2 dominates over the convective constraint.
 double courant_number(double mu, double dtau, double dx) noexcept;
 
 /// Return true iff the FTCS scheme is stable for this Fourier number,
-/// i.e. iff alpha <= 0.5. Diagnostic helper for Block 1.
+/// i.e. iff alpha <= 0.5. Diagnostic helper for the FTCS pricer.
 bool is_explicit_stable(double alpha) noexcept;
 
 }  // namespace quant::pde

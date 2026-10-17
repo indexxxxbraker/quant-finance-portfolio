@@ -1,10 +1,10 @@
 // test_cn_american.cpp
 //
-// Catch2 tests for the CN-American put pricer of Phase 3 Block 4.
+// Catch2 tests for the CN-American put pricer.
 //
 // Cross-validation is performed against a self-contained CRR binomial
 // reference embedded locally in this file. Keeps the test independent
-// of the Phase 2 american module.
+// of the american module (american.hpp).
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

@@ -1,6 +1,6 @@
 // heston_fourier.cpp
 //
-// See heston_fourier.hpp for design notes and theory/phase4/block2_heston_fourier.tex
+// See heston_fourier.hpp for design notes and theory/phase4/heston_fourier.tex
 // for the mathematical derivation.
 
 #include "heston_fourier.hpp"

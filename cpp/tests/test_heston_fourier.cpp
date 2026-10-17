@@ -1,6 +1,6 @@
 // test_heston_fourier.cpp
 //
-// Catch2 tests for the Heston Fourier pricer of Phase 4 Block 2.
+// Catch2 tests for the Heston Fourier pricer.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

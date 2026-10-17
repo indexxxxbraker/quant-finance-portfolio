@@ -1,7 +1,6 @@
 // test_heston_pde.cpp
 //
-// Catch2 tests for the Heston 2D PDE pricer (Douglas ADI) of Phase 4
-// Block 5.
+// Catch2 tests for the Heston 2D PDE pricer (Douglas ADI).
 //
 // Structure mirrors validate_heston_pde.py: BS limit, cross-method vs
 // Fourier, spatial convergence with halving, and sanity vs QE Monte
@@ -68,7 +67,7 @@ TEST_CASE("Heston PDE: BS limit (sigma -> 0)",
 TEST_CASE("Heston PDE: agreement with Fourier (panel of K, T)",
           "[heston_pde][cross_method]") {
     // Snapshot Fourier prices computed by the Python heston_call_lewis
-    // (Block 2 ground truth, bias < 1e-6).
+    // (Fourier ground truth, bias < 1e-6).
     //
     // At grid (100, 50, 100) the PDE error is roughly 0.025. We use
     // a tolerance of 0.05 to accommodate this comfortably while still
@@ -103,7 +102,7 @@ TEST_CASE("Heston PDE: agreement with Fourier (panel of K, T)",
 
 TEST_CASE("Heston PDE: spatial convergence with halving",
           "[heston_pde][convergence]") {
-    // The central theoretical claim of Block 5: the spatial
+    // The central theoretical claim of heston_pde.tex: the spatial
     // discretisation is O(dX^2 + dv^2). Halving (dX, dv) by doubling
     // (N_X, N_v) should reduce the error by approximately 4.
     //
@@ -148,7 +147,7 @@ TEST_CASE("Heston PDE: spatial convergence with halving",
 
 TEST_CASE("Heston PDE: sanity vs QE Monte Carlo",
           "[heston_pde][cross_method_mc]") {
-    // The third independent method: QE Monte Carlo from Block 4. PDE
+    // The third independent method: QE Monte Carlo (heston_qe.hpp). PDE
     // and QE should agree within 3*QE_HW + PDE_error.
     //
     // This catches systematic biases that Fourier might not catch

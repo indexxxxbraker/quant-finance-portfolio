@@ -30,7 +30,7 @@
 // observation dates.
 //
 // References:
-//   Phase 2 Block 5 writeup. Kemna and Vorst (1990), J. Banking and
+//   theory/phase2/mc_asian.tex. Kemna and Vorst (1990), J. Banking and
 //   Finance, 14(1):113-129. Glasserman, Section 4.5.
 
 #pragma once

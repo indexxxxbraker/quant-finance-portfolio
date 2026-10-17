@@ -10,12 +10,12 @@
 // std::vector<double>: index (i, j) -> i * (N_v + 1) + j, where i
 // ranges over X and j over v.
 //
-// See theory/phase4/block5_heston_pde.tex for the derivation.
+// See theory/phase4/heston_pde.tex for the derivation.
 //
 // Note: the Thomas tridiagonal solver in this module is internal,
 // inlined in the anonymous namespace because it operates on batched
 // systems with a different memory layout than the 1D quant::thomas
-// utility from Phase 3 Block 2. They solve the same algorithm but
+// utility (thomas.hpp). They solve the same algorithm but
 // with different APIs adapted to their respective use cases.
 
 #pragma once

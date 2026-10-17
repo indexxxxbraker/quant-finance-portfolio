@@ -2,7 +2,7 @@
 //
 // Quasi-Monte Carlo and Randomized QMC pricers for the European call.
 //
-// This module implements the Block 3 part of the variance-reduction
+// This module implements the QMC part of the variance-reduction
 // toolkit: deterministic QMC sequences (Halton, Sobol) and a randomized
 // QMC pricer that uses digital shifting to recover a half-width.
 //
@@ -11,13 +11,14 @@
 // BSD-style licence and located at SOBOL_DATA_FILE, defined as a
 // compile-time macro in CMakeLists.txt).
 //
-// The pricers exposed here use the Euler discretisation of Block 1.2.1
+// The pricers exposed here use the Euler discretisation of gbm.hpp
 // with N steps; the integration problem is N-dimensional. Validation
-// is performed at d = 20 in Block 3.1.
+// is performed at d = 20 (see theory/phase2/mc_european_qmc.tex).
 //
 // References:
-//   Phase 2 Block 3.0 writeup (foundations); Block 3.1 writeup
-//   (this implementation). Glasserman, Chapter 5.
+//   theory/phase2/qmc_foundations.tex (foundations);
+//   theory/phase2/mc_european_qmc.tex (this implementation).
+//   Glasserman, Chapter 5.
 //   Joe & Kuo, SIAM J. Sci. Comput. 30:2635-2654, 2008.
 
 #pragma once
@@ -83,7 +84,7 @@ private:
 //     zero bit of i.
 //
 // The implementation supports up to d = 20 dimensions (we cap here
-// since (a) higher dimensions are beyond the Block 3 scope, and (b)
+// since (a) higher dimensions are beyond the scope of this module, and (b)
 // keeps memory bounded). The cap can be lifted by changing the
 // internal MAX_DIM constant.
 class Sobol {
@@ -187,8 +188,9 @@ double mc_european_call_euler_qmc(double S, double K, double r,
 //   n_paths          = R (the number of i.i.d. units)
 //
 // Note: the n_paths field stores R, not n_paths * n_replications.
-// This convention matches the AV pricer of Block 2.1, where n_paths
-// is the number of i.i.d. units (pairs in AV, replications in RQMC).
+// This convention matches the AV pricer (variance_reduction.hpp),
+// where n_paths is the number of i.i.d. units (pairs in AV,
+// replications in RQMC).
 //
 // rng must outlive the call. Throws std::invalid_argument on bad inputs.
 MCResult

@@ -1,7 +1,6 @@
 // pde.cpp
 //
 // Implementation of the PDE grid infrastructure declared in pde.hpp.
-// Phase 3 Block 0.
 
 #include "pde.hpp"
 

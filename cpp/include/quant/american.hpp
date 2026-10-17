@@ -22,7 +22,7 @@
 // No external linear-algebra library is required.
 //
 // References:
-//   Phase 2 Block 6 writeup. Longstaff and Schwartz (2001),
+//   theory/phase2/lsm_american.tex. Longstaff and Schwartz (2001),
 //   Review of Financial Studies 14(1):113-147. Cox, Ross and
 //   Rubinstein (1979), JFE 7(3):229-263. Glasserman, Chapter 8.
 
@@ -66,7 +66,7 @@ binomial_american_put(double S, double K, double r, double sigma, double T,
 // with the first basis_size Laguerre polynomials evaluated at S/K
 // as the regression basis.
 //
-// Algorithm (see Phase 2 Block 6 writeup, Section 3):
+// Algorithm (see theory/phase2/lsm_american.tex, Section 3):
 //   1. Simulate n_paths exact-GBM paths over n_steps equispaced
 //      observation dates.
 //   2. Initialise per-path cash flows at maturity.

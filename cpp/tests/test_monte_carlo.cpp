@@ -1,13 +1,13 @@
 // test_monte_carlo.cpp -- Catch2 tests for the Monte Carlo module.
 //
-// Covers Block 1.1 (exact GBM sampler), Block 1.2.1 (Euler-Maruyama),
-// and Block 1.2.2 (Milstein).
+// Covers the exact GBM sampler and the Euler-Maruyama and Milstein
+// schemes.
 //
-// The Block 1.1 tests mirror the four triangulation tests of the
-// Block 1.1 writeup plus input-validation cases.
+// The exact-sampler tests mirror the four triangulation tests of
+// theory/phase2/mc_european_exact.tex plus input-validation cases.
 //
-// The Block 1.2.x tests verify:
-//   - Input validation of the new pricers and samplers.
+// The Euler-Maruyama and Milstein tests verify:
+//   - Input validation of the pricers and samplers.
 //   - simulate_path_* returns the correct shape and starts at S0.
 //   - simulate_terminal_* agrees with simulate_path_*'s last column
 //     when both consume the same RNG state.
@@ -33,7 +33,7 @@ using Catch::Matchers::WithinAbs;
 
 
 // =====================================================================
-// Block 1.1: input validation (exact pricer)
+// Input validation (exact pricer)
 // =====================================================================
 
 TEST_CASE("MC vanilla: input validation", "[mc][validation]") {
@@ -88,7 +88,7 @@ TEST_CASE("MC vanilla: input validation", "[mc][validation]") {
 
 
 // =====================================================================
-// Block 1.1: containment frequency
+// Exact GBM: containment frequency
 // =====================================================================
 
 TEST_CASE("MC vanilla: containment frequency of BS price",
@@ -131,7 +131,7 @@ TEST_CASE("MC vanilla: containment frequency of BS price",
 
 
 // =====================================================================
-// Block 1.1: empirical convergence rate
+// Exact GBM: empirical convergence rate
 // =====================================================================
 
 TEST_CASE("MC vanilla: empirical convergence rate",
@@ -182,7 +182,7 @@ TEST_CASE("MC vanilla: empirical convergence rate",
 
 
 // =====================================================================
-// Block 1.1: variance agreement with closed form
+// Exact GBM: variance agreement with closed form
 // =====================================================================
 
 TEST_CASE("MC vanilla: sample variance matches closed form",
@@ -217,7 +217,7 @@ TEST_CASE("MC vanilla: sample variance matches closed form",
 
 
 // =====================================================================
-// Block 1.1: monotonicities and asymptotic limits
+// Exact GBM: monotonicities and asymptotic limits
 // =====================================================================
 
 TEST_CASE("MC vanilla: monotonicities and asymptotic limits",
@@ -281,7 +281,7 @@ TEST_CASE("MC vanilla: monotonicities and asymptotic limits",
 
 
 // =====================================================================
-// Block 1.1: closed-form variance cross-check
+// Exact GBM: closed-form variance cross-check
 // =====================================================================
 
 TEST_CASE("BS: call_payoff_variance matches MC at large n",
@@ -311,7 +311,7 @@ TEST_CASE("BS: call_payoff_variance matches MC at large n",
 
 
 // =====================================================================
-// Block 1.2.1: input validation (Euler pricer)
+// Input validation (Euler pricer)
 // =====================================================================
 
 TEST_CASE("MC Euler: input validation", "[mc][euler][validation]") {
@@ -362,7 +362,7 @@ TEST_CASE("MC Euler: input validation", "[mc][euler][validation]") {
 
 
 // =====================================================================
-// Block 1.2.1: simulate_path_euler shape and initial value
+// Euler-Maruyama: simulate_path_euler shape and initial value
 // =====================================================================
 
 TEST_CASE("Euler path: shape and initial column",
@@ -384,7 +384,7 @@ TEST_CASE("Euler path: shape and initial column",
 
 
 // =====================================================================
-// Block 1.2.1: terminal sampler agrees with path sampler under same seed
+// Euler-Maruyama: terminal sampler agrees with path sampler under same seed
 // =====================================================================
 
 TEST_CASE("Euler: terminal sampler agrees with path's last column",
@@ -409,7 +409,7 @@ TEST_CASE("Euler: terminal sampler agrees with path's last column",
 
 
 // =====================================================================
-// Block 1.2.1: sanity check vs BS at large n_steps
+// Euler-Maruyama: sanity check vs BS at large n_steps
 // =====================================================================
 
 TEST_CASE("Euler pricer: consistent with BS at large n_steps",
@@ -434,7 +434,7 @@ TEST_CASE("Euler pricer: consistent with BS at large n_steps",
 
 
 // =====================================================================
-// Block 1.2.2: input validation (Milstein pricer)
+// Input validation (Milstein pricer)
 // =====================================================================
 
 TEST_CASE("MC Milstein: input validation",
@@ -486,7 +486,7 @@ TEST_CASE("MC Milstein: input validation",
 
 
 // =====================================================================
-// Block 1.2.2: simulate_path_milstein shape and initial value
+// Milstein: simulate_path_milstein shape and initial value
 // =====================================================================
 
 TEST_CASE("Milstein path: shape and initial column",
@@ -508,7 +508,7 @@ TEST_CASE("Milstein path: shape and initial column",
 
 
 // =====================================================================
-// Block 1.2.2: terminal sampler agrees with path sampler under same seed
+// Milstein: terminal sampler agrees with path sampler under same seed
 // =====================================================================
 
 TEST_CASE("Milstein: terminal sampler agrees with path's last column",
@@ -534,7 +534,7 @@ TEST_CASE("Milstein: terminal sampler agrees with path's last column",
 
 
 // =====================================================================
-// Block 1.2.2: sanity check vs BS at large n_steps
+// Milstein: sanity check vs BS at large n_steps
 // =====================================================================
 
 TEST_CASE("Milstein pricer: consistent with BS at large n_steps",

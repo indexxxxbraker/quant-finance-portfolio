@@ -1,13 +1,15 @@
 // test_variance_reduction.cpp -- Catch2 tests for variance_reduction.
 //
-// Block 2.1: antithetic-variates pricer for the European call.
+// Antithetic-variates and control-variate pricers for the European call
+// (controls: discounted underlying and asset-or-nothing payoff).
 //
-// Empirical verification of the variance reduction factor (with the
-// VRF and rho measurements) lives in the Python validation script
-// validate_mc_european_av.py. The C++ tests focus on structural and
-// per-implementation correctness: input validation, agreement with
-// BS, and a sanity check that the AV estimator's sample variance is
-// smaller than the IID estimator's sample variance.
+// Empirical verification of the variance reduction factors (with the
+// VRF and rho measurements) lives in the Python validation scripts
+// validate_mc_european_av.py and validate_mc_european_cv.py. The C++
+// tests focus on structural and per-implementation correctness: input
+// validation, agreement with BS, a check that each estimator's
+// half-width is below the IID estimator's at equal payoff budget, and
+// reproducibility for equivalent generators.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -24,7 +26,7 @@ using Catch::Matchers::WithinAbs;
 
 
 // =====================================================================
-// Block 2.1: input validation
+// Antithetic variates: input validation
 // =====================================================================
 
 TEST_CASE("MC AV: input validation",
@@ -70,7 +72,7 @@ TEST_CASE("MC AV: input validation",
 
 
 // =====================================================================
-// Block 2.1: AV estimator agrees with BS within a few half-widths
+// AV estimator agrees with BS within a few half-widths
 // =====================================================================
 
 TEST_CASE("AV pricer: consistent with BS",
@@ -94,7 +96,7 @@ TEST_CASE("AV pricer: consistent with BS",
 
 
 // =====================================================================
-// Block 2.1: AV variance is smaller than IID variance at equal budget
+// AV variance is smaller than IID variance at equal budget
 // =====================================================================
 
 TEST_CASE("AV pricer: half-width below IID at equal payoff budget",
@@ -130,7 +132,7 @@ TEST_CASE("AV pricer: half-width below IID at equal payoff budget",
 
 
 // =====================================================================
-// Block 2.1: paired payoff is symmetric in the sign of Z
+// Antithetic variates: paired payoff is symmetric in the sign of Z
 // =====================================================================
 
 TEST_CASE("AV pricer: identical estimate from rng-equivalent seeds",
@@ -158,7 +160,7 @@ TEST_CASE("AV pricer: identical estimate from rng-equivalent seeds",
 
 
 // =====================================================================
-// Block 2.2: input validation for both CV pricers
+// Input validation for both CV pricers
 // =====================================================================
 
 TEST_CASE("MC CV (underlying): input validation",
@@ -246,7 +248,7 @@ TEST_CASE("MC CV (AON): input validation",
 
 
 // =====================================================================
-// Block 2.2: BS coherence for both CV pricers
+// BS coherence for both CV pricers
 // =====================================================================
 
 TEST_CASE("CV-underlying pricer: consistent with BS",
@@ -290,7 +292,7 @@ TEST_CASE("CV-AON pricer: consistent with BS",
 
 
 // =====================================================================
-// Block 2.2: half-width below IID at equal payoff budget (both CVs)
+// Half-width below IID at equal payoff budget (both CVs)
 // =====================================================================
 
 TEST_CASE("CV-underlying pricer: half-width below IID at equal budget",
@@ -344,7 +346,7 @@ TEST_CASE("CV-AON pricer: half-width below IID at equal budget",
 
 
 // =====================================================================
-// Block 2.2: determinism under seed for both CV pricers
+// Determinism under seed for both CV pricers
 // =====================================================================
 
 TEST_CASE("CV pricers: identical estimate from rng-equivalent seeds",

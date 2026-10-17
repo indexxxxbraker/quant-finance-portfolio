@@ -2,14 +2,14 @@
 //
 // Heston model: American put pricing via 2D PDE with operator-splitting projection.
 //
-// Extends the European 2D PDE pricer of Block 5 with a projection
+// Extends the European 2D PDE pricer (heston_pde.hpp) with a projection
 // step at each time level to enforce the early-exercise constraint
 // V(t, S, v) >= max(K - S, 0). The numerical scheme is operator
 // splitting: one Douglas ADI step (solving the European Heston PDE)
 // followed by a max-projection in the (X = log S, tau = T - t,
 // W = e^{r tau} U) coordinates.
 //
-// See theory/phase4/block6_heston_calibration_exotics.tex Section 4.4
+// See theory/phase4/heston_calibration_exotics.tex Section 4.4
 // for the rationale (PSOR-on-PDE vs Longstaff-Schwartz MC) and the
 // derivation of the projection in W coordinates.
 //
@@ -29,7 +29,7 @@ namespace quant::heston {
 // projection. The projection enforces V >= max(K - S, 0) at every
 // time step.
 //
-// Parameters: same as heston_call_pde from Block 5, but the payoff
+// Parameters: same as heston_call_pde (heston_pde.hpp), but the payoff
 // is the put intrinsic max(K - S, 0) instead of max(S - K, 0).
 //
 // Returns: American put price.

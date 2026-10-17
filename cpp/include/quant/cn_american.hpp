@@ -1,9 +1,9 @@
 // cn_american.hpp
 //
-// Phase 3 Block 4: American put option pricing by Crank-Nicolson with
+// American put option pricing by Crank-Nicolson with
 // PSOR.
 //
-// The pricer reuses the theta-scheme infrastructure of Block 3 but
+// The pricer reuses the theta-scheme infrastructure (theta_scheme.hpp) but
 // replaces the per-step Thomas solve with a PSOR solve of the
 // discrete LCP arising from the early-exercise constraint
 // V >= g (the payoff). PSOR's projection step automatically enforces

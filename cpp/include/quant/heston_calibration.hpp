@@ -3,9 +3,9 @@
 // Heston model: calibration to market data via Levenberg-Marquardt.
 //
 // Mirrors quantlib.heston_calibration on the Python side. The Fourier
-// pricer of Block 2 is the engine inside the optimisation loop. The
-// optimiser is a damped Gauss-Newton (Levenberg's variant) implemented
-// to avoid external dependencies.
+// pricer (heston_fourier.hpp) is the engine inside the optimisation
+// loop. The optimiser is a damped Gauss-Newton (Levenberg's variant)
+// implemented to avoid external dependencies.
 //
 // Bounds are enforced via internal variable transformation rather than
 // constrained optimisation:
@@ -13,7 +13,7 @@
 // lives in R^5 with no constraints. This is simpler than constrained
 // LM and just as accurate for typical Heston regimes.
 //
-// See theory/phase4/block6_heston_calibration_exotics.tex for the
+// See theory/phase4/heston_calibration_exotics.tex for the
 // mathematical formulation, choice of objective function, and
 // discussion of identifiability.
 

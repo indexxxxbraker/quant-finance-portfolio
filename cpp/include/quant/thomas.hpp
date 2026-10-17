@@ -1,6 +1,6 @@
 // thomas.hpp
 //
-// Phase 3 Block 2: Thomas algorithm for tridiagonal linear systems.
+// Thomas algorithm for tridiagonal linear systems.
 //
 // Solves Ax = rhs in O(n) operations for the system
 //
@@ -12,7 +12,7 @@
 //
 // The implementation does Gaussian elimination without pivoting. This
 // is provably backward-stable when the matrix is diagonally dominant
-// (Higham 2002, Theorem 9.5). The BTCS application of this block
+// (Higham 2002, Theorem 9.5). The BTCS application (btcs.hpp)
 // satisfies diagonal dominance whenever the grid Pe'clet condition
 // |mu| * dx / sigma^2 <= 1 holds, which is the case across the
 // project's parameter range.

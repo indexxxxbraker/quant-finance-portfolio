@@ -64,10 +64,10 @@ double inverse_normal_cdf(double p) {
 // =====================================================================
 
 // The distribution is constructed as a local object on each call to
-// preserve byte-exact reproducibility with the inline implementation
-// of Block 1.1's simulate_terminal_gbm: a per-call local distribution
-// is guaranteed to be in its initial state, whereas a thread_local
-// one could in principle carry residual state between calls.
+// preserve byte-exact reproducibility of simulate_terminal_gbm: a
+// per-call local distribution is guaranteed to be in its initial
+// state, whereas a thread_local one could in principle carry residual
+// state between calls.
 double standard_normal(std::mt19937_64& rng) {
     std::uniform_real_distribution<double> uniform(0.0, 1.0);
     const double u = uniform(rng);
@@ -120,7 +120,7 @@ void validate_confidence_level(double confidence_level) {
 
 
 // =====================================================================
-// simulate_terminal_gbm  (Block 1.1)
+// simulate_terminal_gbm
 // =====================================================================
 
 std::vector<double>
@@ -143,7 +143,7 @@ simulate_terminal_gbm(double S0, double r, double sigma, double T,
 
 
 // =====================================================================
-// Euler-Maruyama scheme (Block 1.2.1)
+// Euler-Maruyama scheme
 // =====================================================================
 
 std::vector<std::vector<double>>
@@ -198,7 +198,7 @@ simulate_terminal_euler(double S0, double r, double sigma, double T,
 
 
 // =====================================================================
-// Milstein scheme (Block 1.2.2)
+// Milstein scheme
 // =====================================================================
 
 std::vector<std::vector<double>>

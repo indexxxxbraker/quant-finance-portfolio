@@ -11,18 +11,18 @@
 // Currently implemented:
 //
 //   - mc_european_call_exact_av: antithetic-variates pricer for the
-//     European call under exact GBM (Block 2.1).
+//     European call under exact GBM.
 //
 //   - mc_european_call_exact_cv_underlying: control-variate pricer
-//     using the discounted underlying as the control (Block 2.2).
+//     using the discounted underlying as the control.
 //
 //   - mc_european_call_exact_cv_aon: control-variate pricer using
-//     the discounted asset-or-nothing payoff as the control (Block
-//     2.2).
+//     the discounted asset-or-nothing payoff as the control.
 //
 // References:
-//   Phase 2 Block 2.0 writeup (foundations); Block 2.1 writeup
-//   (antithetic); Block 2.2 writeup (control variates).
+//   theory/phase2/variance_reduction_foundations.tex (foundations);
+//   theory/phase2/mc_european_av.tex (antithetic);
+//   theory/phase2/mc_european_cv.tex (control variates).
 //   Glasserman, Sections 4.1 and 4.2.
 
 #pragma once
@@ -57,7 +57,7 @@ mc_european_call_exact_av(double S, double K, double r, double sigma, double T,
 
 
 // Price a European call by Monte Carlo with the discounted underlying
-// as the control variate (Block 2.2).
+// as the control variate.
 //
 // Control: X_i = e^{-rT} S_T^{(i)}.
 // Closed-form expectation: E[X] = S_0 (martingale property under Q).
@@ -66,7 +66,7 @@ mc_european_call_exact_av(double S, double K, double r, double sigma, double T,
 // where c_hat is the OLS slope of Y on X computed from the same paths.
 //
 // Empirical correlation rho_1 ~ 0.92 at the ATM point gives a typical
-// VRF ~ 6.9. See the Phase 2 Block 2.2 writeup, Section 4 for the
+// VRF ~ 6.9. See theory/phase2/mc_european_cv.tex, Section 4 for the
 // surprising-but-correct analysis (the underlying outperforms the
 // asset-or-nothing despite the latter "shape-matching" the target).
 MCResult
@@ -78,7 +78,7 @@ mc_european_call_exact_cv_underlying(double S, double K, double r,
 
 
 // Price a European call by Monte Carlo with the asset-or-nothing
-// payoff as the control variate (Block 2.2).
+// payoff as the control variate.
 //
 // Control: X_i = e^{-rT} S_T^{(i)} * 1_{S_T^{(i)} > K}.
 // Closed-form expectation: E[X] = S_0 * Phi(d_1), the standard BS
@@ -88,7 +88,8 @@ mc_european_call_exact_cv_underlying(double S, double K, double r,
 //
 // Empirical correlation rho_2 ~ 0.77 at the ATM point gives a typical
 // VRF ~ 2.5: lower than the underlying control, contrary to a naive
-// shape-matching argument. See Block 2.2 writeup for the analysis.
+// shape-matching argument. See theory/phase2/mc_european_cv.tex for
+// the analysis.
 MCResult
 mc_european_call_exact_cv_aon(double S, double K, double r,
                               double sigma, double T,

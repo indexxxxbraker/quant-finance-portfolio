@@ -1,6 +1,6 @@
 // test_btcs.cpp
 //
-// Catch2 tests for the implicit BTCS pricer of Phase 3 Block 2.
+// Catch2 tests for the implicit BTCS pricer.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

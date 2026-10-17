@@ -20,8 +20,7 @@ namespace {
 // Uses the same Acklam approximation as the samplers, exposed via
 // gbm.hpp, so that all standard normal arithmetic in the project
 // goes through a single implementation. Crucial for byte-exact
-// reproducibility of mc_estimator output between Block 1.1 and the
-// post-refactor versions.
+// reproducibility of mc_estimator output.
 double standard_normal_quantile(double confidence_level) {
     return inverse_normal_cdf(0.5 * (1.0 + confidence_level));
 }
@@ -69,7 +68,7 @@ MCResult mc_estimator(const std::vector<double>& Y,
 
 
 // =====================================================================
-// mc_european_call_exact  (Block 1.1)
+// mc_european_call_exact
 // =====================================================================
 
 MCResult
@@ -96,7 +95,7 @@ mc_european_call_exact(double S, double K, double r, double sigma, double T,
 
 
 // =====================================================================
-// mc_european_call_euler  (Block 1.2.1)
+// mc_european_call_euler
 // =====================================================================
 
 MCResult
@@ -124,7 +123,7 @@ mc_european_call_euler(double S, double K, double r, double sigma, double T,
 
 
 // =====================================================================
-// mc_european_call_milstein  (Block 1.2.2)
+// mc_european_call_milstein
 // =====================================================================
 
 MCResult

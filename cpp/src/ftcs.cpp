@@ -1,7 +1,6 @@
 // ftcs.cpp
 //
 // Implementation of the explicit FTCS pricer declared in ftcs.hpp.
-// Phase 3 Block 1.
 
 #include "ftcs.hpp"
 

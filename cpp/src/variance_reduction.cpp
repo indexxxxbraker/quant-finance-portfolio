@@ -13,7 +13,7 @@
 namespace quant {
 
 // =====================================================================
-// Antithetic variates (Block 2.1)
+// Antithetic variates
 // =====================================================================
 
 MCResult
@@ -47,7 +47,7 @@ mc_european_call_exact_av(double S, double K, double r, double sigma, double T,
 
 
 // =====================================================================
-// Control variates: shared helper (Block 2.2)
+// Control variates: shared helper
 // =====================================================================
 
 namespace {
@@ -102,7 +102,7 @@ MCResult apply_cv(const std::vector<double>& Y,
 
 
 // =====================================================================
-// Control variates: discounted underlying (Block 2.2)
+// Control variates: discounted underlying
 // =====================================================================
 
 MCResult
@@ -138,7 +138,7 @@ mc_european_call_exact_cv_underlying(double S, double K, double r,
 
 
 // =====================================================================
-// Control variates: asset-or-nothing payoff (Block 2.2)
+// Control variates: asset-or-nothing payoff
 // =====================================================================
 
 MCResult

@@ -46,7 +46,7 @@ double bs_put(double S, double K, double r, double sigma, double T) {
 }
 
 // CRR binomial American put. Self-contained for the test, mirroring
-// the pattern in test_cn_american.cpp from Block 4.
+// the pattern in test_cn_american.cpp.
 double crr_american_put(double S, double K, double r, double sigma,
                          double T, int n_steps) {
     const double dt = T / static_cast<double>(n_steps);

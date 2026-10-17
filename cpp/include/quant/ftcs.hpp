@@ -1,9 +1,9 @@
 // ftcs.hpp
 //
-// Phase 3 Block 1: explicit Forward-Time Centred-Space (FTCS) finite-
+// Explicit Forward-Time Centred-Space (FTCS) finite-
 // difference pricer for European options under Black-Scholes.
 //
-// Built on the grid infrastructure of Block 0 (pde.hpp). The pricer
+// Built on the grid infrastructure (pde.hpp). The pricer
 // time-marches the discrete BS PDE forward in tau = T - t from the
 // payoff at tau = 0 to the price at tau = T, then linearly interpolates
 // at the user-supplied spot S.
@@ -11,7 +11,7 @@
 // Stability: the FTCS scheme is conditionally stable; the CFL bound
 // alpha <= 1/2 is enforced strictly by the high-level pricers, with
 // std::invalid_argument thrown on violation. See
-// theory/phase3/block1_ftcs.tex for the full analysis.
+// theory/phase3/ftcs.tex for the full analysis.
 
 #pragma once
 

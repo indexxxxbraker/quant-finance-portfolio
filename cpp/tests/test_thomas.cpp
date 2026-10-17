@@ -1,6 +1,6 @@
 // test_thomas.cpp
 //
-// Catch2 tests for the Thomas tridiagonal solver of Phase 3 Block 2.
+// Catch2 tests for the Thomas tridiagonal solver.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

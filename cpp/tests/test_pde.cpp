@@ -1,6 +1,6 @@
 // test_pde.cpp
 //
-// Catch2 tests for the PDE grid infrastructure of Phase 3 Block 0.
+// Catch2 tests for the PDE grid infrastructure.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

@@ -112,7 +112,7 @@ double put_rho(double S, double K, double r, double sigma, double T) {
 
 
 // ---------------------------------------------------------------------------
-// Payoff statistics (Phase 2 Block 1.1)
+// Payoff statistics
 // ---------------------------------------------------------------------------
 
 double call_payoff_variance(double S, double K, double r, double sigma, double T) {

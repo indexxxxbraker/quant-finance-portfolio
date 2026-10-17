@@ -1,6 +1,6 @@
 // heston_qe.cpp
 //
-// See heston_qe.hpp for design notes and theory/phase4/block4_heston_qe.tex
+// See heston_qe.hpp for design notes and theory/phase4/heston_qe.tex
 // for the mathematical derivation.
 
 #include "heston_qe.hpp"
@@ -264,7 +264,7 @@ mc_european_call_heston_qe(double S0,
     } else {
         // Pair payoffs and average BEFORE passing to mc_estimator,
         // so the half-width correctly reflects the antithetic
-        // variance reduction. Same pattern as Block 3.
+        // variance reduction. Same pattern as in heston_mc.cpp.
         const std::size_t half = n_paths / 2;
         std::vector<double> Y(half);
         for (std::size_t i = 0; i < half; ++i) {

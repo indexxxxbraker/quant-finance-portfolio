@@ -1,6 +1,6 @@
 // heston_mc.cpp
 //
-// See heston_mc.hpp for design notes and theory/phase4/block3_heston_mc_basic.tex
+// See heston_mc.hpp for design notes and theory/phase4/heston_mc_euler.tex
 // for the mathematical derivation.
 
 #include "heston_mc.hpp"
@@ -243,7 +243,7 @@ mc_european_call_heston(double S0,
         // Pair up (+) and (-) paths and average BEFORE passing to
         // mc_estimator, so the estimator sees genuinely i.i.d. samples
         // and the half-width correctly reflects the antithetic variance
-        // reduction. See block2_heston_fourier.tex's discussion of
+        // reduction. See heston_fourier.tex's discussion of
         // similar patterns; the same logic applies on the Python side.
         const std::size_t half = n_paths / 2;
         std::vector<double> Y(half);

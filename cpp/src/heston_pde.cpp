@@ -1,7 +1,7 @@
 // heston_pde.cpp
 //
 // See heston_pde.hpp for the public interface and
-// theory/phase4/block5_heston_pde.tex for the mathematical derivation.
+// theory/phase4/heston_pde.tex for the mathematical derivation.
 
 #include "heston_pde.hpp"
 #include "gbm.hpp"  // validate_strike helpers (reused; not strictly all needed)
@@ -202,7 +202,7 @@ void apply_Lxv(const Grid2D& W,
 // Preconditions: diag[0] != 0 and pivots remain non-zero throughout.
 // For Heston ADI with reasonable dtau, this is the case.
 //
-// The 1D thomas_solve in quant::thomas (Phase 3 Block 2) does the
+// The 1D thomas_solve in quant::thomas (thomas.hpp) does the
 // same algorithm, but takes std::vector<double> arguments and returns
 // a new vector. Our use case is line-by-line on a 2D grid where we
 // want zero-allocation per line; hence the in-place buffer-based API.

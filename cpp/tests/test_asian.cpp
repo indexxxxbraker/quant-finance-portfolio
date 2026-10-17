@@ -1,4 +1,4 @@
-// test_asian.cpp -- Catch2 tests for the Asian options module (Block 5).
+// test_asian.cpp -- Catch2 tests for the Asian options module.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -14,7 +14,7 @@ using Catch::Matchers::WithinRel;
 
 
 // =====================================================================
-// Block 5: closed form sanity checks
+// Closed form sanity checks
 // =====================================================================
 
 TEST_CASE("Asian closed form: reduces to vanilla BS at N=1",
@@ -80,7 +80,7 @@ TEST_CASE("Asian closed form: monotonic decrease in N",
 
 
 // =====================================================================
-// Block 5: IID estimator agreement with the closed form
+// IID estimator agreement with the closed form
 // =====================================================================
 
 TEST_CASE("Asian: geometric IID matches closed form within 3 hw",
@@ -102,7 +102,7 @@ TEST_CASE("Asian: geometric IID matches closed form within 3 hw",
 
 
 // =====================================================================
-// Block 5: arithmetic-IID and arithmetic-CV agree (CV is unbiased)
+// Arithmetic-IID and arithmetic-CV agree (CV is unbiased)
 // =====================================================================
 
 TEST_CASE("Asian: arithmetic CV agrees with arithmetic IID",
@@ -131,7 +131,7 @@ TEST_CASE("Asian: arithmetic CV agrees with arithmetic IID",
 
 
 // =====================================================================
-// Block 5: variance reduction factor for the CV
+// Variance reduction factor for the CV
 // =====================================================================
 
 TEST_CASE("Asian: geometric CV gives huge VRF (>500)",
@@ -163,7 +163,7 @@ TEST_CASE("Asian: geometric CV gives huge VRF (>500)",
 
 
 // =====================================================================
-// Block 5: input validation
+// Input validation
 // =====================================================================
 
 TEST_CASE("Asian: input validation",
@@ -212,7 +212,7 @@ TEST_CASE("Asian: input validation",
 
 
 // =====================================================================
-// Block 5: determinism
+// Determinism
 // =====================================================================
 
 TEST_CASE("Asian: identical seeds yield identical results",

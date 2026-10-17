@@ -76,7 +76,7 @@ double put_rho(double S, double K, double r, double sigma, double T);
 
 
 // ---------------------------------------------------------------------------
-// Payoff statistics (Phase 2 Block 1.1)
+// Payoff statistics
 // ---------------------------------------------------------------------------
 
 /// Closed-form variance of the discounted European call payoff
@@ -84,7 +84,8 @@ double put_rho(double S, double K, double r, double sigma, double T);
 ///
 /// Used in two contexts:
 ///   1. A-priori sample-size selection in vanilla Monte Carlo.
-///   2. As the denominator of the variance reduction factor in Block 2.
+///   2. As the denominator of the variance reduction factor in
+///      variance_reduction.hpp.
 ///
 /// Derivation: theory/phase2/mc_european_exact.tex, Proposition 5.1.
 double call_payoff_variance(double S, double K, double r, double sigma, double T);

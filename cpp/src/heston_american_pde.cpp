@@ -1,7 +1,7 @@
 // heston_american_pde.cpp
 //
 // See heston_american_pde.hpp for design notes and
-// theory/phase4/block6_heston_calibration_exotics.tex Section 4.4 for
+// theory/phase4/heston_calibration_exotics.tex Section 4.4 for
 // the mathematical derivation.
 
 #include "heston_american_pde.hpp"

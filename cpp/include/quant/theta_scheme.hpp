@@ -1,6 +1,6 @@
 // theta_scheme.hpp
 //
-// Phase 3 Block 3: generic theta-scheme finite-difference stepper for
+// Generic theta-scheme finite-difference stepper for
 // the transformed Black-Scholes PDE.
 //
 // The theta-scheme parametrises a one-parameter family:
@@ -12,8 +12,8 @@
 //   theta = 1      BTCS (implicit, unconditional stability)
 //   theta = 0.5    Crank-Nicolson (implicit, O(dtau^2) in time)
 //
-// Used by quant::pde::cn_* (Block 3) and will be reused in Block 4
-// (PSOR for American options).
+// Used by quant::pde::cn_* (cn.hpp) and by the PSOR pricer for
+// American options (cn_american.hpp).
 
 #pragma once
 
@@ -34,7 +34,7 @@ struct ThetaCoeffs {
 };
 
 /// Compute the stencil coefficients for given theta and grid step
-/// sizes. See theory/phase3/block3_crank_nicolson.tex for the
+/// sizes. See theory/phase3/crank_nicolson.tex for the
 /// formulae.
 ///
 /// @throws std::invalid_argument if theta is not in [0, 1].

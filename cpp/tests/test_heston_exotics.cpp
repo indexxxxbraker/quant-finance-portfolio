@@ -1,7 +1,7 @@
 // test_heston_exotics.cpp
 //
 // Catch2 tests for the Heston exotic Monte Carlo pricers (Asian,
-// Lookback, Barrier) of Phase 4 Block 6.
+// Lookback, Barrier).
 //
 // Structure mirrors validate_heston_exotics.py: limit cases against
 // Fourier ground truth where applicable, structural bounds (Asian <

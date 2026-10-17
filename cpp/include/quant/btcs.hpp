@@ -1,10 +1,10 @@
 // btcs.hpp
 //
-// Phase 3 Block 2: implicit Backward-Time Centred-Space (BTCS) finite-
+// Implicit Backward-Time Centred-Space (BTCS) finite-
 // difference pricer for European options under Black-Scholes.
 //
-// Built on the grid infrastructure of Block 0 (pde.hpp) and the
-// Thomas algorithm of Block 2 (thomas.hpp). The pricer is
+// Built on the grid infrastructure (pde.hpp) and the
+// Thomas algorithm (thomas.hpp). The pricer is
 // unconditionally stable: any combination (N, M) with N >= 2, M >= 1
 // produces a finite, convergent solution. There is no CFL constraint
 // to enforce.

@@ -20,7 +20,7 @@
 // evaluations).
 //
 // References:
-//   Phase 2 Block 4 writeup. Broadie and Glasserman, "Estimating
+//   theory/phase2/greeks_mc.tex. Broadie and Glasserman, "Estimating
 //   security price derivatives using simulation", Management Science
 //   42(2), 269-285, 1996. Glasserman, Chapter 7.
 

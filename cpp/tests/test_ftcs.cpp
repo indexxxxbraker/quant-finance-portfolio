@@ -1,6 +1,6 @@
 // test_ftcs.cpp
 //
-// Catch2 tests for the explicit FTCS pricer of Phase 3 Block 1.
+// Catch2 tests for the explicit FTCS pricer.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -143,10 +143,10 @@ TEST_CASE("FTCS: CFL violation throws std::invalid_argument",
 
 TEST_CASE("FTCS: ftcs_march bypasses CFL with validate_cfl=false",
           "[ftcs][cfl][diagnostic]") {
-    // Reproduce the explosion documented in the manual personal
-    // (Phase 3 numerical lesson 1). With these parameters alpha ~ 1.56,
-    // and the final V vector should exceed any reasonable price ceiling
-    // and exhibit the sawtooth signature.
+    // Reproduce the CFL-violation explosion (see theory/phase3/ftcs.tex
+    // and validate_ftcs.py, test 6). With these parameters
+    // alpha ~ 1.56, and the final V vector should exceed any reasonable
+    // price ceiling and exhibit the sawtooth signature.
     const double K = 100.0, r = 0.05, sigma = 0.20, T = 1.0;
     const Grid g = build_grid(100, 50, T, sigma, r, K);
     const auto V0 = call_initial_condition(g.xs, g.K);

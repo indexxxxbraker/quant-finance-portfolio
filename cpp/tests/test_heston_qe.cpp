@@ -1,12 +1,13 @@
 // test_heston_qe.cpp
 //
-// Catch2 tests for the Heston Andersen QE pricer of Phase 4 Block 4.
+// Catch2 tests for the Heston Andersen QE pricer.
 //
 // Tests are statistical (different RNGs Python<->C++ make bit-for-bit
 // comparison impossible). Tolerances are multiples of the half-width;
-// reference values come from the bias-free Fourier pricer of Block 2.
+// reference values come from the bias-free Fourier pricer
+// (heston_fourier.hpp).
 //
-// The fifth test case asserts the central empirical claim of Block 4:
+// The fifth test case asserts the central empirical claim of heston_qe.tex:
 // QE has substantially smaller bias than full-truncation Euler at the
 // same (n_steps, n_paths), most dramatically in the low-Feller regime.
 
@@ -76,7 +77,7 @@ TEST_CASE("Heston QE: BS limit (sigma -> 0)",
 
 TEST_CASE("Heston QE: agreement with Fourier (standard parameters)",
           "[heston_qe][cross_method]") {
-    // Snapshots computed by Python heston_call_lewis (Block 2 ground
+    // Snapshots computed by Python heston_call_lewis (Fourier ground
     // truth, bias < 1e-6). QE at n_steps=50 must agree within
     // 3 half-widths -- a stricter test than FT-Euler at the same
     // n_steps because QE has lower bias.
@@ -213,7 +214,7 @@ TEST_CASE("Heston QE: antithetic reduces variance",
 
 TEST_CASE("Heston QE: bias < FT-Euler bias (aggressive regime)",
           "[heston_qe][bias_comparison]") {
-    // The central empirical claim of Block 4: QE has substantially
+    // The central empirical claim of heston_qe.tex: QE has substantially
     // smaller bias than full-truncation Euler at the same (n_steps,
     // n_paths), with the gap most dramatic in the low-Feller regime.
     //

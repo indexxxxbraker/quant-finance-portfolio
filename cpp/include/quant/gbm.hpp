@@ -12,13 +12,13 @@
 // Public samplers:
 //
 //   - simulate_terminal_gbm: exact sampler of S_T using the
-//     closed-form solution of the GBM SDE (Block 1.1).
+//     closed-form solution of the GBM SDE.
 //
 //   - simulate_path_euler / simulate_terminal_euler: Euler-Maruyama
-//     scheme (Block 1.2.1).
+//     scheme.
 //
 //   - simulate_path_milstein / simulate_terminal_milstein: Milstein
-//     scheme (Block 1.2.2).
+//     scheme.
 //
 // Public validators (used by monte_carlo.cpp pricers):
 //
@@ -26,9 +26,11 @@
 //     validate_n_steps, validate_confidence_level.
 //
 // References:
-//   Phase 2 Block 0 writeup (foundations); Block 1.1 writeup (exact);
-//   Block 1.2.0 writeup (SDE discretisation theory); Block 1.2.1
-//   writeup (Euler); Block 1.2.2 writeup (Milstein).
+//   theory/phase2/monte_carlo_foundations.tex (foundations);
+//   theory/phase2/mc_european_exact.tex (exact);
+//   theory/phase2/sde_discretisation.tex (SDE discretisation theory);
+//   theory/phase2/mc_european_euler.tex (Euler);
+//   theory/phase2/mc_european_milstein.tex (Milstein).
 
 #pragma once
 
@@ -78,12 +80,12 @@ double inverse_normal_cdf(double p);
 // Exposed publicly because variance_reduction.cpp needs to generate
 // standard normals from the same rng stream as the GBM samplers,
 // preserving the inversion-based pipeline that ensures QMC
-// compatibility (Phase 2 Block 3).
+// compatibility (qmc.hpp).
 double standard_normal(std::mt19937_64& rng);
 
 
 // =====================================================================
-// Exact GBM sampler (Block 1.1)
+// Exact GBM sampler
 // =====================================================================
 
 // Simulate n_paths samples of S_T under geometric Brownian motion,
@@ -99,7 +101,7 @@ simulate_terminal_gbm(double S0, double r, double sigma, double T,
 
 
 // =====================================================================
-// Euler-Maruyama scheme (Block 1.2.1)
+// Euler-Maruyama scheme
 // =====================================================================
 
 // Simulate n_paths Euler-Maruyama paths of GBM with n_steps each.
@@ -126,7 +128,7 @@ simulate_terminal_euler(double S0, double r, double sigma, double T,
 
 
 // =====================================================================
-// Milstein scheme (Block 1.2.2)
+// Milstein scheme
 // =====================================================================
 
 // Simulate n_paths Milstein paths of GBM with n_steps each.
@@ -142,7 +144,7 @@ simulate_terminal_euler(double S0, double r, double sigma, double T,
 // Memory: O(n_paths * n_steps). Use simulate_terminal_milstein when
 // only the terminal value is needed.
 //
-// References: Phase 2 Block 1.2.2 writeup, Section 2.
+// References: theory/phase2/mc_european_milstein.tex, Section 2.
 std::vector<std::vector<double>>
 simulate_path_milstein(double S0, double r, double sigma, double T,
                        std::size_t n_steps, std::size_t n_paths,

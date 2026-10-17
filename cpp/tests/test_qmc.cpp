@@ -1,4 +1,4 @@
-// test_qmc.cpp -- Catch2 tests for the QMC module (Block 3).
+// test_qmc.cpp -- Catch2 tests for the QMC module.
 //
 // Tests cover:
 //   - Halton sequence sanity (first point in low dimension).

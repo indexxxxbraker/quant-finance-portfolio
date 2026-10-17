@@ -11,14 +11,13 @@
 //   - mc_estimator: model- and payoff-agnostic statistical reducer
 //     that turns a vector of i.i.d. payoffs into an MCResult.
 //
-//   - mc_european_call_exact: pricer using the exact GBM sampler
-//     (Block 1.1).
+//   - mc_european_call_exact: pricer using the exact GBM sampler.
 //
 //   - mc_european_call_euler: pricer using Euler-Maruyama
-//     discretisation (Block 1.2.1).
+//     discretisation.
 //
 //   - mc_european_call_milstein: pricer using Milstein
-//     discretisation (Block 1.2.2).
+//     discretisation.
 //
 // The samplers themselves live in gbm.hpp. This split mirrors the
 // Python module layout (quantlib.gbm + quantlib.monte_carlo) and
@@ -27,9 +26,11 @@
 // (statistical reduction, payoff orchestration).
 //
 // References:
-//   Phase 2 Block 0 writeup (foundations); Block 1.1 writeup (exact);
-//   Block 1.2.0 writeup (SDE discretisation theory); Block 1.2.1
-//   writeup (Euler); Block 1.2.2 writeup (Milstein).
+//   theory/phase2/monte_carlo_foundations.tex (foundations);
+//   theory/phase2/mc_european_exact.tex (exact);
+//   theory/phase2/sde_discretisation.tex (SDE discretisation theory);
+//   theory/phase2/mc_european_euler.tex (Euler);
+//   theory/phase2/mc_european_milstein.tex (Milstein).
 
 #pragma once
 

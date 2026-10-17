@@ -9,7 +9,7 @@
 // the non-Lipschitz singularity at v = 0 with the smallest weak bias
 // among the standard fix-up schemes.
 //
-// See theory/phase4/block3_heston_mc_basic.tex for the derivation,
+// See theory/phase4/heston_mc_euler.tex for the derivation,
 // convergence theory, and validation strategy.
 
 #pragma once

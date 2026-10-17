@@ -7,9 +7,9 @@
 //   - mc_lookback_call_heston    (floating-strike lookback call)
 //   - mc_barrier_call_heston     (up-and-out barrier call)
 //
-// All three share the QE simulation infrastructure of Block 4 and
+// All three share the QE simulation infrastructure (heston_qe.hpp) and
 // differ only in the path-functional accumulated during the time
-// loop. See theory/phase4/block6_heston_calibration_exotics.tex for
+// loop. See theory/phase4/heston_calibration_exotics.tex for
 // the mathematical statement of each payoff and discussion of
 // discrete-monitoring biases for lookback and barrier.
 

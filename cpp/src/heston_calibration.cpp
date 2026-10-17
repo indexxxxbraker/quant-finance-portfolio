@@ -1,7 +1,7 @@
 // heston_calibration.cpp
 //
 // See heston_calibration.hpp for design notes and
-// theory/phase4/block6_heston_calibration_exotics.tex for the mathematical
+// theory/phase4/heston_calibration_exotics.tex for the mathematical
 // formulation.
 
 #include "heston_calibration.hpp"

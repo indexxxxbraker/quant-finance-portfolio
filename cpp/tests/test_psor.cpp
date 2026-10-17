@@ -1,6 +1,6 @@
 // test_psor.cpp
 //
-// Catch2 tests for the PSOR LCP solver of Phase 3 Block 4.
+// Catch2 tests for the PSOR LCP solver.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
