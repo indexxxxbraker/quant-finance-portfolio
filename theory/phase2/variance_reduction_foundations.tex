@@ -79,7 +79,7 @@ interval scales as $\sigma_Y / \sqrt{M}$.
 For a typical at-the-money European call (parameters $S_0 = K = 100$,
 $r = 0.05$, $\sigma = 0.20$, $T = 1$) the payoff variance is
 $\sigma^2_Y \approx 217$. A half-width of $0.01$ at $95\%$ confidence
-requires $M \approx 4 \cdot 1.96^2 \cdot 217 / 0.01^2 \approx 8.3
+requires $M \approx 1.96^2 \cdot 217 / 0.01^2 \approx 8.3
 \cdot 10^6$ paths. Each ten-fold reduction in the half-width costs a
 hundred-fold increase in the sample size.
 
@@ -349,7 +349,7 @@ and the bias contribution at this order vanishes by orthogonality.
 See Glasserman~\cite[Section~4.1.3]{Glasserman} for details.
 
 The practical consequence: the bias decays at the same rate as the
-square root of the standard error decays, so for any $M$ at which
+square of the standard error, so for any $M$ at which
 the standard error is acceptably small, the bias is also negligibly
 small (in fact, asymptotically negligible compared to the standard
 error itself, since bias is $O(1/M)$ while standard error is
@@ -372,11 +372,11 @@ themselves:
 \paragraph{Control 1 -- the underlying:} $X_1 \eqdef e^{-rT} S_T$, the
 discounted terminal price. Its expectation is $\E[X_1] = e^{-rT} \E[S_T]
 = e^{-rT} \cdot S_0 e^{rT} = S_0$, by the risk-neutral martingale
-property. This control is correlated with the call payoff $(S_T -
-K)^+$ but only modestly: the correlation breaks down where the
-payoff is zero (in the OTM region), so the linear relationship is
-weak. We expect $\rho \approx 0.5$--$0.7$ at the ATM point, giving
-a variance reduction factor of $\approx 1.4$--$2.0$.
+property. The control is linear in $S_T$, while the call payoff
+$(S_T - K)^+$ vanishes below the strike, so one might expect only a
+modest correlation. In fact the two move together over most of the
+probability mass: at the ATM point the measured correlation is
+$\rho_1 \approx 0.92$, a variance reduction factor of about $6.9$.
 
 \paragraph{Control 2 -- the asset-or-nothing:} $X_2 \eqdef e^{-rT}\,
 S_T \indic_{\{S_T > K\}}$, the discounted asset-or-nothing payoff.
@@ -387,17 +387,24 @@ Its expectation has a closed Black-Scholes form
 with $d_1 = (\log(S_0/K) + (r + \sigma^2/2)T) / (\sigma \sqrt T)$ as
 in the standard Black-Scholes formula. (This is the value of the
 asset-or-nothing call, which is a building block of the
-Black-Scholes derivation.) Its key property: \emph{it activates on
-exactly the same paths as the call}, so its correlation with $(S_T -
-K)^+$ is much higher --- typically $|\rho| > 0.95$. We expect a
-variance reduction factor of $\geq 10$.
+Black-Scholes derivation.) It activates on exactly the same paths as
+the call, which suggests that it should be the better control. It is
+not. On every path
+\begin{equation}
+X_2 - e^{-rT}(S_T - K)^+ \;=\; K e^{-rT}\, \indic_{\{S_T > K\}},
+\end{equation}
+so $X_2$ carries, on top of the call, the variance of a digital payoff
+--- a jump of height $K$ at the strike --- that the call does not
+have. At the ATM point the measured correlation is only
+$\rho_2 \approx 0.77$, a variance reduction factor of about $2.5$.
 
-The disparity between the two controls illustrates a general
-principle: \emph{a good control variate matches the ``shape'' of the
-target}. The call payoff is zero on $\{S_T < K\}$ and linear in
-$S_T$ on $\{S_T \geq K\}$. The discounted asset matches the linear
-part but is nonzero everywhere. The asset-or-nothing matches both
-the zero region and the linear region.
+The comparison shows that matching the ``shape'' of the target is
+not the right criterion. What determines the gain is the linear
+correlation, that is, how much of the target's variance the control
+explains; a control can share the target's support and still add
+variance of its own. The analysis and the measurements are in the
+note on control variates (\texttt{mc\_european\_cv.tex},
+Section~4).
 
 \section{When to use which technique}
 \label{sec:when}
@@ -424,11 +431,13 @@ quant systems but adds complexity; we do not pursue it in this
 portfolio.
 \end{itemize}
 
-For the European call under GBM, which is our running example, the
-asset-or-nothing control is so effective that AV is a marginal
-addition on top. We implement and validate both separately to
-illustrate the principles, then leave the combination as an
-exercise.
+For the European call under GBM, our running example, the control on
+the underlying gives the largest single reduction (a factor of about
+$6.9$), while antithetic variates and the asset-or-nothing control
+give about $2.0$ and $2.5$ respectively
+(\texttt{python/results/phase2/vr\_scoreboard.csv}). We implement and
+validate the two techniques separately to illustrate the principles,
+and leave the combination as an exercise.
 
 \section{What we do not cover}
 \label{sec:not-covered}
@@ -460,9 +469,9 @@ total cost to achieve a target accuracy for SDE-based MC. See
 Giles~\cite{Giles2008}.
 
 We do not cover these in the portfolio for reasons of scope: the
-asset-or-nothing control variate alone delivers more variance
-reduction than this entire course needs, and the techniques above
-become valuable in regimes (deep OTM, very long-dated, exotic
+reductions obtained with antithetic variates, control variates and
+randomised quasi-Monte Carlo are enough for the accuracy targets of
+these notes, and the techniques above become valuable in regimes (deep OTM, very long-dated, exotic
 path-dependent) that we do not target here.
 
 \section{Bibliographic notes}
