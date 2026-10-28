@@ -4,7 +4,7 @@
 //
 // This module mirrors quantlib.heston_pde on the Python side. It uses
 // HestonParams from heston_fourier.hpp for parameter passing, and
-// implements the Douglas ADI scheme of In't Hout & Foulon (2010).
+// implements the Douglas ADI scheme of In 't Hout & Foulon (2010).
 //
 // The 2D grid in (X = log S, v) is stored row-major as a flat
 // std::vector<double>: index (i, j) -> i * (N_v + 1) + j, where i

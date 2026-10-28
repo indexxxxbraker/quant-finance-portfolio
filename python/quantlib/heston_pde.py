@@ -3,7 +3,7 @@ Heston model: 2D PDE pricing via Alternating Direction Implicit (ADI).
 
 This module implements the Douglas ADI scheme for the Heston pricing PDE
 on a 2D grid in (log-spot, variance), following the operator splitting
-of In't Hout & Foulon (2010).
+of In 't Hout & Foulon (2010).
 
 Mathematical setup
 ------------------
@@ -32,7 +32,7 @@ Public interface
 
 References
 ----------
-[InHoutFoulon2010]  In't Hout, K. J.; Foulon, S. (2010). ADI finite
+[InHoutFoulon2010]  In 't Hout, K. J.; Foulon, S. (2010). ADI finite
                     difference schemes for option pricing in the
                     Heston model with correlation.
 """
