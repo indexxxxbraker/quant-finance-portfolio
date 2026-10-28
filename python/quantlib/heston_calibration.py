@@ -9,16 +9,18 @@ between model and market.
 
 The pricer is the closed-form Fourier method of quantlib.heston_fourier,
 which is fast enough to evaluate inside the optimisation loop. The
-optimiser is Levenberg-Marquardt (via scipy.optimize.least_squares with
-method='trf' to respect bound constraints). The objective is the
-vega-weighted price residual, which is computationally cheap and
-approximates implied-vol RMSE on liquid quotes.
+optimiser is scipy.optimize.least_squares with method='trf'
+(trust-region reflective, which accepts the bound constraints; scipy's
+Levenberg-Marquardt method='lm' does not). The objective is the
+inverse-vega-weighted price residual, sum_i (model_i - market_i)^2 /
+vega_i up to a constant factor: computationally cheap, and a
+compromise between price RMSE and implied-vol RMSE.
 
-For production-grade calibration of arbitrary surfaces, this LM
+For production-grade calibration of arbitrary surfaces, this local
 optimiser should be wrapped in a global search (e.g.,
 scipy.optimize.differential_evolution) to escape local minima before
-LM refinement. We provide LM-only here; the wrapping is a few lines
-documented in the calibrate_heston docstring.
+local refinement. We provide the local optimiser only; the wrapping is
+a few lines documented in the calibrate_heston docstring.
 
 See ``theory/phase4/heston_calibration_exotics.tex`` for the
 mathematical statement of the calibration problem and the discussion
@@ -59,7 +61,8 @@ CalibrationResult = namedtuple(
 # params: dict with keys kappa, theta, sigma, rho, v0
 # residuals: ndarray of (model - market) prices, in the order of input data
 # rmse: scalar root-mean-square of the residuals
-# n_iter: number of optimiser iterations
+# n_iter: number of residual-function evaluations, including those
+#         made for the finite-difference Jacobian
 # success: bool
 # message: str
 
@@ -195,9 +198,11 @@ def _compute_vega_weights(market_data, S0, r):
     Compute vega-based weights for the calibration objective.
 
     For each market quote, the weight is 1 / max(vega, vega_floor),
-    where vega is the BS vega at the market-implied volatility. This
-    approximately equalises the contribution of each observation in
-    IV space, which is what traders actually care about.
+    where vega is the BS vega at the market-implied volatility. Since
+    the weight multiplies the squared price residual and
+    dC ~ vega * dsigma, a quote contributes ~ vega * dsigma^2: the
+    spread of contributions in IV space is reduced from vega^2 to vega,
+    not removed (that would need 1 / vega^2).
 
     Returns
     -------
@@ -259,10 +264,13 @@ def calibrate_heston(market_data, S0, r,
         Per-parameter (lower, upper) bounds. If None, DEFAULT_BOUNDS
         is used.
     weighted : bool, keyword-only, optional
-        If True (default), use vega-based weights so price residuals
-        approximately match IV residuals. If False, use unit weights.
+        If True (default), weight the squared price residuals by
+        1 / vega (normalised; see _compute_vega_weights). If False,
+        use unit weights.
     max_iter : int, keyword-only, optional
-        Optimiser maximum iterations. Default 200.
+        Maximum number of function evaluations, passed to
+        least_squares as max_nfev (scipy does not count the
+        finite-difference Jacobian evaluations). Default 200.
     verbose : bool, keyword-only, optional
         If True, print optimiser progress. Default False.
 
@@ -273,17 +281,19 @@ def calibrate_heston(market_data, S0, r,
 
     Notes
     -----
-    Uses Levenberg-Marquardt via scipy.optimize.least_squares with
-    method='trf' to respect bound constraints. The local LM
-    optimiser converges to the nearest local minimum from the initial
-    guess; if the surface is complex (e.g., real market data with vol
-    smile), wrap this call in differential_evolution for global
-    search before LM refinement:
+    Uses scipy.optimize.least_squares with method='trf'
+    (trust-region reflective) to respect the bound constraints. This
+    local optimiser converges to the nearest local minimum from the
+    initial guess; if the surface is complex (e.g., real market data
+    with vol smile), wrap this call in differential_evolution for
+    global search before local refinement:
 
         from scipy.optimize import differential_evolution
         de_result = differential_evolution(...)
+        names = ["kappa", "theta", "sigma", "rho", "v0"]
         cal_result = calibrate_heston(market_data, S0, r,
-                                       initial_guess=de_result.x_dict,
+                                       initial_guess=dict(zip(names,
+                                                              de_result.x)),
                                        ...)
 
     See heston_calibration_exotics.tex Section 2.4 for

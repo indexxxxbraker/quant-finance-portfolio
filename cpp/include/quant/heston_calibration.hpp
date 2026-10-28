@@ -4,8 +4,10 @@
 //
 // Mirrors quantlib.heston_calibration on the Python side. The Fourier
 // pricer (heston_fourier.hpp) is the engine inside the optimisation
-// loop. The optimiser is a damped Gauss-Newton (Levenberg's variant)
-// implemented to avoid external dependencies.
+// loop. The optimiser is a hand-written Levenberg-Marquardt (Marquardt's
+// damping lambda * diag(J^T J), central-difference Jacobian, 5x5
+// Cholesky solve of the normal equations), implemented to avoid external
+// dependencies.
 //
 // Bounds are enforced via internal variable transformation rather than
 // constrained optimisation:
@@ -71,7 +73,8 @@ double implied_vol_bs(double C_target,
 //   S0, r            spot and risk-free rate
 //   initial_guess    starting parameters (must be inside the bounds:
 //                    kappa, theta, sigma, v0 > 0, |rho| < 1)
-//   weighted         if true, use 1/vega weighting for residuals
+//   weighted         if true, weight the squared residuals by 1/vega
+//                    (normalised so the largest weight is 1)
 //   max_iter         maximum LM iterations; default 200
 //
 // Returns: CalibrationResult with fitted params, residuals, RMSE.

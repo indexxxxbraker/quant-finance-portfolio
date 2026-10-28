@@ -42,7 +42,7 @@
 \section{Introduction and goals}
 %============================================================
 
-The preceding Heston notes take the model from theoretical foundations to four independent pricing methods: closed-form Fourier, full-truncation Euler MC, Andersen QE MC, and 2D PDE with Douglas ADI. All four agree to high precision on European call prices at the same parameters. This note closes the cycle by addressing the two questions that practitioners actually face:
+The preceding Heston notes take the model from theoretical foundations to four independent pricing methods: closed-form Fourier, full-truncation Euler MC, Andersen QE MC, and 2D PDE with Douglas ADI. On the benchmark strip of European calls ($K = 80, 85, \dots, 120$, $T = 1$; \texttt{python/results/phase4/heston\_cross\_validation.csv}) the PDE price is within $0.3\%$ of the Fourier price (largest relative difference $2.9 \times 10^{-3}$, at $K = 120$) and both Monte Carlo estimates lie within their 95\% confidence intervals of it. This note closes the cycle by addressing the two questions that practitioners actually face:
 
 \begin{enumerate}[topsep=2pt]
     \item \textbf{Calibration.} Given a market-observed surface of European option prices (or equivalently, implied volatilities) at various strikes and maturities, find the Heston parameters $(\kappa, \theta, \sigma, \rho, v_0)$ that best reproduce this surface. The model must be \emph{fitted to the market} before it can be used for anything else.
@@ -58,7 +58,7 @@ This note has four goals.
 
 \paragraph{Calibration robustness.} The Heston calibration is notoriously ill-conditioned: multiple parameter sets reproduce a given vanilla surface to within market precision, and the optimiser may converge to local minima or to physically-unreasonable parameters. We discuss diagnostics and the use of regularisation.
 
-\paragraph{Exotic pricing.} Implement Asian (arithmetic average), lookback (max-floating), and up-and-out barrier options using QE Monte Carlo (the natural workhorse for path-dependent European-style payoffs). For American puts, extend the 2D PDE pricer with PSOR (see the note \emph{Pricing the American put via PSOR}).
+\paragraph{Exotic pricing.} Implement the arithmetic-average Asian call, the floating-strike lookback call, and the up-and-out barrier call using QE Monte Carlo (the natural workhorse for path-dependent European-style payoffs). For American puts, extend the 2D PDE pricer with a projection onto the early-exercise constraint after each time step (the 1D treatment by PSOR is in the note \emph{Pricing the American put via PSOR}).
 
 \paragraph{Validation.} The validation strategy now must operate without the Fourier ground truth that anchored the European pricers. Cross-method consistency (PDE vs MC) becomes the primary diagnostic, complemented by analytical limit cases (e.g., a barrier with $H \to \infty$ recovers the European price).
 
@@ -83,33 +83,37 @@ The two natural choices are price RMSE and implied-volatility RMSE:
 \end{align}
 where $\sigma_i = \mathrm{BSImpVol}(C_i, K_i, T_i, S_0, r)$ is the Black-Scholes implied volatility extracted from a price.
 
-\paragraph{Price loss \eqref{eq:loss-price}} is computationally cheap: each evaluation of $C_i^{\mathrm{model}}$ is one call to the Fourier pricer, no IV inversion needed. The gradient with respect to parameters is straightforward via finite differences or implicit differentiation. The drawback is that prices have wildly different magnitudes across the surface (deep ITM options have prices $\sim 10\times$ larger than ATM, and far-OTM options have prices that can be $0.1\%$ of ATM), so the optimiser puts disproportionate weight on the most expensive options unless the weights $w_i$ are calibrated to flatten this. Standard practice: $w_i = 1 / \mathrm{vega}_i^2$, which approximately equalises the contribution of each observation per unit change in IV.
+\paragraph{Price loss \eqref{eq:loss-price}} is computationally cheap: each evaluation of $C_i^{\mathrm{model}}$ is one call to the Fourier pricer, no IV inversion needed. The gradient with respect to parameters is straightforward via finite differences or implicit differentiation. The drawback is that prices have wildly different magnitudes across the surface (deep ITM options have prices $\sim 10\times$ larger than ATM, and far-OTM options have prices that can be $0.1\%$ of ATM), so the optimiser puts disproportionate weight on the most expensive options unless the weights $w_i$ are calibrated to flatten this. Since $\Delta C_i \approx \mathrm{vega}_i\, \Delta\sigma_i$, the choice $w_i = 1 / \mathrm{vega}_i^2$ approximately equalises the contribution of each observation per unit change in IV.
 
-\paragraph{IV loss \eqref{eq:loss-iv}} is more expensive: each evaluation requires inverting the BS formula numerically (typically by Newton-Raphson, 5-10 iterations). But it is naturally on the right scale --- IVs are all in the same order of magnitude --- and is the metric traders actually care about, since vol surfaces are quoted in IV space. For our implementation we use the price loss with vega weighting, which is computationally tractable and approximates IV-space accuracy well.
+\paragraph{IV loss \eqref{eq:loss-iv}} is more expensive: each evaluation requires inverting the BS formula numerically (typically by Newton-Raphson, 5-10 iterations). But it is naturally on the right scale --- IVs are all in the same order of magnitude --- and is the metric traders actually care about, since vol surfaces are quoted in IV space. For our implementation we use the price loss with inverse-vega weights, $w_i = \mathrm{vega}_i^{-1} / \max_j \mathrm{vega}_j^{-1}$, where $\mathrm{vega}_i$ is the Black-Scholes vega at the market implied volatility (floored at $10^{-3}$); the residuals passed to the optimiser are $\sqrt{w_i}\,(C_i^{\mathrm{model}} - C_i^{\mathrm{mkt}})$. Up to a constant factor the objective is therefore $\sum_i (C_i^{\mathrm{model}} - C_i^{\mathrm{mkt}})^2 / \mathrm{vega}_i \approx \sum_i \mathrm{vega}_i\, (\sigma_i^{\mathrm{model}} - \sigma_i^{\mathrm{mkt}})^2$: a compromise between the price and IV losses, computationally tractable, which still gives more weight to high-vega quotes than the IV loss would.
 
 \subsection{Parameter constraints}
+\label{sec:constraints}
 
-The admissible set $\Theta$ is defined by physical constraints on the Heston parameters:
+The physical constraints on the Heston parameters are $\kappa, \theta, \sigma > 0$, $v_0 \geq 0$ and $\rho \in [-1, 1]$. The admissible set $\Theta$ used by the Python implementation is the box
 \begin{align*}
-    \kappa &\in (0, \kappa_{\max}], \qquad \kappa_{\max} \sim 10 \text{ (mean-reversion speed)}, \\
-    \theta &\in (0, \theta_{\max}], \qquad \theta_{\max} \sim 1 \text{ (long-run variance)}, \\
-    \sigma &\in (0, \sigma_{\max}], \qquad \sigma_{\max} \sim 2 \text{ (vol of vol)}, \\
-    \rho   &\in [-1, 1], \\
-    v_0    &\in (0, v_{0,\max}], \qquad v_{0,\max} \sim 1 \text{ (initial variance)}.
+    \kappa &\in [0.01, 20] \text{ (mean-reversion speed)}, \\
+    \theta &\in [0.001, 1] \text{ (long-run variance)}, \\
+    \sigma &\in [0.01, 3] \text{ (vol of vol)}, \\
+    \rho   &\in [-0.999, 0.999], \\
+    v_0    &\in [10^{-4}, 1] \text{ (initial variance)},
 \end{align*}
-The Feller condition $2\kappa\theta \geq \sigma^2$ is sometimes imposed as an additional constraint for theoretical reasons (it ensures the variance process never reaches zero almost surely), but is widely violated by real-market calibrated parameters: empirically $2\kappa\theta < \sigma^2$ is the rule rather than the exception in equity markets. We do \emph{not} enforce Feller, but we report the Feller ratio as a diagnostic.
+(\texttt{DEFAULT\_BOUNDS} in \texttt{quantlib.heston\_calibration}, overridable through the \texttt{bounds} argument), which keeps the optimiser away from the degenerate edges. The C++ implementation imposes only positivity and $|\rho| < 1$, through a change of variables (\S\ref{sec:optimisation}).
+
+The Feller condition $2\kappa\theta \geq \sigma^2$ is sometimes imposed as an additional constraint for theoretical reasons (it ensures the variance process never reaches zero almost surely), but is widely violated by real-market calibrated parameters: empirically $2\kappa\theta < \sigma^2$ is the rule rather than the exception in equity markets. We do \emph{not} enforce Feller. The calibration result does not report the Feller ratio $2\kappa\theta/\sigma^2$; it follows directly from the returned parameters.
 
 \subsection{Optimisation strategy}
+\label{sec:optimisation}
 
 The Heston calibration objective \eqref{eq:loss-price} is generally non-convex with multiple local minima. Three layers of optimisation strategy address this:
 
-\paragraph{Levenberg-Marquardt (LM).} Local nonlinear least-squares optimiser; very fast but converges to the nearest local minimum. Excellent for refinement once we are close to the true minimum. We use \texttt{scipy.optimize.least\_squares} with method='lm' or 'trf' (the latter respects bound constraints).
+\paragraph{Levenberg-Marquardt (LM).} Local nonlinear least-squares optimiser; very fast but converges to the nearest local minimum. Excellent for refinement once we are close to the true minimum. The Python implementation calls \texttt{scipy.optimize.least\_squares} with \texttt{method='trf'} (trust-region reflective), a local trust-region least-squares method that, unlike scipy's \texttt{'lm'}, accepts the bounds of \S\ref{sec:constraints}. The C++ implementation is a hand-written LM with Marquardt's damping $\lambda\,\mathrm{diag}(J^\top J)$, a central-difference Jacobian and a $5 \times 5$ Cholesky solve of the damped normal equations; it works in the unconstrained coordinates $(\log\kappa, \log\theta, \log\sigma, \operatorname{artanh}\rho, \log v_0)$ instead of under bounds.
 
 \paragraph{Differential evolution (DE).} Global stochastic optimiser; slower but escapes local minima. Use as a coarse search to find the basin of the global minimum, then refine with LM. We use \texttt{scipy.optimize.differential\_evolution}.
 
 \paragraph{Hybrid (DE + LM).} The standard recipe in production: run DE for a coarse global search (a few hundred function evaluations), then hand off the result to LM for high-precision local refinement. This combines the global reach of DE with the speed of LM.
 
-For the implementation in this note we provide the LM-only variant (which works well for synthetic test problems where the initial guess is reasonable) and document how to wrap it in DE for production use.
+For the implementation in this note we provide only the local optimiser (TRF in Python, LM in C++), which works well for synthetic test problems where the initial guess is reasonable; the \texttt{calibrate\_heston} docstring sketches how to wrap it in DE for production use.
 
 \subsection{Identifiability concerns}
 
@@ -121,7 +125,7 @@ The Heston model has 5 parameters, but they are not equally identifiable from a 
     \item $\sigma$ controls the convexity of the vol smile; harder to identify if the surface is sparse in strikes.
     \item $\kappa$ is the most difficult to identify. It appears in combination with $\theta$ (in $\kappa\theta$) and with $\sigma$ (in $\sigma^2 / \kappa$ as the long-run variance of variance). Different $(\kappa, \theta, \sigma)$ triples can produce nearly indistinguishable vanilla prices.
 \end{itemize}
-The practical consequence: do not over-fit. A calibrated $\kappa = 10$ when the surface contains only ATM points is an artifact, not a structural fact about the market. We address this by reporting parameter standard errors (from the inverse Hessian of the objective at the minimum) along with the point estimate.
+The practical consequence: do not over-fit. A calibrated $\kappa = 10$ when the surface contains only ATM points is an artifact, not a structural fact about the market. Parameter standard errors (from the inverse Hessian of the objective at the minimum) reported along with the point estimate would make this visible; the implementation does not compute them, and the parameter-stability check of \S\ref{sec:cal-validation} (Test~3 of \texttt{validate\_heston\_calibration.py}) is the diagnostic used instead.
 
 %============================================================
 \section{Implied volatility inversion}
@@ -137,9 +141,10 @@ For a given $(K, T, S, r, C^{\mathrm{mkt}})$, find $\sigma$ such that $C^{\mathr
 \end{equation}
 where $\mathrm{vega} = \partial C^{\mathrm{BS}} / \partial \sigma = S \sqrt{T}\, \phi(d_1)$ with $\phi$ the standard normal density and $d_1$ as in the BS formula.
 
-The iteration is fast (5-10 iterations to $10^{-8}$ precision) and globally convergent for $\sigma_0 \in [0.01, 5.0]$ as long as the price is admissible (within the no-arbitrage bounds). For the initial guess, the Manaster-Koehler formula provides a good starting point, but for our use case a constant $\sigma_0 = 0.2$ works fine.
+From $\sigma_0 = 0.2$ the iteration is fast (typically fewer than ten iterations to a price residual below $10^{-8}$), but it is not globally convergent: from $\sigma_0 = 0.01$ or $\sigma_0 = 5$ the vega is small compared with the price error, and the unguarded iteration breaks down within one or two steps (an overshoot leaves $(0, \infty)$, or the vega underflows to zero). The implementation therefore starts from $\sigma_0 = 0.2$ by default, clamps every Newton iterate to $[0.001, 5]$, and hands over to the bracketed fallback of \S\ref{sec:iv-edge} when the vega falls below $10^{-12}$ or Newton has not converged within 50 iterations. For the initial guess, the Manaster-Koehler formula provides a good starting point, but for our use case a constant $\sigma_0 = 0.2$ works fine.
 
 \subsection{Edge cases}
+\label{sec:iv-edge}
 
 Two pathologies worth noting:
 \begin{itemize}[topsep=2pt]
@@ -147,7 +152,7 @@ Two pathologies worth noting:
     \item Prices above the trivial upper bound $S$ also have no admissible IV.
     \item For deep OTM options where the price is very close to zero, vega is also very small, leading to numerical instability of the Newton iteration. Mitigation: add a fallback to Brent's method for safety.
 \end{itemize}
-For the calibration loop, we use Newton with a fallback: if Newton fails to converge, switch to Brent's bracketed method on $[10^{-4}, 5.0]$, which is slower but bulletproof.
+For the calibration loop, we use Newton with a fallback: if Newton fails to converge, switch to Brent's bracketed method on $[10^{-4}, 5.0]$ (bisection on the same bracket in C++), which is slower but converges whenever the implied volatility lies in the bracket; otherwise NaN is returned.
 
 %============================================================
 \section{Exotic options under Heston}
@@ -173,7 +178,7 @@ The floating-strike lookback call has payoff
 \end{equation}
 Like the Asian, this is path-dependent, and Monte Carlo via QE is the natural method. The simulator accumulates $S_{\min}$ during iteration and returns it together with $S_T$.
 
-\paragraph{The continuous-monitoring bias.} The discrete-time simulation only observes the path at the time-step granularity $\Delta t = T / n_{\mathrm{steps}}$. The minimum over a discretely-sampled path is biased upwards relative to the true continuous-time minimum (the path can dip lower between samples). For Brownian-like processes the bias is $O(\sqrt{\Delta t})$, which can be substantial. Production lookback pricers use the Asmussen-Glynn-Pitman correction, which we mention as a future refinement.
+\paragraph{The continuous-monitoring bias.} The discrete-time simulation only observes the path at the time-step granularity $\Delta t = T / n_{\mathrm{steps}}$. The minimum over a discretely-sampled path is biased upwards relative to the true continuous-time minimum (the path can dip lower between samples). For Brownian-like processes the bias is $O(\sqrt{\Delta t})$, which can be substantial. Production pricers use the continuity correction of Broadie, Glasserman and Kou \cite{BroadieGlassermanKou1997} (introduced for discretely monitored barriers and extended by the same authors to lookbacks), which we mention as a future refinement.
 
 \subsection{Barrier options}
 
@@ -196,11 +201,13 @@ We use the PDE with operator-splitting projection because (a) the Douglas ADI pr
 
 %============================================================
 \section{Validation strategy}
+\label{sec:validation}
 %============================================================
 
 The validation is harder than for the European pricers because most exotics have no Fourier ground truth.
 
 \subsection{Calibration validation}
+\label{sec:cal-validation}
 
 \paragraph{Round-trip test.} Generate synthetic ``market'' prices from a known set of Heston parameters, then run the calibration on those prices and verify that the recovered parameters match the originals to within numerical precision. This is the cleanest test of the calibration machinery.
 
@@ -215,14 +222,14 @@ The validation is harder than for the European pricers because most exotics have
     \item Asian with $n_{\mathrm{avg}} = 1$ at $t_1 = T$: same as European call.
     \item Up-and-out call with $H \to \infty$: same as European call.
     \item Down-and-out call with $H \to 0$: same as European call.
-    \item American put with high mean-reversion ($\kappa$ very large): close to European put.
+    \item American put with high mean-reversion ($\kappa \to \infty$ at fixed $\sigma$): the variance is pinned at $\theta$, so the price tends to the Black-Scholes American put with volatility $\sqrt{\theta}$, not to the European put; the early-exercise premium does not vanish in this limit. The anchor here is a 1D American pricer (the PSOR note), not Fourier. The validation suite does not run this limit; it checks the deep out-of-the-money put instead (below).
 \end{itemize}
-These limits give us anchored validation against Fourier (\texttt{quantlib.heston\_fourier}) for the corresponding European prices.
+The first three limits give us anchored validation against Fourier (\texttt{quantlib.heston\_fourier}) for the corresponding European prices.
 
 \paragraph{Cross-method consistency.}
 \begin{itemize}[topsep=2pt]
     \item For the American put, which has no Fourier reference: American $\geq$ European, intrinsic value deep in the money, closeness to the European price deep out of the money, and convergence under grid halving.
-    \item For barrier options where there exists a closed-form analogue under BS (using the reflection principle), compare BS-with-Heston-IV vs Heston-via-MC. The discrepancy is informative about the impact of stochastic vol on barrier pricing.
+    \item Not implemented: for barrier options where there exists a closed-form analogue under BS (using the reflection principle), one could compare BS-with-Heston-IV vs Heston-via-MC. The discrepancy would be informative about the impact of stochastic vol on barrier pricing.
 \end{itemize}
 
 \paragraph{Convergence in $n_{\mathrm{paths}}$.} Standard MC convergence ($1/\sqrt{M}$) for QE-based exotics. Plot half-width vs $M^{-1/2}$ and verify linearity.
@@ -230,32 +237,34 @@ These limits give us anchored validation against Fourier (\texttt{quantlib.hesto
 %============================================================
 \section{Implementation outline}
 %============================================================
+\begingroup\sloppy % long \texttt signatures
 
 \subsection{Python}
 
 The module \texttt{quantlib.heston\_calibration} exposes:
 \begin{itemize}[topsep=2pt]
     \item \texttt{implied\_vol\_bs(C, K, T, S0, r)}: BS implied vol via Newton-Raphson with Brent fallback.
-    \item \texttt{calibrate\_heston(market\_data, initial\_guess, weights='vega', method='lm')}: full calibration pipeline. Returns calibrated parameters, residuals, and standard errors.
+    \item \texttt{calibrate\_heston(market\_data, S0, r, initial\_guess=None, *, bounds=None, weighted=True, max\_iter=200, verbose=False)}: full calibration pipeline (inverse-vega weights when \texttt{weighted}, TRF under the bounds of \S\ref{sec:constraints}). Returns a \texttt{CalibrationResult} named tuple with fields \texttt{params}, \texttt{residuals}, \texttt{rmse}, \texttt{n\_iter}, \texttt{success}, \texttt{message}.
 \end{itemize}
 
 The module \texttt{quantlib.heston\_exotics} exposes:
 \begin{itemize}[topsep=2pt]
-    \item \texttt{mc\_asian\_call\_heston(S0, K, T, p, n\_steps, n\_paths, n\_avg, *, ...)}: arithmetic-average Asian call.
-    \item \texttt{mc\_lookback\_call\_heston(S0, T, p, n\_steps, n\_paths, *, ...)}: floating-strike lookback.
-    \item \texttt{mc\_barrier\_call\_heston(S0, K, T, H, p, n\_steps, n\_paths, *, ...)}: up-and-out barrier call.
+    \item \texttt{mc\_asian\_call\_heston(S0, K, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, n\_avg=None, ...)}: arithmetic-average Asian call.
+    \item \texttt{mc\_lookback\_call\_heston(S0, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: floating-strike lookback.
+    \item \texttt{mc\_barrier\_call\_heston(S0, K, H, v0, r, kappa, theta, sigma, rho, T, n\_steps, n\_paths, *, ...)}: up-and-out barrier call.
     \item \texttt{heston\_american\_put\_pde(S0, K, T, kappa, theta, sigma, rho, v0, r, ...)}, in the separate module \texttt{quantlib.heston\_american\_pde}: American put via the 2D PDE with operator-splitting projection. The module repeats the Douglas ADI kernels of \texttt{quantlib.heston\_pde} so that it is self-contained.
 \end{itemize}
 The MC exotics share a common pattern: a path-aware simulator that accumulates the path-functional during the time loop. The QE step of \texttt{quantlib.heston\_qe} is copied into \texttt{quantlib.heston\_exotics} as a private kernel that the three simulators call, so that the module is self-contained.
 
 \subsection{C++}
 
-Same structure: \texttt{quant::heston::calibration} and \texttt{quant::heston::exotics} namespaces, with the corresponding pricer functions. The American pricer (\texttt{heston\_american\_pde.hpp}) repeats the Douglas ADI step of \texttt{heston\_pde.cpp} and adds the projection inside the time loop.
+Same structure, with everything in the namespace \texttt{quant::heston}: \texttt{heston\_calibration.hpp} declares \texttt{implied\_vol\_bs} and \texttt{calibrate\_heston} (the hand-written LM of \S\ref{sec:optimisation}), and \texttt{heston\_exotics.hpp} the three Monte Carlo pricers, which take the Heston parameters as a \texttt{HestonParams} struct and an explicit \texttt{std::mt19937\_64} generator. The American pricer (\texttt{heston\_american\_pde.hpp}) repeats the Douglas ADI step of \texttt{heston\_pde.cpp} and adds the projection inside the time loop.
 
 \subsection{Tests}
 
-The Catch2 tests verify the limit cases and cross-method consistency described in \S5, plus the standard validation pillars (BS-limit, statistical scaling for MC, convergence for PDE).
+The Catch2 tests cover part of \S\ref{sec:validation}. \texttt{test\_heston\_calibration.cpp}: the round trip on a 9-quote synthetic surface (parameters to $10^{-3}$ or $10^{-4}$, RMSE below $10^{-4}$), the success flag, implied-vol recovery to $10^{-7}$ on six cases, NaN outside the no-arbitrage bounds, and input validation. \texttt{test\_heston\_exotics.cpp}: the Asian ($n_{\mathrm{avg}} = 1$) and barrier ($H = 10^6$) limits against the Fourier call within three half-widths, Asian and barrier ($H = 130$) prices below the European call by more than three half-widths, $1/\sqrt{M}$ scaling of the half-width for all three pricers, the positive discrete-monitoring bias of the lookback, and input validation. \texttt{test\_heston\_american\_pde.cpp}: American $\geq$ European at $K = 80, 100, 120$, intrinsic value deep in the money ($K = 120$), early-exercise premium below $5\%$ of the European price deep out of the money ($K = 70$), error reduction by more than a factor 2 under grid halving, finite prices within the loose bounds $(-0.01, K + 0.5]$, and input validation. There are no cross-method (MC against PDE) or large-$\kappa$ tests.
 
+\endgroup
 %============================================================
 \section{Bibliographical notes}
 %============================================================
@@ -263,16 +272,17 @@ The Catch2 tests verify the limit cases and cross-method consistency described i
 \begin{itemize}[topsep=2pt]
     \item Cui, del Ba\~no Rollin, Germano (2017) \cite{Cui2017}: Heston calibration with explicit gradients, the modern reference.
     \item Cont, da Fonseca (2002) \cite{ContFonseca2002}: empirical analysis of vol surface dynamics, motivates calibration methodology.
-    \item Glasserman (2003) \cite{Glasserman2003}: standard reference for MC pricing of path-dependent options including Asian, lookback, and barrier.
+    \item Glasserman (2004) \cite{Glasserman2004}: standard reference for MC pricing of path-dependent options including Asian, lookback, and barrier.
     \item Longstaff, Schwartz (2001) \cite{LongstaffSchwartz2001}: the LSM method for American options.
     \item Achdou, Pironneau (2005) \cite{AchdouPironneau2005}: PDE methods including PSOR for early exercise.
 \end{itemize}
 
 \begin{thebibliography}{99}
     \bibitem{AchdouPironneau2005}     Achdou, Y.; Pironneau, O. (2005). \emph{Computational Methods for Option Pricing}. SIAM.
+    \bibitem{BroadieGlassermanKou1997} Broadie, M.; Glasserman, P.; Kou, S. (1997). \emph{A continuity correction for discrete barrier options}. Mathematical Finance, 7(4), 325--349.
     \bibitem{ContFonseca2002}         Cont, R.; da Fonseca, J. (2002). \emph{Dynamics of implied volatility surfaces}. Quantitative Finance, 2(1), 45--60.
     \bibitem{Cui2017}                 Cui, Y.; del Ba\~no Rollin, S.; Germano, G. (2017). \emph{Full and fast calibration of the Heston stochastic volatility model}. European Journal of Operational Research, 263(2), 625--638.
-    \bibitem{Glasserman2003}          Glasserman, P. (2003). \emph{Monte Carlo Methods in Financial Engineering}. Springer.
+    \bibitem{Glasserman2004}          Glasserman, P. (2004). \emph{Monte Carlo Methods in Financial Engineering}. Springer.
     \bibitem{LongstaffSchwartz2001}   Longstaff, F.~A.; Schwartz, E.~S. (2001). \emph{Valuing American options by simulation: a simple least-squares approach}. Review of Financial Studies, 14(1), 113--147.
 \end{thebibliography}
 

@@ -28,7 +28,7 @@ Public interface
 
 References
 ----------
-[Glasserman2003]  Glasserman, P. (2003). Monte Carlo Methods in
+[Glasserman2004]  Glasserman, P. (2004). Monte Carlo Methods in
                   Financial Engineering. Springer.
 """
 
@@ -328,8 +328,8 @@ def mc_lookback_call_heston(S0, v0, r, kappa, theta, sigma, rho, T,
     is a biased estimator of the true continuous-time minimum (the path
     can dip lower between samples). The bias is positive (true min is
     smaller) and scales as O(sqrt(dt)). For accurate continuous
-    monitoring at moderate n_steps, use the Asmussen-Glynn-Pitman
-    correction; not implemented here.
+    monitoring at moderate n_steps, use the Broadie-Glasserman-Kou
+    continuity correction; not implemented here.
     """
     _validate_heston_params(kappa, theta, sigma, rho, v0)
     _validate_contract(S0, T)
