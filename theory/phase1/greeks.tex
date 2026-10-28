@@ -429,12 +429,12 @@ The put expression follows from parity differentiated in \(t\):
 
 \begin{remark}[Sign of Theta]
 For a non-dividend-paying call, the leading \(\varphi\)-term is always
-negative, and the discount term is also negative whenever
-\(N(d_2) > 0\). Hence \(\Theta_C < 0\): the call loses value as time
-passes, all else equal. For the put, the sign of \(\Theta_P\) is
-ambiguous because the two terms have opposite signs; deep ITM puts
-near expiry can have positive Theta when the discount benefit
-outweighs the time-value decay.
+negative, and the discount term is non-positive whenever \(r \geq 0\)
+(since \(N(d_2) > 0\)). Hence, for \(r \geq 0\), \(\Theta_C < 0\): the
+call loses value as time passes, all else equal. For the put, the
+sign of \(\Theta_P\) is ambiguous because the two terms have opposite
+signs; deep ITM puts near expiry can have positive Theta when the
+discount benefit outweighs the time-value decay.
 \end{remark}
 
 % ============================================================
@@ -552,13 +552,15 @@ isolates the explicit \(\sigma\)-dependence and uses
 \]
 \end{proof}
 
-The sign of Volga therefore tracks the sign of \(d_1 d_2\). For
-options moderately near at-the-money with small-to-moderate \(\sigma\),
-\(d_1\) and \(d_2\) typically straddle zero and the call is locally
-\emph{concave} in \(\sigma\); for options far from ATM or for large
-\(\sigma\), they share signs and the call is convex. The change of
-curvature occurs along the locus \(d_1 d_2 = 0\), which is the central
-object of the smile-implied-volatility approximation literature.
+The sign of Volga therefore tracks the sign of \(d_1 d_2\). With
+\(m \eqdef \log(S/K) + r\tau\) the log-moneyness relative to the
+forward, \(d_1 d_2 = (m^2 - \tfrac{1}{4}\sigma^4\tau^2)/(\sigma^2\tau)\).
+For small \(\sigma\sqrt{\tau}\) away from the forward
+(\(|m| > \tfrac{1}{2}\sigma^2\tau\)), \(d_1\) and \(d_2\) share sign
+and the call is \emph{convex} in \(\sigma\); near the forward, or for
+large \(\sigma\sqrt{\tau}\), they have opposite signs and the call is
+locally \emph{concave}. The change of curvature occurs along the locus
+\(d_1 d_2 = 0\).
 
 \begin{remark}[Implication for Newton's method on implied volatility]
 Volga's sign change is the technical reason why monotonicity of

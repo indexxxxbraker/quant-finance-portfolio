@@ -266,11 +266,13 @@ A direct calculation gives
     = \frac{S\,\varphi(d_1)\,\sqrt{T}}{\sigma}\, d_1\, d_2.
 \]
 Unlike the first derivative, the sign of the second derivative is not
-constant: it agrees with the sign of \(d_1 d_2\). For options near the
-forward-ATM region with moderate volatility, \(d_1\) and \(d_2\)
-typically have opposite signs and \(C^{\BS}\) is locally concave in
-\(\sigma\); for options far from ATM, or for large \(\sigma\), the two
-agree in sign and \(C^{\BS}\) is convex. The change of curvature occurs
+constant: it agrees with the sign of \(d_1 d_2\). With
+\(m \eqdef \log(S/K) + rT\) the log-moneyness relative to the forward,
+\(d_1 d_2 = (m^2 - \tfrac{1}{4}\sigma^4 T^2)/(\sigma^2 T)\). For small
+\(\sigma\sqrt{T}\) away from the forward (\(|m| > \tfrac{1}{2}\sigma^2 T\)),
+\(d_1\) and \(d_2\) share sign and \(C^{\BS}\) is convex in \(\sigma\);
+near the forward, or for large \(\sigma\sqrt{T}\), they have opposite
+signs and \(C^{\BS}\) is locally concave. The change of curvature occurs
 at the locus \(d_1 d_2 = 0\). This non-uniform convexity has direct
 consequences for Newton's method, as we discuss below.
 \end{remark}
@@ -319,7 +321,7 @@ sup-norm of \(g''\) on \(U\).
 
 The proof is standard (Taylor expansion of \(g\) around \(\sigma^*\)
 combined with \(g'(\sigma^*) > 0\)) and is omitted; see, e.g., Burden
-and Faires, \emph{Numerical Analysis}, Theorem 2.9.
+and Faires, \emph{Numerical Analysis}, Section 2.4.
 
 % ------------------------------------------------------------
 \subsection{Failure modes}
@@ -382,7 +384,10 @@ cases but fails for markets with extreme implied volatilities (very
 short-dated equity options, low-rate bond options, distressed assets).
 A data-driven initial guess is preferable.
 
-The classical proposal is due to Brenner and Subrahmanyam (1988):
+The classical at-the-money proposal is due to Brenner and Subrahmanyam
+(1988); the version away from the money below adds a moneyness
+adjustment (cf.\ Corrado and Miller, 1996, \emph{Journal of Banking
+\& Finance} 20(3), 595--603):
 
 \begin{proposition}[Brenner--Subrahmanyam initial guess]
 \label{prop:bs-guess}
@@ -421,16 +426,23 @@ order this gives~\eqref{eq:atm-asymptotic}. The correction term in
 \eqref{eq:bs-guess-general} adjusts for moneyness by subtracting half
 of the intrinsic value, which is the linear-in-\(K\) approximation
 to the deviation of \(C^{\BS}\) from its ATM value. See the original
-paper for the full derivation.
+paper for the at-the-money derivation.
 \end{proof}
 
 \begin{remark}[Quality of the approximation]
-The Brenner--Subrahmanyam guess is quantitatively excellent in the
-near-ATM regime (\(|\log(S/K)| \lesssim 0.3\)) and degrades
-gracefully outside it. In all but the most exotic regimes it places
-\(\sigma_0\) within the basin of quadratic convergence of
-Proposition~\ref{prop:newton-quadratic}, reducing the typical Newton
-iteration count to between three and six.
+The Brenner--Subrahmanyam guess is a rough starting point rather than
+an accurate estimate. It is close to \(\sigma\) only at the money with
+negligible discounting (\(S \approx K\), \(rT \ll \sigma\sqrt{T}\)),
+since~\eqref{eq:bs-guess-general} does not discount the strike, and it
+deteriorates quickly with moneyness: with \(\sigma\sqrt{T} = 0.1\) it
+overestimates \(\sigma\) by more than \(100\%\) once
+\(|\log(S/K)| \approx 0.2\). Newton nevertheless converges in most
+cases: over 4{,}853 random parameter sets (\(S = 100\),
+\(K \in [50, 150]\), \(r \in [0, 0.08]\), \(\sigma \in [0.05, 0.8]\),
+\(T \in [0.05, 3]\), price tolerance \(10^{-8}\)), the Python
+implementation typically took two to four Newton steps (median three,
+range one to fourteen) and fell back to bracketing in about \(2\%\) of
+them.
 \end{remark}
 
 % ============================================================
@@ -490,9 +502,9 @@ follows.
 \begin{enumerate}
     \item Verify the no-arbitrage bounds~\eqref{eq:no-arbitrage-bounds}.
     If \(C^{\mathrm{mkt}}\) violates them, return an error.
-    \item Initialise \(\sigma_0\) via the Brenner--Subrahmanyam
-    formula~\eqref{eq:bs-guess-general}, clamped to a safe positive
-    range.
+    \item If \(|\log(S/K)| < 0.3\), initialise \(\sigma_0\) via the
+    Brenner--Subrahmanyam formula~\eqref{eq:bs-guess-general}, floored
+    at \(10^{-3}\); otherwise set \(\sigma_0 = 0.3\).
     \item Iterate Newton--Raphson~\eqref{eq:newton}, with safeguards
     that detect (i) vanishing Vega, (ii) negative iterates, and
     (iii) excessive iteration count.
