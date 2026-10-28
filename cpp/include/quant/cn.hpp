@@ -12,7 +12,7 @@
 // Default Rannacher protocol: replace the first 2 CN steps by 4
 // half-time-step BTCS sub-steps. This damps the high-frequency
 // modes excited by the kink in the call/put payoff, restoring full
-// O(dtau^2) global convergence (Giles & Carter 2005). Set
+// O(dtau^2) global convergence (Giles & Carter 2006). Set
 // rannacher_steps = 0 to observe the kink-induced oscillation
 // directly.
 
@@ -32,7 +32,7 @@ namespace quant::pde {
 ///                            default 4.
 /// @param rannacher_steps     Number of CN time steps replaced by
 ///                            half-time-step BTCS warm-up. Default 2
-///                            follows Giles & Carter (2005). Set to
+///                            follows Giles & Carter (2006). Set to
 ///                            0 to observe the kink-induced
 ///                            oscillation phenomenon.
 ///

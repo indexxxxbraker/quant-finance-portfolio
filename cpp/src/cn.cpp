@@ -84,9 +84,10 @@ std::vector<double> cn_march(const Grid& grid,
     // ---- Rannacher warm-up: 2 * rannacher_steps BTCS half-steps ----
     // Why: the payoff kink at the strike loads the highest-frequency grid
     // mode, and CN's amplification factor for that mode tends to -1 rather
-    // than 0, so the oscillation is never damped and the observed order
-    // drops to O(dt). A few fully implicit steps (|g| -> 0) remove it and
-    // restore O(dt^2). Giles & Carter (2005).
+    // than 0 when alpha = sigma^2 dtau / (2 dx^2) is large, so the
+    // oscillation is barely damped and, for dtau large relative to dx, the
+    // observed order drops towards O(dt). A few fully implicit steps
+    // (|g| -> 0) remove it and restore O(dt^2). Giles & Carter (2006).
     const int n_half = 2 * rannacher_steps;
     const double half_dtau = 0.5 * grid.dtau;
 
