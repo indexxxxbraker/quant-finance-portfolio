@@ -139,9 +139,10 @@ every time step; only the right-hand side $\mathbf{d}$ changes.
 This is the structural pay-off of the logarithmic transformation
 that we already exploited in FTCS, now in a stronger form: at
 each step we solve a system with the \emph{same} matrix and a
-different right-hand side. The forward sweep of the Thomas algorithm
-can be done \emph{once} at setup and reused, halving the per-step
-cost.
+different right-hand side. The matrix-dependent part of the forward
+sweep of the Thomas algorithm can be done \emph{once} at setup and
+reused, cutting the per-step operation count from about $8n$ to about
+$5n$, a factor $\approx 1.6$ (Section~\ref{sec:thomas}).
 
 % =====================================================================
 \section{Stability: unconditional}
@@ -170,19 +171,28 @@ truncation), the Lax equivalence theorem gives convergence:
 \|V_h - V\|_\infty = O(\Delta\tau) + O(\Delta x^2).
 \]
 
-\begin{remark}[Stability is not monotonicity]
-$L^2$ stability does not imply $L^\infty$ monotonicity. For very
-large $\Delta\tau$ at moderate $\Delta x$, the matrix $A$ ceases to
-be an M-matrix: $A^{-1}$ has negative entries, and the discrete
-operator can produce localised oscillations near the strike kink.
-These oscillations are bounded (stability holds), but they degrade
-local accuracy. For our parameter range this regime is far away;
-when we reach it (large-$\Delta\tau$ tests in the validation), we
-will see prices that are merely imprecise, never explosive.
+\begin{remark}[Stability and monotonicity]
+$L^2$ stability does not in general imply $L^\infty$ monotonicity,
+but for BTCS both hold for every $\Delta\tau$ when
+$\mathrm{Pe}_h = |\mu|\Delta x/\sigma^2 \le 1$. Since
+$\mu\Delta\tau/(2\Delta x) = \alpha\,\mu\Delta x/\sigma^2$, the
+off-diagonal entries are
+$b_\pm = -\alpha\,(1 \pm \mu\Delta x/\sigma^2)$: both $\alpha$ and the
+convective term scale linearly in $\Delta\tau$, so the signs of
+$b_\pm$ depend only on $\mathrm{Pe}_h$, and both are non-positive when
+$\mathrm{Pe}_h \le 1$. With the strict diagonal dominance of
+Section~\ref{sec:thomas-stab} (margin $1 + r\Delta\tau$ for every
+$\Delta\tau$), $A$ is then an M-matrix, $A^{-1} \ge 0$ entrywise, and
+the scheme is monotone: it creates no oscillations near the strike
+kink, however large $\Delta\tau$ is. Large-$\Delta\tau$ oscillations
+at the kink are a Crank--Nicolson phenomenon (see the Crank--Nicolson
+note). For BTCS a large $\Delta\tau$ costs only accuracy, through the
+$O(\Delta\tau)$ error: the large-$\Delta\tau$ tests in the validation
+give prices that are merely imprecise, never explosive.
 \end{remark}
 
 % =====================================================================
-\section{The Thomas algorithm}
+\section{The Thomas algorithm}\label{sec:thomas}
 % =====================================================================
 
 Solving $A\,\mathbf{x} = \mathbf{d}$ with general Gaussian elimination
@@ -240,10 +250,10 @@ x_i = d'_i - c'_i\,x_{i+1}, \quad i = n-1, n-2, \dots, 1.
 \label{eq:thomas-back}
 \end{equation}
 
-\paragraph{Operation count.} The forward sweep does roughly $5n$
+\paragraph{Operation count.} The forward sweep does roughly $6n$
 floating-point operations (one division for $c'_i$, three operations
-for $d'_i$, one for $m_i$). The backward substitution does $\sim 2n$.
-Total: $O(n)$ with constant $\approx 7$.
+for $d'_i$, two for $m_i$). The backward substitution does $\sim 2n$.
+Total: $O(n)$ with constant $\approx 8$.
 
 \paragraph{Memory.} Only four vectors of length $\le n$: the three
 diagonals (modified in place if desired) and the right-hand side.
@@ -257,11 +267,12 @@ $\{d'_i\}$. When the matrix is constant across many right-hand
 sides — exactly our case, with one fixed $A$ and $M$ different
 right-hand sides — we compute the $(m_i, c'_i)$ once at setup, and
 each subsequent solve costs only the $d'$ recursion plus the
-backward substitution. The savings are $O(n)$ divisions per solve,
-i.e., a factor $\sim 1.5$--$2$ in practice.
+backward substitution. The saving is the $(m_i, c'_i)$ recursion,
+about $3n$ of the $8n$ operations per solve (including $n-1$
+divisions), i.e.\ a factor $8/5 \approx 1.6$ in operation count.
 
 % =====================================================================
-\section{Stability of Thomas without pivoting}
+\section{Stability of Thomas without pivoting}\label{sec:thomas-stab}
 % =====================================================================
 
 The Thomas algorithm as written does \emph{not} pivot: there is no
@@ -272,22 +283,27 @@ that rules out the failure mode for our matrices.
 
 \begin{theorem}[Thomas without pivoting under diagonal dominance]
 \label{thm:thomas-stab}
-If the tridiagonal matrix is diagonally dominant in the sense
+If the tridiagonal matrix is strictly diagonally dominant by rows,
 \begin{equation}
-|\tilde b_i| \ge |a_i| + |c_i|, \quad i = 1, \dots, n,
+|\tilde b_i| > |a_i| + |c_i|, \quad i = 1, \dots, n
+\qquad (a_1 = c_n = 0),
 \label{eq:diag-dominance}
 \end{equation}
-with strict inequality in at least one row, then all effective
+then all effective
 pivots $m_i$ in \eqref{eq:thomas-forward} satisfy $|m_i| \ge
 |\tilde b_i| - |a_i| > 0$, and the algorithm is backward stable:
 the computed solution $\hat{\mathbf{x}}$ satisfies
 $(A + \delta A)\hat{\mathbf{x}} = \mathbf{d}$ with
-$\|\delta A\|_\infty \le c_n\,\varepsilon_{\mathrm{mach}}\|A\|_\infty$
-for a small constant $c_n$ proportional to $n$.
+$\|\delta A\|_\infty \le c\,\varepsilon_{\mathrm{mach}}\|A\|_\infty$
+for a small constant $c$ independent of $n$.
 \end{theorem}
 
 (Proof in Higham, \emph{Accuracy and Stability of Numerical Algorithms},
-\S9.5.)
+\S9.5--9.6.) Non-strict dominance with strict inequality in only one
+row is not enough: $\operatorname{diag}(1, 0)$ satisfies it and has a
+zero pivot. It does suffice for non-zero pivots if, in addition, the
+matrix is irreducible, i.e.\ all $a_i$ ($i \ge 2$) and $c_i$
+($i \le n-1$) are non-zero.
 
 \paragraph{Application to BTCS.} The BTCS matrix has $\tilde b_i =
 b_0$, $a_i = b_-$, $c_i = b_+$, all constant in $i$. Diagonal
@@ -310,10 +326,11 @@ $|b_-| + |b_+| = 2\alpha$. Then
 \[
 |b_0| - (|b_-| + |b_+|) = 1 + r\Delta\tau > 0,
 \]
-strict diagonal dominance. So Thomas without pivoting is provably
-stable for BTCS whenever $\mathrm{Pe}_h \le 1$, which the project's
-parameter range satisfies with comfortable margin
-($\mathrm{Pe}_h \le 0.25$).
+strict diagonal dominance in every row (the first and last rows have
+only one off-diagonal entry). So Thomas without pivoting is provably
+stable for BTCS whenever $\mathrm{Pe}_h \le 1$, which holds across the
+project's parameter range (the validation and benchmark grids have
+$\mathrm{Pe}_h \le 0.025$; see the FTCS note).
 
 % =====================================================================
 \section{Convergence rates and computational cost}
@@ -326,7 +343,8 @@ independent of $N$, the user has a choice:
 $\Delta\tau \sim \Delta x^2$. Both error contributions are
 $O(\Delta x^2)$; the total error is $O(\Delta x^2)$. The
 computational cost is $O(N) \cdot M \cdot 2 = O(N \cdot N^2) =
-O(N^3)$, with the constant a factor $\sim 7$ from the Thomas count.
+O(N^3)$, with the constant a factor $\sim 5$ from the pre-factored
+Thomas count.
 \emph{Same asymptotic cost as FTCS for the same precision.}
 
 \paragraph{Linear-precision regime ($M \sim N$).} Choose
@@ -367,7 +385,8 @@ The deliverables are two modules each in Python and C++:
 \texttt{thomas\_solve(sub, diag, sup, rhs)} for one-shot solves and
 the pair \texttt{thomas\_factor(sub, diag, sup)} +
 \texttt{thomas\_solve\_factored(factor, rhs)} for repeated solves
-with a fixed matrix.
+with a fixed matrix (in C++, the second step is the method
+\texttt{ThomasFactor::solve(rhs)} of the returned factor).
 \item \texttt{quantlib.btcs} (Python) / \texttt{quant::pde::btcs\_*}
 (C++) provides \texttt{btcs\_european\_call/put} with the same
 signature as the FTCS pricers, except that there is no CFL check:
@@ -401,19 +420,18 @@ stability.
 \bibitem{TavellaRandall2000}
 D. Tavella and C. Randall.
 \emph{Pricing Financial Instruments: The Finite Difference Method.}
-Wiley, 2000. \S3.2 (BTCS for BS), \S3.4 (stability of implicit
-schemes).
+Wiley, 2000. Chapter~2 (Analysis of Finite Difference Methods).
 
 \bibitem{Seydel2017}
 R. Seydel.
 \emph{Tools for Computational Finance.}
-6th ed., Springer, 2017. \S4.2.2 (BTCS), \S4.6 (linear solvers).
+6th ed., Springer, 2017. Chapter~4 (Standard Methods for Standard
+Options).
 
 \bibitem{Strikwerda2004}
 J.~C. Strikwerda.
 \emph{Finite Difference Schemes and Partial Differential Equations.}
-2nd ed., SIAM, 2004. \S3.1--3.2 (implicit methods, von Neumann
-analysis).
+2nd ed., SIAM, 2004. Chapter~2 (von Neumann analysis).
 
 \bibitem{NumericalRecipes}
 W.~H. Press, S.~A. Teukolsky, W.~T. Vetterling and B.~P. Flannery.
@@ -423,20 +441,21 @@ W.~H. Press, S.~A. Teukolsky, W.~T. Vetterling and B.~P. Flannery.
 \bibitem{Higham2002}
 N.~J. Higham.
 \emph{Accuracy and Stability of Numerical Algorithms.}
-2nd ed., SIAM, 2002. \S9.5 (stability of LU without pivoting for
-diagonally-dominant matrices, including the proof of
-Theorem~\ref{thm:thomas-stab}).
+2nd ed., SIAM, 2002. \S9.5--9.6 (LU without pivoting for
+diagonally dominant and for tridiagonal matrices, including the proof
+of Theorem~\ref{thm:thomas-stab}).
 
 \bibitem{TrefethenBau1997}
 L.~N. Trefethen and D.~Bau~III.
 \emph{Numerical Linear Algebra.}
-SIAM, 1997. Lecture~21 (Gaussian elimination without pivoting).
+SIAM, 1997. Lectures~20 (Gaussian elimination) and~22 (stability of
+Gaussian elimination).
 
 \bibitem{Smith1985}
 G.~D. Smith.
 \emph{Numerical Solution of Partial Differential Equations:
 Finite Difference Methods.}
-3rd ed., OUP, 1985. \S1.13 (the $\theta$-family of schemes).
+3rd ed., OUP, 1985.
 
 \end{thebibliography}
 

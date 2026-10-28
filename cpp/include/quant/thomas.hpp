@@ -11,11 +11,11 @@
 //                         sub[n-2]  diag[n-1]            x[n-1] = rhs[n-1]
 //
 // The implementation does Gaussian elimination without pivoting. This
-// is provably backward-stable when the matrix is diagonally dominant
-// (Higham 2002, Theorem 9.5). The BTCS application (btcs.hpp)
-// satisfies diagonal dominance whenever the grid Pe'clet condition
-// |mu| * dx / sigma^2 <= 1 holds, which is the case across the
-// project's parameter range.
+// is provably backward-stable when the matrix is strictly diagonally
+// dominant by rows (Higham 2002, Sections 9.5-9.6). The BTCS application
+// (btcs.hpp) satisfies strict diagonal dominance whenever the grid
+// Pe'clet condition |mu| * dx / sigma^2 <= 1 holds, which is the case
+// across the project's parameter range.
 //
 // For repeated solves with a fixed matrix and varying right-hand side
 // (the BTCS situation: M time steps with the same A), use

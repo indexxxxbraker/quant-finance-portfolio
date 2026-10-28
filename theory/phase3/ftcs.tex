@@ -144,7 +144,8 @@ $a_0 \ge 0$ requires
 \label{eq:cfl-strict}
 \end{equation}
 For $r\,\Delta\tau \ll 1$ (always true in this project: $r \le 0.1$
-and $\Delta\tau \le 10^{-2}$), \eqref{eq:cfl-strict} is essentially
+and $\Delta\tau \lesssim 0.02$, so $r\,\Delta\tau \le 2 \times 10^{-3}$),
+\eqref{eq:cfl-strict} is essentially
 the CFL condition $\alpha \le 1/2$ of the foundations note.
 
 \paragraph{Lateral coefficients.}
@@ -159,7 +160,9 @@ the \emph{grid Péclet number}: it measures the relative weight of
 convection to diffusion at the scale of one grid cell. For the
 parameter range of this project ($\sigma \in [0.1, 0.4]$,
 $|\mu| \le 0.1$, $\Delta x \le 0.1$), $\mathrm{Pe}_h \le 1$ is
-satisfied with comfortable margin.
+satisfied, with equality at the corner $\sigma = 0.1$, $|\mu| = 0.1$,
+$\Delta x = 0.1$. The grids used in the validation and benchmark
+scripts have $\mathrm{Pe}_h \le 0.025$.
 
 \begin{remark}[Convection-dominated regimes]
 When $\mathrm{Pe}_h > 1$ (extreme dividends, very small volatility,
@@ -217,9 +220,8 @@ real part is the diffusive contribution shifted by the reactive term;
 the imaginary part is the convective contribution.
 
 \begin{proposition}[Stability of FTCS]
-Set $r = 0$ for clarity (the reactive term shifts the analysis
-trivially and never contributes to instability when $r \ge 0$ and
-$\Delta\tau \le 1/r$). The condition $|g(\theta)|^2 \le 1$ for all
+Set $r = 0$ for clarity (the effect of the reactive term is
+discussed at the end of this section). The condition $|g(\theta)|^2 \le 1$ for all
 $\theta \in [-\pi, \pi]$ is equivalent to
 \begin{equation}
 \alpha \;\le\; \tfrac{1}{2}
@@ -257,8 +259,8 @@ relationship between them is:
 \item Both conditions share $\alpha \le 1/2$.
 \item The von Neumann condition $\beta^2 \le 2\alpha$ rewrites as
 $\mu^2 \Delta\tau \le \sigma^2$, a constraint on $\Delta\tau$. For
-typical parameters ($\sigma = 0.2,\;\mu \le 0.1$): $\Delta\tau \le 4
-\sigma^2/\mu^2 = 4$ years. Always satisfied.
+typical parameters ($\sigma = 0.2,\;|\mu| \le 0.1$): $\Delta\tau \le
+\sigma^2/\mu^2$, which is at least $4$ years. Always satisfied.
 \item The probability-positive condition $\mathrm{Pe}_h \le 1$
 rewrites as $|\mu| \Delta x \le \sigma^2$, a constraint on $\Delta x$.
 \end{itemize}
@@ -271,9 +273,16 @@ monotonicity (giving stable but oscillatory schemes).
 
 \paragraph{What dominates in practice.} The constraint that bites is
 $\alpha \le 1/2$. The Péclet condition $\mathrm{Pe}_h \le 1$ is a
-constraint on $\Delta x$ that is comfortably met for the project's
-parameters. The reactive contribution $r\Delta\tau$ damps every Fourier
-mode uniformly and never destabilises.
+constraint on $\Delta x$ that is comfortably met on the grids used
+here ($\mathrm{Pe}_h \le 0.025$, Section~\ref{sec:positivity}). The
+reactive contribution shifts $g$ by $-r\Delta\tau$: it damps the
+modes with $\operatorname{Re} g > 0$ but increases $|g|$ where
+$\operatorname{Re} g < 0$. At $\theta = \pi$,
+$g = 1 - 4\alpha - r\Delta\tau$, so the strict criterion
+$|g| \le 1$ requires $\alpha \le \tfrac{1}{2} - \tfrac{r\Delta\tau}{4}$,
+a small tightening that the monotonicity bound \eqref{eq:cfl-strict}
+already implies. Under the generalised von~Neumann criterion
+$|g| \le 1 + O(\Delta\tau)$ the reactive term never affects stability.
 
 % =====================================================================
 \section{The time-marching algorithm}
@@ -369,7 +378,7 @@ The validation tests (Python: \texttt{validate\_ftcs.py}; C++:
 \texttt{test\_ftcs.cpp}) check four properties:
 \begin{enumerate}[leftmargin=2em]
 \item agreement with the Black--Scholes closed form on a grid of
-parameters, with tolerance scaled to $\Delta x^2$;
+parameters, within a fixed absolute tolerance of $5 \times 10^{-3}$;
 \item the empirical convergence rate, by running on $(N, M)$ and
 $(2N, 4M)$ and checking that the error ratio is close to $4$;
 \item put-call parity: $C - P = S - K e^{-rT}$ at every spot, to
@@ -379,9 +388,11 @@ exception.
 \end{enumerate}
 
 A final diagnostic in \texttt{validate\_ftcs.py} disables the CFL check
-and runs the scheme at $\alpha \approx 0.6$ to show the sawtooth
-instability mode: the error at the highest grid frequency grows without
-bound, as predicted by the von Neumann analysis.
+and runs the scheme at $\alpha \approx 1.56$ ($N = 100$, $M = 50$) to
+show the sawtooth instability mode: the error at the highest grid
+frequency grows without bound, as predicted by the von Neumann analysis.
+After the $50$ steps, $\max_j |V_j| \approx 3 \times 10^{34}$ and $V$
+changes sign $99$ times across the $101$ nodes.
 
 % =====================================================================
 \section*{References}
@@ -392,38 +403,45 @@ bound, as predicted by the von Neumann analysis.
 \bibitem{TavellaRandall2000}
 D. Tavella and C. Randall.
 \emph{Pricing Financial Instruments: The Finite Difference Method.}
-Wiley, 2000. \S3.1--3.3 (FTCS for BS, the CFL constraint specific to
-the equation), \S4.2 (convergence).
+Wiley, 2000. Chapter~2 (Analysis of Finite Difference Methods).
 
 \bibitem{Seydel2017}
 R. Seydel.
 \emph{Tools for Computational Finance.}
-6th ed., Springer, 2017. \S4.2.1 (FTCS), \S4.2.4 (stability analysis).
+6th ed., Springer, 2017. Chapter~4 (Standard Methods for Standard
+Options).
 
 \bibitem{Strikwerda2004}
 J.~C. Strikwerda.
 \emph{Finite Difference Schemes and Partial Differential Equations.}
-2nd ed., SIAM, 2004. \S3.4--3.5 (von Neumann analysis for the full
-CDR equation).
+2nd ed., SIAM, 2004. Chapter~2 (von Neumann analysis) and Chapter~6
+(parabolic equations).
 
 \bibitem{MortonMayers2005}
 K.~W. Morton and D.~F. Mayers.
 \emph{Numerical Solution of Partial Differential Equations.}
-2nd ed., CUP, 2005. \S2.7--2.10 (Lax equivalence and consistency
-analysis).
+2nd ed., CUP, 2005. \S2.4--2.7 (the explicit scheme, its truncation
+error, convergence and Fourier analysis), \S5.5 (stability and the
+Lax equivalence theorem).
 
-\bibitem{Hull2017}
+\bibitem{Hull2018}
 J. Hull.
 \emph{Options, Futures, and Other Derivatives.}
-10th ed., Pearson, 2017. \S21.4 (FTCS \(\leftrightarrow\) trinomial
-tree equivalence, from the tree side).
+10th ed., Pearson, 2018. Chapter~21 (FTCS \(\leftrightarrow\) trinomial
+tree relation, from the tree side).
+
+\bibitem{Boyle1986}
+P.~P. Boyle.
+\emph{Option valuation using a three-jump process.}
+International Options Journal 3, 7--12, 1986. Introduces the
+trinomial tree, with a stretch parameter.
 
 \bibitem{KamradRitchken1991}
 B. Kamrad and P. Ritchken.
 \emph{Multinomial approximating models for options with $k$ state
 variables.}
-Management Science 37(12), 1640--1652, 1991. The original trinomial
-tree paper; see the trinomial-tree note.
+Management Science 37(12), 1640--1652, 1991. Generalises Boyle's
+trinomial tree; see the trinomial-tree note.
 
 \end{thebibliography}
 

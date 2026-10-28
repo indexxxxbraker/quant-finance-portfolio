@@ -132,7 +132,8 @@ TEST_CASE("FTCS: put-call parity holds across spots",
 TEST_CASE("FTCS: CFL violation throws std::invalid_argument",
           "[ftcs][cfl]") {
     // With sigma = 0.2, T = 1, n_sigma = 4, N = 100, dx = 0.016.
-    // Stable boundary alpha = 0.5 needs M >= 78. M = 3 violates by far.
+    // Stable boundary alpha = 0.5 needs M >= 157. M = 3 (alpha ~ 26)
+    // violates it by far.
     REQUIRE_THROWS_AS(
         ftcs_european_call(100.0, 100.0, 0.05, 0.20, 1.0, 100, 3),
         std::invalid_argument);

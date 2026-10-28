@@ -10,11 +10,11 @@ Provides an O(n) solver for systems of the form
                         sub[n-2]  diag[n-1]            x[n-1] = rhs[n-1]
 
 The implementation does Gaussian elimination *without pivoting*. This
-is provably backward-stable when the matrix is diagonally dominant
-(|diag[i]| >= |sub[i-1]| + |sup[i]|; Higham 2002 Theorem 9.5). For the
-BTCS application in quantlib.btcs, diagonal dominance follows from the grid
-Pe'clet condition |mu| * dx / sigma^2 <= 1, which holds with comfortable
-margin in our parameter range.
+is provably backward-stable when the matrix is strictly diagonally
+dominant by rows (|diag[i]| > |sub[i-1]| + |sup[i]|; Higham 2002,
+Sections 9.5-9.6). For the BTCS application in quantlib.btcs, strict
+diagonal dominance follows from the grid Pe'clet condition
+|mu| * dx / sigma^2 <= 1, which holds across our parameter range.
 
 For repeated solves with a fixed matrix and varying right-hand side
 (exactly the BTCS situation: M time steps with the same A), use
@@ -84,11 +84,11 @@ def thomas_solve(sub, diag, sup, rhs):
 
     Notes
     -----
-    No pivoting. Backward-stable on diagonally-dominant matrices; may
-    give large errors on non-diagonally-dominant matrices and will
-    raise FloatingPointError if a pivot is exactly zero (which is
-    impossible under the diagonal-dominance hypothesis of Theorem 9.5
-    of Higham 2002).
+    No pivoting. Backward-stable on strictly diagonally dominant
+    matrices; may give large errors on non-diagonally-dominant matrices
+    and will raise ZeroDivisionError if a pivot is exactly zero (which
+    is impossible under strict diagonal dominance; Higham 2002,
+    Sections 9.5-9.6).
     """
     sub  = np.asarray(sub,  dtype=np.float64)
     diag = np.asarray(diag, dtype=np.float64)

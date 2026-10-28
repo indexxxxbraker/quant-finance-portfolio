@@ -4,8 +4,8 @@ Validation script for the FTCS finite-difference pricer.
 Performs five checks:
 
 1. Cross-validation against the Black-Scholes closed form on a grid
-   of (S, K, r, sigma, T) parameters, with a tolerance scaled to the
-   expected discretisation error O(dx^2).
+   of (S, K, r, sigma, T) parameters, with a fixed absolute tolerance
+   (5e-3) chosen for the O(dx^2) discretisation error on these grids.
 2. Empirical convergence rate: doubling N and quadrupling M (to
    preserve CFL) should reduce the error by a factor of ~4.
 3. Put-call parity: C - P = S - K * exp(-r * T) at every grid point
@@ -79,7 +79,8 @@ def test_cross_validation():
     # Tolerance: expected error is O(dx^2). For these parameters,
     # dx ~ 0.008, dx^2 ~ 6e-5; the constant in front depends on the
     # smoothness near the kink. Empirically the worst-case absolute
-    # error on this set is around 5e-3 for prices of order 5-15.
+    # error on this set is about 1.4e-3 (the sigma = 0.3 put), so the
+    # tolerance leaves a margin of more than 3.
     tol = 5e-3
 
     for S, K, r, sigma, T, N, M in test_cases:
@@ -174,8 +175,8 @@ def test_cfl_violation():
     print("[4] CFL enforcement")
 
     # Choose M small enough that alpha > 0.5. With sigma=0.2, T=1,
-    # n_sigma=4, N=100, dx = 8/100 = 0.08, alpha_safe < 0.5 needs
-    # dtau < 0.32; M >= ceil(1 / 0.32) = 4. Choose M = 3 to violate.
+    # n_sigma=4, N=100, dx = 1.6/100 = 0.016, alpha <= 0.5 needs
+    # dtau <= dx^2 / sigma^2 = 0.0064; M >= 157. M = 3 gives alpha ~ 26.
     try:
         ftcs_european_call(100.0, 100.0, 0.05, 0.20, 1.0, N=100, M=3)
         check("CFL violation raises ValueError", False,
@@ -223,9 +224,10 @@ def test_explosion_demo():
     # Pick (N, M) that violates CFL. With sigma=0.2, T=1, n_sigma=4:
     # dx = 8 sigma sqrt(T) / N = 1.6 / N. The stability boundary is
     # alpha = (sigma^2 / 2) * dtau / dx^2 = 1/2, i.e.
-    # M_min = T sigma^2 / (2 * (dx^2)) = T sigma^2 N^2 / (2 * 1.6^2).
-    # For N=100 this is M_min = 0.04 * 10000 / 5.12 = 78. Picking M=50
-    # well below that gives alpha ~ 0.6, comfortably unstable.
+    # M_min = T sigma^2 / dx^2 = T sigma^2 N^2 / 1.6^2.
+    # For N=100 (dx = 0.016) this is M_min = 0.04 * 10000 / 2.56 ~ 157.
+    # Picking M=50 well below that gives
+    # alpha = 0.02 * 0.02 / 0.016^2 ~ 1.56, comfortably unstable.
     K, r, sigma, T = 100.0, 0.05, 0.20, 1.0
     grid = build_grid(N=100, M=50, T=T, sigma=sigma, r=r, K=K)
     alpha = 0.5 * sigma ** 2 * grid.dtau / grid.dx ** 2

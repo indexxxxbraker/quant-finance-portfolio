@@ -158,10 +158,14 @@ Each of the three terms has a distinct numerical character.
       the finite-difference notes) the contribution to the von~Neumann factor is purely
       imaginary.
 \item The \emph{reactive} term $c V = -rV$ is local in space and acts
-      as a uniform exponential decay with rate $r$. It contributes
-      only a multiplicative factor $1 - r\Delta\tau$ (or its implicit
-      analogue) to the amplification factor and never destabilises
-      the scheme.
+      as a uniform exponential decay with rate $r$. In the implicit
+      scheme it adds $r\Delta\tau$ to the denominator of the
+      amplification factor and can only reduce $|g|$. In the explicit
+      scheme it shifts $g$ by $-r\Delta\tau$: this never affects
+      stability under the generalised von~Neumann criterion
+      $|g| \le 1 + O(\Delta\tau)$, but under the strict criterion
+      $|g| \le 1$ it slightly tightens the bound on $\alpha$
+      (Section~\ref{sec:vN}).
 \end{itemize}
 
 \begin{remark}[Why we keep all three terms together]
@@ -300,7 +304,9 @@ interpolant of $V_j^M$ at $x = \ln(S_0/K)$.
 
 The uniformity of the grid in $x$ (not in $S$) is the consequence of
 the logarithmic transformation: a uniform grid in $S$ would
-over-resolve the region near $S = 0$ and under-resolve large $S$.
+under-resolve the region near $S = 0$ and over-resolve large $S$,
+since $V$ varies on a scale proportional to $S$ (of order
+$\sigma S\sqrt{T}$).
 The transformation makes the natural sampling uniform in
 log-moneyness, which is also the natural scale for $V$ to vary on.
 
@@ -349,7 +355,7 @@ round-off errors do not grow unboundedly as the time-stepping
 proceeds. Together with consistency (the truncation error tends to
 zero as $\Delta x, \Delta\tau \to 0$), it implies convergence:
 \begin{theorem}[Lax equivalence,
-{\cite[Theorem 1.5.1]{Strikwerda2004}}]
+{\cite{Strikwerda2004}}]
 For a well-posed linear initial-value problem and a consistent
 finite-difference approximation, stability is necessary and sufficient
 for convergence.
@@ -457,30 +463,47 @@ algorithm.
 \subsection{Convective term: an aside}
 
 Reinstating the convective term $a V_x$ with centred-space
-differences in FTCS, the amplification factor becomes complex,
+differences in FTCS adds
+$a\,\Delta\tau\,(V_{j+1}^n - V_{j-1}^n)/(2\Delta x)$ to the update;
+since $e^{i\theta} - e^{-i\theta} = 2i\sin\theta$, the amplification
+factor becomes complex,
 \[
 g(\theta) \;=\; 1 - 4\alpha\sin^2\!\tfrac{\theta}{2}
-   + i\,\nu\,\sin\theta,
+   + 2i\,\nu\,\sin\theta,
 \qquad
 \nu \;:=\; a\,\frac{\Delta\tau}{2\,\Delta x},
 \]
 where $\nu$ is the \emph{Courant number} (advective). Imposing
-$|g|^2 \le 1$ yields a mixed condition coupling $\alpha$ and $\nu$;
-algebraically, after some manipulation (see~\cite[\S3.5]{Strikwerda2004}),
+$|g|^2 \le 1$ yields a mixed condition coupling $\alpha$ and $\nu$.
+With $s := \sin^2(\theta/2) \in [0,1]$ and $\sin^2\theta = 4s(1-s)$,
 \[
-4\alpha^2 \;\ge\; \nu^2
+|g|^2 - 1 \;=\; 8s\,\bigl[\,2(\alpha^2 - \nu^2)\,s + (2\nu^2 - \alpha)\,\bigr],
+\]
+and the bracket, linear in $s$, is non-positive on $(0,1]$ iff it is
+non-positive at $s = 0$ and at $s = 1$
+(see~\cite[Ch.~2 and~6]{Strikwerda2004}):
+\[
+2\nu^2 \;\le\; \alpha
 \quad\text{and}\quad
 \alpha \le \tfrac{1}{2}.
 \]
+In the variables of \eqref{eq:transformed} the first condition reads
+$\mu^2\Delta\tau \le \sigma^2$.
 For Black--Scholes parameters the relevant figure of merit is the
 \emph{grid Péclet number} $\mathrm{Pe}_h = |a|\Delta x / (2D) =
 |\mu|\Delta x / \sigma^2$. For $\sigma = 0.2$, $|\mu| \le 0.1$,
 $\Delta x \le 0.1$, $\mathrm{Pe}_h \le 0.25$, so the convective
 contribution is sub-dominant and the diffusive bound \eqref{eq:cfl}
 governs in practice. The reactive term $-rV$, being local in space,
-contributes only a multiplicative factor $1 - r\Delta\tau$ to $g$ and
-does not affect stability for $\Delta\tau \le 1/r$, which is always
-satisfied.
+shifts $g$ by $-r\Delta\tau$, which increases $|g|$ wherever
+$\operatorname{Re} g < 0$. At $\theta = \pi$, where
+$g = 1 - 4\alpha - r\Delta\tau$, the strict criterion
+\eqref{eq:vn-criterion} therefore requires
+$\alpha \le \tfrac{1}{2} - \tfrac{r\Delta\tau}{4}$. Under the
+generalised von~Neumann criterion $|g| \le 1 + K\Delta\tau$, with $K$
+independent of the grid (the notion of stability that the Lax
+equivalence theorem requires), an $O(\Delta\tau)$ shift never affects
+stability and the bound remains $\alpha \le 1/2$.
 
 \subsection{Summary: two control numbers}
 
@@ -553,21 +576,22 @@ R. Seydel.
 \bibitem{MortonMayers2005}
 K.~W. Morton and D.~F. Mayers.
 \emph{Numerical Solution of Partial Differential Equations.}
-2nd ed., Cambridge University Press, 2005. Chapters~2--3.\\
+2nd ed., Cambridge University Press, 2005. Chapters~2 and~5
+(\S5.5).\\
 {\small Rigorous mathematical treatment of consistency, stability and
 the Lax equivalence theorem.}
 
 \bibitem{Strikwerda2004}
 J.~C. Strikwerda.
 \emph{Finite Difference Schemes and Partial Differential Equations.}
-2nd ed., SIAM, 2004. Chapters~1--3.\\
+2nd ed., SIAM, 2004. Chapters~1--3 and~6.\\
 {\small Authoritative reference for von Neumann analysis applied to
 linear constant-coefficient schemes.}
 
 \bibitem{Wilmott1998}
 P. Wilmott.
 \emph{Derivatives: The Theory and Practice of Financial Engineering.}
-Wiley, 1998. Chapters~46--49.\\
+Wiley, 1998. Part Six (numerical methods).\\
 {\small Practitioner-oriented exposition with explicit Black--Scholes
 PDE discretisation.}
 
