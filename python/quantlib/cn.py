@@ -10,7 +10,7 @@ convergence at O(N * M) cost.
 Default Rannacher protocol: replace the first 2 CN steps by 4
 half-time-step BTCS sub-steps. This damps the high-frequency
 oscillations introduced by the kink in the call/put payoff at the
-strike, restoring full O(dtau^2) convergence (Giles & Carter 2005).
+strike, restoring full O(dtau^2) convergence (Giles & Carter 2006).
 
 Set rannacher_steps=0 to disable smoothing and observe the kink-
 induced oscillations directly. This is exposed as a diagnostic, not
@@ -78,9 +78,10 @@ def _cn_march(grid, V0, bc_lower, bc_upper, *, rannacher_steps=2):
     # ---- Rannacher warm-up: 2 * rannacher_steps BTCS half-steps ----
     # Why: the payoff kink at the strike loads the highest-frequency grid
     # mode, and CN's amplification factor for that mode tends to -1 rather
-    # than 0, so the oscillation is never damped and the observed order
-    # drops to O(dt). A few fully implicit steps (|g| -> 0) remove it and
-    # restore O(dt^2). Giles & Carter (2005).
+    # than 0 when alpha = sigma^2 dtau / (2 dx^2) is large, so the
+    # oscillation is barely damped and, for dtau large relative to dx, the
+    # observed order drops towards O(dt). A few fully implicit steps
+    # (|g| -> 0) remove it and restore O(dt^2). Giles & Carter (2006).
     n_half = 2 * rannacher_steps
     half_dtau = 0.5 * grid.dtau
 
@@ -135,7 +136,7 @@ def cn_european_call(S, K, r, sigma, T, *, N, M, n_sigma=4.0,
         Half-width of the truncated x-domain.
     rannacher_steps : int, default 2
         Number of CN time steps replaced by half-time-step BTCS
-        warm-up. Default 2 follows Giles & Carter (2005). Set to 0
+        warm-up. Default 2 follows Giles & Carter (2006). Set to 0
         to observe the kink-induced oscillations.
 
     Returns
