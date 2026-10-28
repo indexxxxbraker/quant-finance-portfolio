@@ -138,7 +138,7 @@ This is a discrete-time, geometric-multiplicative process.
 \subsection{Failure of positivity}
 
 The exact GBM solution is positive almost surely: $S_t = S_0
-\exp((\mu - \tfrac{1}{2}\sigma^2) t + \sigma W_t) > 0$. The Euler
+\exp((r - \tfrac{1}{2}\sigma^2) t + \sigma W_t) > 0$. The Euler
 recursion does not preserve this property. Whenever
 $1 + r h + \sigma \Delta W_n < 0$, we have $\hat S_{n+1}$ of the
 \emph{opposite sign} from $\hat S_n$. This requires
@@ -151,9 +151,9 @@ probability
 \Phi\!\left(-\frac{1 + r h}{\sigma \sqrt{h}}\right).
 \end{equation}
 For $r = 0.05$, $\sigma = 0.20$, and $h = 1/100$, this probability is
-approximately $\Phi(-50.25) \approx 10^{-553}$: astronomically small,
-operationally zero. For $h = 1/10$ and the same parameters, the
-threshold is $\Phi(-15.96) \approx 10^{-58}$: still operationally
+approximately $\Phi(-50.02) \approx 3 \times 10^{-546}$: astronomically
+small, operationally zero. For $h = 1/10$ and the same parameters, it
+is $\Phi(-15.89) \approx 3.7 \times 10^{-57}$: still operationally
 zero. For very large $\sigma$ or very small $N$ the threshold relaxes
 but remains far in the tail.
 
@@ -251,7 +251,7 @@ together verify both the theoretical predictions of
 Theorem~5.1 of the previous writeup and the implementation
 correctness. Two of the tests measure convergence orders directly
 (strong and weak); the third anchors the implementation in the
-existing exact pricer; the fourth checks a basic invariance.
+existing exact pricer; the fourth checks input validation.
 
 \subsection{Test 1: empirical strong order}
 
@@ -299,7 +299,10 @@ The weak order is the rate of decay of $|\E[f(S_T)] - \E[f(\hat S_T)]|$
 in $h$, for the call payoff $f(s) = e^{-rT}(s - K)^+$ in our setting.
 
 \begin{enumerate}
-\item Choose the same grid of step counts $N_k$.
+\item Choose a grid of step counts $N_k$. The validation script uses
+$N \in \{10, 20, 50, 100\}$, coarser than the strong-order grid
+$N \in \{10, 30, 100, 300, 1000, 3000\}$, so that the bias stays above
+the Monte Carlo noise (see below).
 \item For each $N_k$, generate $M$ Euler paths and form
 $\hat C_{M, h_k}^{\mathrm{Euler}}$ from~\eqref{eq:estimator}.
 \item Estimate $\mathrm{weak}(h_k) \approx |\hat C_{M, h_k}^{\mathrm{Euler}}
@@ -321,10 +324,11 @@ For the strong test, the empirical strong error
 $\mathrm{strong}(h)$ has standard error of order
 $\sqrt{\Var(|S_T^{\mathrm{exact}} - \hat S_T|) / M}$. As long as this
 standard error is small compared with the strong error itself, the
-slope is well-defined. For $h \in [10^{-4}, 10^{-1}]$ and our GBM
-parameters, $|S_T^{\mathrm{exact}} - \hat S_T|$ has typical scale
-$10^{-1}$ to $10^{-2}$ and standard deviation comparable; setting
-$M = 10^4$ gives a relative standard error of $10^{-2}$, sufficient
+slope is well-defined. On the grid of Test~1 ($h$ from $10^{-1}$ down
+to $3.3 \times 10^{-4}$) and for our GBM parameters, the mean of
+$|S_T^{\mathrm{exact}} - \hat S_T|$ falls from $0.73$ to $0.043$
+(output of Test~1) and its standard deviation is comparable; setting
+$M = 10^4$ gives a relative standard error of about $10^{-2}$, sufficient
 to resolve the $\tfrac{1}{2}$ slope across two orders of magnitude in
 $h$.
 
@@ -352,32 +356,33 @@ Then $\E[\hat D_{M, h}] = C_{\mathrm{Euler}}(h) - C_{\mathrm{BS}}$,
 which is exactly the weak error, and
 $\Var(\hat D_{M, h}) = M^{-1} \Var(\Phi(\hat S_T) - \Phi(S_T))$,
 which is much smaller than $M^{-1} \Var(\Phi(\hat S_T))$ because the
-two payoffs are highly correlated under common Brownian. With $M =
-10^5$ this is sufficient to resolve the slope.
+two payoffs are highly correlated under common Brownian. The
+validation script uses $M = 2 \times 10^5$. This resolves the slope at
+the coarse end of the grid, but the finest points sit near the noise
+floor: at $N = 100$ the CRN difference has standard deviation about
+$0.24$, so the standard error of $\hat D_{M, h}$ is about
+$5 \times 10^{-4}$ against a weak error of about $10^{-3}$, and the
+$N = 50$ point is similarly noisy.
 
 \subsection{Test 3: coherence with the exact pricer}
 
-This test is operational rather than theoretical: it confirms that as
-$h \to 0$ at fixed $M$, the Euler pricer's estimate approaches the
-exact GBM pricer's estimate (modulo the irreducible $O(M^{-1/2})$
-sampling noise). A failure here would signal a bug, not a violation
-of the theory.
+This test is operational rather than theoretical: it confirms that for
+large $N$ the Euler pricer agrees with the Black--Scholes price within
+its statistical error. A failure here would signal a bug, not a
+violation of the theory.
 
-The cleanest way to run this test under common random numbers is:
-generate one batch of $M$ Brownian paths at $N$ steps each, run the
-Euler scheme on them, and compare the resulting estimator against the
-exact estimator built from $W_T = \sum_n \Delta W_n$ on the same
-paths. The two estimators share noise; their difference is at most
-the discretisation bias.
+The validation script runs the Euler pricer with $M = 20{,}000$ paths
+at $N = 500$ and $N = 2000$, without common random numbers, and
+requires $|\hat C_{M, h}^{\mathrm{Euler}} - C_{\mathrm{BS}}|$ to be at
+most three half-widths. At these step counts the discretisation bias,
+of order $10^{-4}$, is far below the half-width of about $0.2$, so the
+test checks the pipeline rather than the bias.
 
 \subsection{Test 4: input validation and basic invariances}
 
 A separate, mechanical battery of tests checks that the implementation
-rejects bad inputs (negative $S$, $K$, $\sigma$, $T$, non-positive
-$N$ or $M$), that the result is monotone in the parameters in the
-expected directions (modulo noise), and that the asymptotic limits
-$S_0 \to \infty$ and $S_0 \to 0$ are respected, mirroring Test~4 of
-the exact GBM pricer.
+rejects bad inputs (non-positive $S$, $K$, $\sigma$ or $T$, $N < 1$,
+$M < 2$) and accepts a negative rate $r$, which is admissible.
 
 \section{Algorithmic specification}
 \label{sec:algorithm}
@@ -453,8 +458,10 @@ jump-diffusion), in which case the comparison is not between Euler
 and exact but between Euler and other discretisation schemes.
 
 This analysis is also the foundation for the multilevel Monte Carlo
-techniques of Giles (2008), which combine simulations at multiple step
-sizes in a way that recovers $W^{-1/2}$ even with biased samplers.
+method of Giles~\cite{Giles2008}, which combines simulations at
+multiple step sizes; with Euler it reaches root-mean-square error
+$\varepsilon$ at cost $O(\varepsilon^{-2} (\log \varepsilon)^2)$, that
+is, the $W^{-1/2}$ rate of exact simulation up to a logarithmic factor.
 Multilevel MC is beyond the scope of these notes but appears prominently
 in the path-dependent literature.
 
@@ -470,6 +477,11 @@ Platen~\cite{KloedenPlaten} provide the formal proofs of the
 convergence orders cited from the previous theoretical writeup.
 
 \begin{thebibliography}{99}
+
+\bibitem{Giles2008}
+M.\ B.\ Giles,
+\emph{Multilevel Monte Carlo path simulation},
+Operations Research, 56(3):607--617, 2008.
 
 \bibitem{Glasserman}
 P.\ Glasserman,

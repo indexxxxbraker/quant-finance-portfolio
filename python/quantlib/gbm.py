@@ -270,11 +270,11 @@ def simulate_path_milstein(S0, r, sigma, T, n_steps, n_paths,
 
     Notes
     -----
-    Milstein has marginally better positivity behaviour than Euler:
-    the squared-increment term is always nonnegative, so the
-    multiplicative factor is bounded below by
-    ``1 + r*h + sigma*dW_n - 0.5 * sigma^2 * h``. For typical finance
-    parameters, neither scheme produces nonpositive prices.
+    Completing the square, the Milstein factor equals
+    ``0.5 * (1 + sigma*dW_n)^2 + 0.5 + r*h - 0.5 * sigma^2 * h``, so it
+    is positive for every dW_n whenever sigma^2 * h < 1 + 2*r*h. The
+    Euler factor can be negative, but with negligible probability for
+    typical parameters (about 4e-57 per step at sigma = 0.2, h = 0.1).
 
     See theory/phase2/mc_european_milstein.tex.
     """

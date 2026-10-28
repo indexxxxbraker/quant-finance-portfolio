@@ -260,10 +260,10 @@ path.
 \label{def:weak}
 A discretisation scheme is said to converge \emph{weakly} to the
 solution of~\eqref{eq:sde} with order $\beta > 0$ if for every test
-function $f$ in a specified class of smooth functions (typically
-polynomials of degree $\leq 2 \beta$ with bounded derivatives, or
-$C_b^{2\beta}$), there exist constants $C_f > 0$ and $h_0 > 0$ such
-that
+function $f$ in a specified class of smooth functions (Kloeden and
+Platen use $C_P^{2(\beta+1)}$, the functions whose derivatives up to
+order $2(\beta+1)$ are continuous and polynomially bounded), there exist
+constants $C_f > 0$ and $h_0 > 0$ such that
 \begin{equation}
 \label{eq:weak-defn}
 \big| \E[f(X_T)] - \E[f(\hat X_N)] \big|
@@ -298,9 +298,8 @@ elementary example illustrates how dramatic the difference can be.
 Let $X \sim \mathcal{N}(0, 1)$ and $\hat X \sim \mathcal{N}(0, 1)$ be
 independent. Then $X$ and $\hat X$ have \emph{identical} marginal
 distributions, so $\E[f(X)] = \E[f(\hat X)]$ for every $f$ and the
-``weak error'' is zero. But the pathwise distance is large:
-$\E[|X - \hat X|] = \E[|X|] + \E[|\hat X|]$ by independence of
-$X$ and $\hat X$ ... no, more carefully,
+``weak error'' is zero. But the pathwise distance is large: since
+$X - \hat X \sim \mathcal{N}(0, 2)$,
 $\E[|X - \hat X|] = \sqrt{2/\pi} \cdot \sqrt{2} = 2/\sqrt{\pi} \approx 1.13$,
 which is firmly bounded away from zero.
 \end{example}
@@ -739,8 +738,9 @@ $N = T/h$ steps to $O(h)$ globally. Hence strong order $1$.
 to Euler does not improve the weak error: the leading non-zero
 expectation term is unchanged. To get weak order $> 1$, one needs to
 correct further moments of the increment; this requires schemes like
-the order-$2$ weak scheme of Platen, which is genuinely more involved
-and beyond the scope of this note.
+the order-$2$ weak schemes of Milstein and Talay
+(Glasserman~\cite[Section~6.2]{Glasserman}), which are genuinely more
+involved and beyond the scope of this note.
 
 \subsection{Application to GBM}
 
@@ -751,12 +751,16 @@ $b(x) b'(x) = \sigma^2 x$. The recursion becomes
 \hat S_{n+1} \;=\; \hat S_n + r \hat S_n h + \sigma \hat S_n \Delta W_n
 + \tfrac{1}{2} \sigma^2 \hat S_n \big[(\Delta W_n)^2 - h\big].
 \end{equation}
-Again multiplicative, again with a positivity issue (although the
-correction term raises the lower bound: the squared term
-$(\Delta W_n)^2$ is always nonnegative, so the correction is bounded
-below by $-\tfrac{1}{2} \sigma^2 \hat S_n h$, and the worst-case loss
-per step is mitigated). We will report empirically what fraction of
-paths, if any, develop nonpositive prices in our test parameters.
+Again multiplicative, but unlike Euler without a positivity issue in
+practice. Completing the square, the multiplicative factor is
+\[
+1 + r h + \sigma \Delta W_n + \tfrac{1}{2} \sigma^2 \big[(\Delta W_n)^2 - h\big]
+\;=\; \tfrac{1}{2} \big(1 + \sigma \Delta W_n\big)^2
++ \tfrac{1}{2} + r h - \tfrac{1}{2} \sigma^2 h,
+\]
+which is strictly positive for every value of $\Delta W_n$ whenever
+$\sigma^2 h < 1 + 2 r h$. For $\sigma = 0.2$ and $r \geq 0$ this holds
+for every $h < 25$, so the Milstein path stays positive.
 
 \section{Practical considerations and which scheme to use}
 \label{sec:practical}
@@ -772,17 +776,23 @@ We compute $\E[e^{-rT} \Phi(S_T)]$. This is a marginal expectation,
 the weak setting. Both Euler and Milstein have weak order $1$.
 Milstein costs more per step (one extra multiplication and one
 derivative evaluation; the latter can be analytically symbolic and
-hence ``free'' if the model coefficients are simple). The only
-benefit of Milstein over Euler in this setting is a smaller constant
-in front of the $h$ asymptote, not an improved order.
+hence ``free'' if the model coefficients are simple). For the European
+call under GBM it brings nothing in exchange: the weak order is the
+same, and the constant in front of $h$ is larger. In the weak-order
+tests under common random numbers (Test~2 of
+\texttt{validate\_mc\_european\_euler.py} and
+\texttt{validate\_mc\_european\_milstein.py}, at-the-money call,
+$2 \times 10^5$ paths), the weak error is $1.4 \times 10^{-2}$ at
+$N = 10$ and $1.1 \times 10^{-3}$ at $N = 100$ for Euler, against
+$4.5 \times 10^{-2}$ and $4.5 \times 10^{-3}$ for Milstein: three to
+four times larger. The benefit of Milstein is its strong order $1$,
+that is, pathwise accuracy, which matters for pathwise sensitivities and
+for multilevel Monte Carlo (path-dependent payoffs included), not for
+the European price.
 
-In practice for pricing under GBM (and for many local volatility
-models), the constant improvement is too small to justify the extra
-machinery: Euler with a slightly smaller $h$ achieves the same weak
-error at lower or comparable cost. Empirically, for European pricing
-under GBM, Euler at
-$h = T/200$ and Milstein at $h = T/100$ (matched cost) deliver
-comparable accuracy.
+At matched cost, therefore, Euler is the more accurate scheme for this
+payoff: at $N = 100$ its weak error is already smaller than Milstein's,
+and each Euler step is cheaper.
 
 \subsection{For pathwise sensitivity}
 
@@ -859,9 +869,9 @@ are thin orchestrators on top of the path samplers.
 
 The canonical reference for the numerical analysis of SDEs is
 Kloeden \& Platen~\cite{KloedenPlaten}, especially Chapters~5
-(stochastic Taylor expansions), 9--10 (Euler--Maruyama and strong
-convergence), and 14--15 (weak convergence and Milstein-type
-schemes). The treatment is comprehensive and self-contained but
+(stochastic Taylor expansions), 9--10 (Euler--Maruyama, strong
+convergence, and the Milstein scheme in Section~10.3), and 14--15
+(weak convergence and weak schemes). The treatment is comprehensive and self-contained but
 demanding; the relevant theorems are stated with multiple regularity
 hypotheses that we have stylised in Theorems~\ref{thm:euler-conv}
 and~\ref{thm:milstein-conv}. For a reader-friendlier introduction,

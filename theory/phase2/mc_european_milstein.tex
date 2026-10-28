@@ -135,26 +135,30 @@ The Euler factor $1 + r h + \sigma \Delta W_n$ is unbounded below
 along the negative direction: a sufficiently negative $\Delta W_n$
 produces a negative factor and hence a negative $\hat S_{n+1}$. The
 Milstein factor adds the term $\tfrac{1}{2} \sigma^2 ((\Delta W_n)^2
-- h)$, which has \emph{no upper bound on the negative side}: the
+- h)$, which is bounded below by $-\sigma^2 h / 2$: the
 $(\Delta W_n)^2$ component is always nonnegative, and only the $-
-\sigma^2 h / 2$ piece pulls the factor down, by an amount bounded by
-$\sigma^2 h / 2$. Concretely, the Milstein factor is bounded below
-by
+\sigma^2 h / 2$ piece pulls the factor down. Completing the square
+shows more:
 \begin{equation}
-1 + r h + \sigma \Delta W_n - \tfrac{1}{2} \sigma^2 h,
+1 + r h + \sigma \Delta W_n + \tfrac{1}{2} \sigma^2 \big[(\Delta W_n)^2 - h\big]
+\;=\; \tfrac{1}{2} \big(1 + \sigma \Delta W_n\big)^2
++ \tfrac{1}{2} + r h - \tfrac{1}{2} \sigma^2 h,
 \end{equation}
-which is the worst case where $(\Delta W_n)^2 = 0$. For typical
-finance parameters this lower bound is essentially the Euler factor,
-so the positivity behaviour of Milstein is no worse than that of
-Euler. Empirically, the Milstein-$\sigma^2/2$ correction more than
-compensates the loss of the $\sigma \Delta W_n$ term in most
-realisations: the factor $1 + r h + \sigma \Delta W_n + \tfrac{1}{2}
-\sigma^2 ((\Delta W_n)^2 - h)$ is, on average, closer to $1$ than the
-Euler factor.
+so the Milstein factor is strictly positive for every value of
+$\Delta W_n$ whenever $\sigma^2 h < 1 + 2 r h$, which for $\sigma = 0.2$
+and $r = 0.05$ holds for every $h$. On average, however, the Milstein factor is not closer to $1$ than
+the Euler factor: both have mean $1 + r h$, and the variance of the
+Milstein factor exceeds that of the Euler factor by exactly
+$\sigma^4 h^2 / 2$, the variance of the corrector
+($\Var((\Delta W_n)^2) = 2h^2$), which is uncorrelated with
+$\Delta W_n$ because $\E[(\Delta W_n)^3] = 0$.
 
-We do not implement positivity defences in the algorithm; for the
-parameter regime of our experiments, neither Euler nor Milstein
-produces nonpositive prices in any realisation we have observed.
+We do not implement positivity defences in the algorithm, and none is
+needed: the Milstein factor is positive under the condition above, and
+the Euler factor is nonpositive with probability
+$\Phi(-(1 + r h)/(\sigma\sqrt{h}))$ per step, about
+$3.7 \times 10^{-57}$ at $h = 0.1$ and $3 \times 10^{-546}$ at
+$h = 0.01$ (Section~2.2 of the Euler--Maruyama note).
 
 \subsection{The corrector term and its expectation}
 
@@ -215,31 +219,35 @@ The Monte Carlo Milstein estimator of the European call price is
 e^{-rT}\, (\hat S_T^{(i), \,\mathrm{Milstein}} - K)^+.
 \end{equation}
 The bias-variance decomposition of the Euler--Maruyama note,
-equation~(8), applies
+equation~(10), applies
 here verbatim: total mean square error decomposes as variance/$M$
 plus bias-squared, with bias $O(h)$.
 
 \subsection{Comparison with Euler at fixed budget}
 
-The pricing performance of Milstein and Euler is, in this setting,
-indistinguishable. Both have weak order $1$, so both produce a bias
-of order $h$ for the same $h$. The constants in front of the $h$
-asymptote may differ slightly between the two, but for canonical GBM
-parameters the difference is too small to matter at the sample sizes
-where the bias is detectable.
+Both schemes have weak order $1$, so both produce a bias of order $h$
+for the same $h$. The constants in front of the $h$ asymptote differ,
+and not in Milstein's favour: in Test~2 of the two validation scripts
+(common random numbers, $M = 2 \times 10^5$), the weak error at
+$N = 10$ is $4.5 \times 10^{-2}$ for Milstein against
+$1.4 \times 10^{-2}$ for Euler, and at $N = 100$ it is
+$4.5 \times 10^{-3}$ against $1.1 \times 10^{-3}$. For this payoff the
+Milstein constant is three to four times larger.
 
-The cost per path of Milstein is marginally higher: one extra
+The cost per path of Milstein is also higher: one extra
 multiplication and one squaring per Euler step (the corrector
-$(\Delta W_n)^2 - h$). The overhead is on the order of $20$--$30\%$
-in our implementation, well below the cost of generating the
-$\Delta W_n$ themselves. So at fixed total budget, Milstein delivers
-roughly the same accuracy as Euler with marginally fewer paths or
-marginally larger $h$. Either way the difference is in the noise.
+$(\Delta W_n)^2 - h$). In the benchmark tables of
+\texttt{python/results/phase3} (\texttt{pricing\_*.csv}, $20$ steps,
+one timing per case) the Milstein pricer takes $11$--$22\%$ longer
+than the Euler pricer. At fixed
+total budget, therefore, Euler is the more accurate of the two for
+this payoff. At the sample sizes used for pricing, both biases are
+far below the statistical error (the half-width at $M = 20{,}000$ is
+about $0.2$).
 
-The genuine practical disadvantage of Milstein for European pricing,
-visible in the validation suite of Section~\ref{sec:validation}, is
-none whatsoever for European pricing as such: this whole comparison
-is academic. The advantage materialises in pathwise applications.
+The validation suite of Section~\ref{sec:validation} thus shows Milstein
+at a small disadvantage for European pricing. Its advantage
+materialises in pathwise applications.
 We mention it here because confronting the irrelevance of Milstein
 for vanilla European pricing is part of internalising the strong/weak
 distinction.
@@ -279,9 +287,12 @@ for both schemes.
 The expected result is two parallel lines on log-log: Euler with
 slope $\tfrac{1}{2}$, Milstein with slope $1$. Beyond confirming the
 two convergence orders, the side-by-side plot makes the asymmetry
-visually obvious: at the smallest $h$ tested, Milstein's strong error
-should be roughly $\sqrt{h_{\mathrm{smallest}} / h_{\mathrm{largest}}}$
-times smaller than Euler's, an order of magnitude or more.
+visually obvious: the ratio of Euler's strong error to Milstein's
+grows as $h^{-1/2}$, by a factor
+$\sqrt{h_{\mathrm{largest}} / h_{\mathrm{smallest}}} = \sqrt{300}
+\approx 17$ across the grid. In the recorded run of Test~1 of
+\texttt{validate\_mc\_european\_milstein.py} the ratio is $8.6$ at
+$h = 0.1$ and $145$ at $h = 3.3 \times 10^{-4}$.
 
 \subsection{Test 2: weak order under common random numbers}
 
@@ -294,7 +305,10 @@ quality.
 The grid restriction discussed in the Euler--Maruyama note
 applies here: the bias must dominate the residual MC noise of the
 CRN-corrected difference. With $M = 200{,}000$ and $N \in \{10, 20,
-50, 100\}$, both schemes resolve the slope cleanly.
+50, 100\}$, Milstein resolves the slope cleanly: because it tracks the
+exact path closely, its CRN difference has a standard deviation of
+about $0.008$ at $N = 100$, against $0.24$ for Euler, whose finest
+points sit near the noise floor.
 
 \subsection{Tests 3 and 4: coherence and validation}
 
@@ -335,18 +349,19 @@ all $M$ states simultaneously) using \texttt{numpy.cumprod} on the
 matrix of factors, identical in structure to the Euler--Maruyama
 implementation. The only changes to the code are the addition of the
 quadratic corrector term in the factor and the corresponding
-docstrings; the Milstein implementation is barely 30 lines longer
-than the Euler--Maruyama one.
+docstrings; the two path samplers in \texttt{quantlib.gbm} are of the
+same length, about 50 lines each.
 
 \section{Bibliographic notes}
 \label{sec:biblio}
 
-The Milstein scheme is from Milstein (1974) and is treated in detail
-in Kloeden \& Platen~\cite{KloedenPlaten}, Section~10.3. The empirical
+The Milstein scheme is from Milstein~\cite{Milstein1974} and is
+treated in detail in Kloeden \& Platen~\cite{KloedenPlaten},
+Section~10.3. The empirical
 side-by-side comparison study designed here is a direct adaptation
 of the comparison study in Higham~\cite{Higham2001}, Section~5. For
 the practical relevance of Milstein in finance applications,
-Glasserman~\cite[Section~6.3]{Glasserman} provides the
+Glasserman~\cite[Section~6.1]{Glasserman} provides the
 context-specific discussion: when does the strong order of a scheme
 matter for the financial applications at hand.
 
@@ -367,6 +382,11 @@ SIAM Review, 43(3):525--546, 2001.
 P.\ E.\ Kloeden and E.\ Platen,
 \emph{Numerical Solution of Stochastic Differential Equations},
 Springer, 1992.
+
+\bibitem{Milstein1974}
+G.\ N.\ Mil'shtein,
+\emph{Approximate integration of stochastic differential equations},
+Theory of Probability and its Applications, 19(3):557--562, 1974.
 
 \end{thebibliography}
 

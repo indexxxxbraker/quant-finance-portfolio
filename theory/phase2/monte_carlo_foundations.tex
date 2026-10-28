@@ -237,7 +237,11 @@ h_n \;\eqdef\; z_{\beta/2}\,\frac{S_n}{\sqrt{n}}
 \end{equation}
 is the standard reportable summary of estimator uncertainty in Monte
 Carlo. It is what every Monte Carlo implementation in these notes computes and
-returns alongside the point estimate.
+returns alongside the point estimate, with one exception: the
+deterministic quasi-Monte Carlo pricer
+\texttt{mc\_european\_call\_euler\_qmc} returns the estimate alone,
+since a single unrandomised point set provides no sample from which to
+estimate a half-width.
 
 \begin{remark}
 The use of $z_{\beta/2}$ rather than the corresponding $t$-quantile is
@@ -324,10 +328,11 @@ cost: an antithetic estimator generates one extra path per pair, a
 control variate evaluates an additional payoff, importance sampling
 involves an extra likelihood ratio, and so on. The relevant question is
 not whether the variance went down, but whether the product
-$\sigma^2 \tau$ went down. In the variance-reduction notes every
-reported result
-includes both factors, and the criterion of success will be a reduction
-in the product, not in the variance alone.
+$\sigma^2 \tau$ went down. The variance-reduction notes compare
+estimators at equal payoff count, so their reported factors measure the
+variance alone; the cost factor $\tau$ is not measured, and a reported
+variance reduction is a gain in efficiency only if it exceeds the ratio
+of per-replication costs.
 \end{remark}
 
 \begin{remark}[Biased estimators]
@@ -401,8 +406,10 @@ widespread use and meet the criteria above:
 \item The \emph{Mersenne Twister} (MT19937) of Matsumoto and
 Nishimura~\cite{Matsumoto1998} has period $2^{19937}-1$ and is
 $623$-distributed to $32$-bit accuracy. It is the default in NumPy's
-legacy \texttt{RandomState} and in the C++ standard library
-(\texttt{std::mt19937} and \texttt{std::mt19937\_64}).
+legacy \texttt{RandomState}, and the C++ standard library provides it
+as \texttt{std::mt19937} and \texttt{std::mt19937\_64} (the library's
+\texttt{std::default\_random\_engine} is implementation-defined, so the
+project names \texttt{std::mt19937\_64} explicitly).
 
 \item The \emph{permuted congruential generator} family (PCG) of
 O'Neill~\cite{ONeill2014} couples an LCG with a non-linear output
@@ -498,14 +505,18 @@ sampling error. The classical approximation is
 Beasley--Springer~\cite{BeasleySpringer1977} as extended by
 Moro~\cite{Moro1995}; Wichura's algorithm AS~241~\cite{Wichura1988} is
 a widely used alternative; Acklam's approximation~\cite{Acklam2003}
-gives full double precision throughout the support and is what
-\texttt{scipy.stats.norm.ppf} effectively delivers.
+has relative error below $1.15 \times 10^{-9}$ throughout the support,
+and reaches full double precision only after an additional refinement
+step. SciPy's \texttt{scipy.special.ndtri}, which underlies
+\texttt{scipy.stats.norm.ppf}, comes from the Cephes library.
 
-For the Monte Carlo implementations, we do not roll our own:
-\texttt{scipy.special.ndtri} (or, equivalently,
-\texttt{scipy.stats.norm.ppf}) in Python and
-\texttt{boost::math::quantile} on a normal distribution in C++ provide
-$\Phi^{-1}$ to machine precision. The conceptual point is that
+In Python the Monte Carlo implementations call
+\texttt{scipy.stats.norm.ppf}. The C++ code has no Boost dependency: it
+uses its own implementation of Acklam's approximation
+(\texttt{inverse\_normal\_cdf} in \texttt{gbm.cpp}), without the
+refinement step, so its quantiles carry a relative error below
+$1.15 \times 10^{-9}$, far below Monte Carlo sampling error. The
+conceptual point is that
 inversion-based normal sampling is a single call to a transcendental
 function: it is a few times slower than the alternative below, and that
 cost is the price paid for compatibility with quasi-Monte Carlo.
@@ -570,10 +581,15 @@ property is destroyed in those coordinates. Box--Muller is therefore
 incompatible with quasi-Monte Carlo.
 \end{enumerate}
 
-For this reason we adopt inversion as the universal sampling strategy
-for the entire project. The marginal speed advantage of Box--Muller is
-not worth the architectural inflexibility it imposes. Quasi-Monte Carlo
-exploits this decision directly.
+For this reason the C++ code samples every normal by inversion, and
+none of the code uses Box--Muller. In Python, inversion is used by the
+exact GBM sampler and the code built on it (the Greeks, the antithetic
+and control-variate pricers, the Heston simulators) and by the
+quasi-Monte Carlo pricers; the Euler and Milstein path samplers
+(\texttt{rng.normal} in \texttt{quantlib.gbm}), the Asian pricers and
+the Longstaff--Schwartz pricer (\texttt{rng.standard\_normal}) use
+NumPy's ziggurat sampler instead. Quasi-Monte Carlo exploits inversion
+directly.
 
 \subsection{Reproducibility: seeds and streams}
 \label{sec:seeds}
@@ -598,10 +614,12 @@ which functions are called silently affect their outputs.
 In C++, the analogous discipline is to declare an
 \texttt{std::mt19937\_64 rng(seed)} as a local variable in the entry
 point of a simulation and pass \texttt{rng} by reference to every
-function that consumes randomness. Each function uses the appropriate
-\texttt{std::normal\_distribution} or \texttt{std::uniform\_real\_distribution}
-object (these are stateless modulo the engine), but the engine itself
-is owned by exactly one stack frame and threaded through.
+function that consumes randomness. Each function draws uniforms through
+a locally constructed \texttt{std::uniform\_real\_distribution} object
+and maps them to normals by inversion; the library's
+\texttt{std::normal\_distribution}, which may cache a value between
+calls, is not used. The engine itself is owned by exactly one stack
+frame and threaded through.
 
 When variance reduction enters, certain techniques (in
 particular common random numbers, used pervasively in greek estimation)
@@ -636,9 +654,8 @@ the antithetic construction; the seed-control discipline of
 Section~\ref{sec:seeds} is required for control variates and for the
 common-random-numbers technique used in conjunction with greeks.
 
-\paragraph{Quasi-Monte Carlo.} The decision to adopt inversion
-as the universal sampling transformation
-(Section~\ref{sec:normal-sampling}) is taken for the express purpose of
+\paragraph{Quasi-Monte Carlo.} The use of inversion as the sampling
+transformation (Section~\ref{sec:normal-sampling}) is motivated by
 quasi-Monte Carlo: low-discrepancy sequences cannot be processed through
 Box--Muller without losing their structure. The asymptotic regime
 of~\eqref{eq:clt} is replaced by a deterministic Koksma--Hlawka bound,

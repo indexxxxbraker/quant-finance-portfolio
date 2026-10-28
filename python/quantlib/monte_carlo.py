@@ -185,8 +185,10 @@ def mc_european_call_milstein(S, K, r, sigma, T, n_steps, n_paths,
     """Price a European call by Monte Carlo with Milstein paths.
 
     Both Milstein and Euler have weak order 1 for European pricing,
-    so this estimator is statistically indistinguishable from
-    ``mc_european_call_euler`` at any practical sample size. The
+    and at practical sample sizes both biases are far below the
+    statistical error, so the two estimators agree within noise (for
+    the call, Milstein's weak-error constant is in fact three to four
+    times larger; see validate_mc_european_milstein.py, Test 2). The
     Milstein scheme exists for cases where strong order matters
     (pathwise sensitivity, quantlib.greeks) and is exposed here for
     completeness and for the empirical convergence study in

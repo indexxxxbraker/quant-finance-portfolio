@@ -110,10 +110,9 @@ therefore unambiguously attributable to sampling error, which makes
 this algorithm an unusually clean diagnostic for implementation
 correctness. Third, because the distribution of the discounted payoff
 is known explicitly, its variance admits a closed-form expression,
-which we derive in Section~\ref{sec:variance}. This expression is the
-denominator against which the variance reduction techniques are
-measured, and it provides an additional independent test of the
-implementation.
+which we derive in Section~\ref{sec:variance}. This expression gives
+an a priori sample-size criterion and provides an additional
+independent test of the implementation.
 
 The remainder of the document is organised as follows.
 Section~\ref{sec:setting} fixes notation. Section~\ref{sec:exact}
@@ -305,8 +304,8 @@ stopping rules emerge:
 \item Continue sampling until $h_n$ falls below a prescribed
 absolute or relative tolerance.
 \end{enumerate}
-Both will be supported by the implementation; the validation tests of
-Section~\ref{sec:validation} use the first.
+Only the first is implemented: the pricer takes $n$ as an argument, and
+the validation tests of Section~\ref{sec:validation} use fixed $n$.
 
 \section{Closed-form variance of the discounted payoff}
 \label{sec:variance}
@@ -445,14 +444,20 @@ estimated from a
 preliminary run, and~\eqref{eq:n-eps} becomes a feedback loop rather
 than a one-shot calculation.
 
-The expression also serves a more lasting purpose: it is the
-denominator $\Var_{\mathrm{vanilla}}$ of the variance reduction factors
+The expression also serves as an independent check of the
+implementation (Test~3 of Section~\ref{sec:validation}). It is not the
+denominator of the variance reduction factors reported in the
+variance-reduction notes: the scoreboard of
+\texttt{benchmark\_phase2.py} computes
 \[
-\mathrm{VRF} \;\eqdef\;
-\frac{\Var_{\mathrm{vanilla}}}{\Var_{\mathrm{technique}}}
+\mathrm{VRF} \;=\;
+\left(\frac{h_{\mathrm{IID}}}{h_{\mathrm{technique}}}\right)^{\!2}
 \]
-that are reported throughout the variance-reduction notes to quantify
-the gain of each variance reduction technique.
+from the half-width $h_{\mathrm{IID}}$ of an independent run of the
+present algorithm at the same payoff count, and the validation scripts
+compare it with the factors predicted from sample correlations,
+$1/(1+\hat\rho)$ for antithetic variates and $1/(1-\hat\rho^2)$ for
+control variates.
 
 \section{Validation strategy}
 \label{sec:validation}
@@ -491,21 +496,26 @@ The fitted slope should be close to $-\tfrac{1}{2}$.
 For the same parameter configurations, compare the sample variance
 $S_n^2$ produced by the simulation with the closed-form value
 delivered by Proposition~\ref{prop:closed-form-variance}. The relative
-error should decrease at the rate predicted by the variance of the
-sample variance estimator, namely $O(n^{-1/2})$. A persistent
-discrepancy at a level inconsistent with this rate indicates a bug in
-either the sampling scheme or the closed-form computation; the test
-discriminates between these two failure modes by comparison with a
-third independent computation, performed at very large $n$.
+error decreases as $O(n^{-1/2})$, the rate predicted by the variance of
+the sample variance estimator, so a persistent discrepancy above that
+level indicates a bug in either the sampling scheme or the closed-form
+computation. The validation script runs a single sample size,
+$n = 10^6$, for four parameter sets and requires a relative error below
+$5\%$; the tolerance is wide because the high kurtosis of the call
+payoff slows the convergence of the sample variance.
 
 \paragraph{Test 4: monotonicities and asymptotic limits.}
 The Black--Scholes price is monotone non-decreasing in $S_0$, in
-$\sigma$, and in $T$ (for fixed strike and rate); it is monotone
-non-increasing in $K$. The Monte Carlo estimator must respect these
-monotonicities up to statistical noise, which can be enforced sharply
+$\sigma$, and, when $r \geq 0$, in $T$ (for fixed strike and rate); it
+is monotone non-increasing in $K$. The Monte Carlo estimator must
+respect these monotonicities up to statistical noise, which is reduced
 by the use of common random numbers across parameter values (the same
-seed produces the same sequence of $Z_i$ in both runs, and the
-inequality holds path by path). The asymptotic limit
+seed produces the same sequence of $Z_i$ in both runs). For $S_0$ and
+$K$ the inequality then holds path by path, since the discounted payoff
+is monotone in each for fixed $Z_i$. For $\sigma$ and $T$ it does not:
+$S_T$ decreases in $\sigma$ on paths with $Z_i < \sigma\sqrt{T}$, and
+the dependence on $T$ also has a path-dependent sign. The asymptotic
+limit
 $\lim_{S_0 \to \infty} C / S_0 = 1$ should also be approximated, as
 should $\lim_{S_0 \to 0} C = 0$.
 
@@ -571,9 +581,10 @@ question.
 technique of the later notes---antithetic variates, control variates and
 randomised quasi-Monte Carlo---is implemented as a wrapper around the same
 estimator structure developed here, and is benchmarked against the
-present algorithm. The denominator of the variance reduction factor is
-Proposition~\ref{prop:closed-form-variance}; the numerator is the
-sample variance of the new estimator. The structural cleanliness of
+present algorithm: the variance reduction factor is the squared ratio
+of the half-width of an independent run of the present algorithm to
+that of the new estimator, at the same payoff count. The structural
+cleanliness of
 the present algorithm---a single sampling step, a single payoff
 evaluation, no per-replication state---makes it the natural reference
 implementation in this comparison.
@@ -596,7 +607,7 @@ in Glasserman~\cite[Section~1.1.2 and Section~3.2]{Glasserman}. The
 closed-form variance computation of
 Proposition~\ref{prop:closed-form-variance} is elementary and appears
 implicitly in many sources; an explicit derivation in the same spirit
-as the present one can be found in Jäckel~\cite[Chapter~3]{Jackel}.
+as the present one can be found in Jäckel~\cite{Jackel}.
 The variance reduction factor as the figure of merit for Monte Carlo
 techniques is discussed in
 Glasserman~\cite[Section~4.1]{Glasserman}.

@@ -138,12 +138,17 @@ def call_payoff_variance(S, K, r, sigma, T):
 
     Notes
     -----
-    Used in two contexts:
+    Two uses:
 
     1. A-priori sample-size selection in vanilla Monte Carlo:
        n_eps ~ (z / eps)^2 * Var(Y) for half-width eps.
-    2. As the denominator of the variance reduction factor reported
-       for the variance-reduced pricers of quantlib.variance_reduction.
+    2. As an independent check of the sample variance returned by
+       the exact pricer (validate_mc_european_exact.py, Test 3).
+
+    It is not the denominator of the variance reduction factors
+    reported for quantlib.variance_reduction: those are measured as
+    squared half-width ratios against an independent IID run at the
+    same payoff count.
 
     Derivation in theory/phase2/mc_european_exact.tex,
     Proposition 5.1.

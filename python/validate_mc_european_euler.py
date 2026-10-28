@@ -8,10 +8,10 @@ Implements the four tests of theory/phase2/mc_european_euler.tex, Section 4:
     Test 2: empirical weak order. Slope -1 in log-log of
             |E[Phi(S_T_euler) - Phi(S_T_exact)]| vs h, computed
             under common random numbers (CRN) for variance control.
-    Test 3: coherence with exact pricer. As n_steps -> infty at fixed
-            n_paths (and shared Brownian), the Euler estimate must
-            approach the exact-sampler estimate.
-    Test 4: input validation and basic invariances.
+    Test 3: coherence with the Black-Scholes price. At large n_steps
+            (500 and 2000, 20,000 paths, independent draws) the Euler
+            estimate must lie within three half-widths of the BS price.
+    Test 4: input validation.
 
 Run from python/:
 
@@ -160,12 +160,12 @@ def test_weak_order() -> bool:
 
 
 # =====================================================================
-# Test 3: coherence with exact pricer at large n_steps
+# Test 3: coherence with the Black-Scholes price at large n_steps
 # =====================================================================
 
 def test_coherence_with_exact() -> bool:
-    """As n_steps -> infty, the Euler pricer at fixed n_paths and
-    shared Brownian must approach the BS price.
+    """At large n_steps, the Euler pricer must agree with the BS price
+    within three half-widths.
 
     This is a sanity check: it verifies that the implementation
     pipeline (sampler + payoff + reducer) does not have a structural
@@ -173,7 +173,7 @@ def test_coherence_with_exact() -> bool:
     confirms the algorithm is consistent.
     """
     print("\n" + "=" * 68)
-    print("TEST 3: Coherence with exact pricer at large n_steps")
+    print("TEST 3: Coherence with the BS price at large n_steps")
     print("=" * 68)
 
     n_paths = 20_000
@@ -198,7 +198,7 @@ def test_coherence_with_exact() -> bool:
 
 
 # =====================================================================
-# Test 4: input validation and basic invariances
+# Test 4: input validation
 # =====================================================================
 
 def test_input_validation() -> bool:
@@ -206,7 +206,7 @@ def test_input_validation() -> bool:
     the documented admissible ones.
     """
     print("\n" + "=" * 68)
-    print("TEST 4: Input validation and basic invariances")
+    print("TEST 4: Input validation")
     print("=" * 68)
 
     rng = np.random.default_rng(0)
