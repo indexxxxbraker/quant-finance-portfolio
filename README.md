@@ -30,8 +30,8 @@ I used AI assistants (Anthropic's Claude) throughout, and I would rather say pre
 - Variance reduction on European and Asian calls, from antithetic variates (VRF ≈ 2) to a geometric-Asian control variate (VRF ≈ 1300: on the same path the arithmetic and geometric means differ only at second order, so ρ > 0.999).
 - Solvers written from scratch rather than imported: Cholesky decomposition, Thomas algorithm, Projected SOR, Acklam's inverse normal CDF, Sobol sequences with Joe–Kuo direction numbers.
 - Convergence rates checked against theory: strong order 1/2 vs 1 for Euler–Maruyama vs Milstein, O(Δt²) for Crank–Nicolson with Rannacher smoothing, O(h²) for Douglas ADI.
-- Levenberg–Marquardt calibration of Heston with vega weighting, on a synthetic surface.
-- 199 Catch2 test cases (14,861 assertions) on the C++ side, mirroring the Python validation scripts.
+- Heston calibration to a synthetic surface by weighted least squares (bounded trust-region in Python, a hand-written Levenberg–Marquardt in C++).
+- 200 Catch2 test cases (14,865 assertions) on the C++ side, mirroring the Python validation scripts.
 
 **Scope and assumptions.** European, American and selected exotic options under Black-Scholes and Heston dynamics, assuming non-dividend-paying assets, a constant interest rate and, under Black-Scholes, constant volatility. Jump-diffusion and local volatility models are out of scope.
 
@@ -73,7 +73,7 @@ Theory: 6 LaTeX writeups in [`theory/phase3/`](theory/phase3/).
 - Fourier-based pricing via the AMSST characteristic function, Carr–Madan FFT, and Lewis quadrature.
 - Monte Carlo schemes: full-truncation Euler (baseline) and Andersen QE with two regimes (moment-matched lognormal and quadratic exponential).
 - 2D Douglas ADI PDE solver with operator splitting; O(h²) convergence empirically verified against the Fourier reference.
-- Calibration via Levenberg–Marquardt with vega weighting against synthetic implied volatility surfaces.
+- Calibration against a synthetic implied volatility surface: price residuals weighted by inverse vega, minimised with scipy's bounded trust-region least squares in Python and a hand-written Levenberg–Marquardt in C++.
 - Exotic pricers: Asian, Lookback, Barrier (via Monte Carlo) and American put (via PDE with projection).
 
 Theory: 6 LaTeX writeups in [`theory/phase4/`](theory/phase4/).
@@ -84,13 +84,13 @@ Theory: 6 LaTeX writeups in [`theory/phase4/`](theory/phase4/).
   <img src="python/results/phase2/vr_scoreboard.png" alt="Variance reduction scoreboard" width="80%">
 </p>
 
-*Variance reduction techniques benchmarked against the IID baseline. The geometric Asian control variate exploits ρ > 0.999 between the arithmetic and geometric means of the same path for a VRF of about 1300, the largest reduction in the project; it is shown separately because it changes the product being priced, not just the estimator. Sobol RQMC reaches a VRF of about 60 under conservative replication settings.*
+*Variance reduction techniques benchmarked against the IID baseline. The geometric Asian control variate exploits ρ > 0.999 between the arithmetic and geometric means of the same path for a VRF of about 1300, the largest reduction in the project; it is shown separately because it changes the product being priced, not just the estimator. Sobol RQMC reaches a VRF of about 60 under conservative replication settings; it prices the 20-step Euler discretisation, whose bias (about 0.007) the VRF does not count.*
 
 <p align="center">
   <img src="python/results/phase4/heston_calibration.png" alt="Heston calibration to synthetic vol surface" width="80%">
 </p>
 
-*Heston model calibrated to a synthetic implied volatility surface via Levenberg–Marquardt with vega weighting. Each subplot shows market versus model smiles at a fixed maturity, with RMSE annotated.*
+*Heston model calibrated to a synthetic implied volatility surface by inverse-vega-weighted least squares. Each subplot shows market versus model smiles at a fixed maturity, with RMSE annotated.*
 
 <p align="center">
   <img src="python/results/phase2/euler_milstein_convergence.png" alt="Strong convergence: Euler-Maruyama vs Milstein" width="80%">
@@ -193,7 +193,7 @@ ctest --output-on-failure
 - Lewis, A. (2001). A simple option formula for general jump-diffusion and other exponential Lévy processes.
 - Andersen, L. (2008). Simple and efficient simulation of the Heston stochastic volatility model. *Journal of Computational Finance*, 11(3), 1–42.
 - Longstaff, F. A., & Schwartz, E. S. (2001). Valuing American options by simulation: a simple least-squares approach. *Review of Financial Studies*, 14(1), 113–147.
-- Giles, M. B., & Carter, R. (2005). Convergence analysis of Crank-Nicolson and Rannacher time-marching. *Journal of Computational Finance*, 9(4), 89–112.
+- Giles, M. B., & Carter, R. (2006). Convergence analysis of Crank-Nicolson and Rannacher time-marching. *Journal of Computational Finance*, 9(4), 89–112.
 - Joe, S., & Kuo, F. Y. (2008). Constructing Sobol sequences with better two-dimensional projections. *SIAM Journal on Scientific Computing*, 30(5), 2635–2654.
 
 ## Author
