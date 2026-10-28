@@ -288,3 +288,21 @@ TEST_CASE("QMC-Sobol pricer: consistent with BS at moderate budget",
          << ", err = " << std::abs(est - bs_price));
     REQUIRE(std::abs(est - bs_price) < 0.5);
 }
+
+TEST_CASE("QMC-Sobol pricer: no extreme path at higher volatility",
+          "[qmc][sobol][bs]") {
+    // The Sobol origin maps to -infinity under Phi^{-1}; the generator
+    // skips it. Were it kept (or clipped near 0), one path would carry a
+    // normal of about -37 in every step and, for sigma above about 0.25,
+    // dominate the average. The Python pricer had this problem.
+    constexpr double S = 100.0, K = 100.0, r = 0.05, T = 1.0;
+    for (double sigma : {0.3, 0.4, 0.6}) {
+        const double bs_price = quant::call_price(S, K, r, sigma, T);
+        const double est = quant::mc_european_call_euler_qmc(
+            S, K, r, sigma, T, 65536, 20, "sobol");
+        // Euler bias with 20 steps is below 1% of the price here.
+        INFO("sigma = " << sigma << ", Sobol = " << est
+             << ", BS = " << bs_price);
+        REQUIRE(std::abs(est - bs_price) < 0.01 * bs_price);
+    }
+}

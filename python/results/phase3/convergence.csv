@@ -11,9 +11,9 @@ european_call,MC + CV underlying,10000,1.433847e-03
 european_call,MC + CV underlying,50000,5.560025e-03
 european_call,MC + CV underlying,250000,3.399024e-03
 european_call,MC + CV underlying,1250000,8.648548e-03
-european_call,Sobol QMC,10000,7.683121e-02
+european_call,Sobol QMC,10000,7.631507e-02
 european_call,Sobol QMC,50000,7.047497e-03
-european_call,Sobol QMC,250000,1.010551e-03
+european_call,Sobol QMC,250000,9.817627e-04
 european_call,Sobol QMC,1250000,5.457736e-03
 european_call,Trinomial KR,50,3.998275e-02
 european_call,Trinomial KR,100,1.994148e-02

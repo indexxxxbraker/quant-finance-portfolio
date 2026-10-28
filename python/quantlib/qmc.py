@@ -40,6 +40,7 @@ theory/phase2/mc_european_qmc.tex (this implementation). Glasserman,
 """
 
 import math
+import warnings
 
 import numpy as np
 from scipy.stats import qmc, norm
@@ -120,8 +121,8 @@ def halton(n: int, d: int) -> np.ndarray:
 # =====================================================================
 
 def sobol(n: int, d: int, *, scramble: bool = False,
-          seed=None) -> np.ndarray:
-    """Generate the first n entries of the d-dimensional Sobol sequence.
+          seed=None, skip: int = 0) -> np.ndarray:
+    """Generate n entries of the d-dimensional Sobol sequence.
 
     Uses scipy.stats.qmc.Sobol, which loads the Joe-Kuo direction-number
     tables internally (covering dimensions up to 21201).
@@ -142,6 +143,11 @@ def sobol(n: int, d: int, *, scramble: bool = False,
         digital shift externally.
     seed : optional
         Seed for the scrambling, if scramble=True.
+    skip : int, default 0
+        Number of initial points to discard. The unscrambled sequence
+        starts at the origin, which Phi^{-1} maps to -infinity in every
+        coordinate; the deterministic pricer uses skip=1, as the C++
+        generator does.
 
     Returns
     -------
@@ -151,9 +157,20 @@ def sobol(n: int, d: int, *, scramble: bool = False,
         raise ValueError("n must be at least 1")
     if d < 1:
         raise ValueError("d must be at least 1")
+    if skip < 0:
+        raise ValueError("skip must be non-negative")
 
     sampler = qmc.Sobol(d=d, scramble=scramble, seed=seed)
-    return sampler.random(n)
+    if not skip:
+        return sampler.random(n)
+    # After skipping, scipy warns that the balance properties need n to
+    # be a power of 2 counted from the start of the sequence. Dropping
+    # only the origin is the usual remedy (the C++ generator does the
+    # same), so the warning is silenced here.
+    sampler.fast_forward(skip)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*balance properties.*")
+        return sampler.random(n)
 
 
 # =====================================================================
@@ -224,16 +241,21 @@ def mc_european_call_euler_qmc(S, K, r, sigma, T, n_paths,
     if sequence == "halton":
         u = halton(n_paths, n_steps)
     elif sequence == "sobol":
-        u = sobol(n_paths, n_steps, scramble=False)
+        # Skip the first point: it is the origin, which Phi^{-1} maps to
+        # -infinity in all n_steps coordinates. Clipping it to the
+        # smallest double gives Z ~ -37.5 per step, and for sigma above
+        # about 0.25 the Euler factor 1 + r h + sigma sqrt(h) Z becomes
+        # large and negative, so one path can dominate the average.
+        u = sobol(n_paths, n_steps, scramble=False, skip=1)
     else:
         raise ValueError(
             f"sequence must be 'halton' or 'sobol', got {sequence!r}"
         )
 
-    # Avoid u = 0 or u = 1, which would map to +/- infinity under
-    # Phi^{-1}. This can happen at the first Sobol point (which is
-    # the origin) or at the radical inverse boundaries. We clip into
-    # the open interval with a small epsilon.
+    # Guard against u = 0 or u = 1, which would map to +/- infinity
+    # under Phi^{-1}. Neither sequence produces them here (Halton starts
+    # at index 1 and the Sobol origin is skipped), so this is only a
+    # safety net.
     eps = np.finfo(np.float64).tiny
     u = np.clip(u, eps, 1.0 - eps)
 

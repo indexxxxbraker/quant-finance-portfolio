@@ -21,6 +21,15 @@ Implements four tests:
   Test 4: Input validation.
     Mechanical: bad inputs should raise.
 
+  Test 5: Deterministic QMC at higher volatility.
+    At sigma = 0.3, 0.4 and 0.6 the deterministic Sobol estimate must
+    agree with a high-precision RQMC estimate of the same Euler price.
+    Guards against points at (or clipped near) the origin, which
+    Phi^{-1} maps to extreme normals that one path can turn into a huge
+    payoff. Halton is printed for comparison but not tested: unscrambled
+    Halton in dimension 20 has strongly correlated high coordinates and
+    is off by 0.5-1% at n = 2^16, a known limitation rather than a bug.
+
 Run from python/:
     python validate_mc_european_qmc.py
 """
@@ -255,6 +264,30 @@ def test_halfwidth_vs_iid() -> bool:
 # Test 4: input validation
 # =====================================================================
 
+def test_high_vol_deterministic() -> bool:
+    print("[Test 5] Deterministic QMC at higher volatility")
+    ok = True
+    for sig in (0.3, 0.4, 0.6):
+        ref = mc_european_call_euler_rqmc(
+            S0, K, r, sig, T, 2**14, n_steps=N_STEPS,
+            n_replications=32, seed=2026)
+        tol = 3.0 * ref.half_width + 2e-3 * ref.estimate
+        for seq in ("sobol", "halton"):
+            est = mc_european_call_euler_qmc(
+                S0, K, r, sig, T, 2**16, n_steps=N_STEPS, sequence=seq)
+            err = abs(est - ref.estimate)
+            if seq == "sobol":
+                passed = err < tol
+                ok &= passed
+                tag = _format_pass_fail(passed)
+            else:
+                tag = "(not tested)"
+            print(f"    sigma={sig:.1f} {seq:6s}: QMC = {est:.4f}, "
+                  f"RQMC = {ref.estimate:.4f} +/- {ref.half_width:.4f}, "
+                  f"|diff| = {err:.4f} (tol {tol:.4f}) {tag}")
+    return ok
+
+
 def test_input_validation() -> bool:
     print("\n" + "=" * 78)
     print("TEST 4: Input validation")
@@ -317,6 +350,7 @@ def main():
         "Test 2 (BS coherence of RQMC)"    : test_bs_coherence_rqmc(c_euler),
         "Test 3 (half-width vs IID)"       : test_halfwidth_vs_iid(),
         "Test 4 (input validation)"        : test_input_validation(),
+        "Test 5 (deterministic QMC, high vol)": test_high_vol_deterministic(),
     }
 
     print("\n" + "=" * 78)
