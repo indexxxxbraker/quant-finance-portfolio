@@ -191,7 +191,7 @@ A celebrated companion result of the same authors is that pathwise uniqueness pl
 \end{proof}
 
 \begin{remark}
-    The verification looks slightly miraculous: \(\rho(u) = \sigma\sqrt{u}\) exactly hits the integrability condition (one more derivative would fail). This is not a coincidence. The square-root diffusion is the borderline case: for \(\sigma_d(v) = \sigma\,v^\gamma\) with \(\gamma < 1/2\), pathwise uniqueness can fail; for \(\gamma > 1/2\), standard Itô applies. The CIR process sits exactly at the critical exponent.
+    The verification looks slightly miraculous: \(\rho(u) = \sigma\sqrt{u}\) exactly hits the integrability condition (one more derivative would fail). This is not a coincidence. The square-root diffusion is the borderline case: for \(\sigma_d(v) = \sigma\,v^\gamma\) with \(\gamma < 1/2\), pathwise uniqueness can fail; for \(\gamma \geq 1/2\), Yamada--Watanabe gives pathwise uniqueness, since \(\int_0^\varepsilon u^{-2\gamma}\,du = +\infty\); the standard Lipschitz theory applies only for \(\gamma \geq 1\), because \(v^\gamma\) is not Lipschitz at \(0\) for \(\gamma < 1\). The CIR process sits exactly at the critical exponent.
 \end{remark}
 
 %-----------------------------------------------------------
@@ -216,11 +216,15 @@ and the \emph{scale function}
 \]
 A direct application of Itô's formula shows that under the change of variable \(Y_t = S(X_t)\), the drift of \(Y\) vanishes; \(Y\) is a local martingale, in fact a time-changed Brownian motion. The scale function is the change of coordinates that ``straightens'' the diffusion into a martingale.
 
-The geometric content of the scale function for boundary analysis is the following. The process \(X_t\) hits the left boundary \(\ell\) in finite time with positive probability if and only if \(\ell\) is at finite scale distance from \(x_0\); equivalently, if and only if
+The geometric content of the scale function for boundary analysis is the following. A necessary condition for the process \(X_t\) to hit the left boundary \(\ell\) in finite time with positive probability is that \(\ell\) be at finite scale distance from \(x_0\),
 \[
-    \int_\ell^{x_0} s(y)\,dy \;<\; +\infty.
+    \int_\ell^{x_0} s(y)\,dy \;<\; +\infty,
 \]
-This is one of \emph{Feller's tests} for boundary attainability; see \cite{KaratzasShreve1991} \S5.5 or \cite{KarlinTaylor1981} \S15.6. The intuition is clean: \(S(X_t)\) is a martingale, so it hits the value \(S(\ell)\) iff that value is finite (a Brownian motion or martingale on a bounded interval reaches its endpoints with positive probability; on an unbounded interval, one endpoint is unattainable).
+since \(S(X_t)\) is a local martingale and cannot reach the value \(S(\ell) = -\infty\). The condition is not sufficient: geometric Brownian motion \(dX_t = \mu X_t\,dt + \sigma X_t\,dW_t\) with \(\mu < \sigma^2/2\) has the boundary \(0\) at finite scale distance (\(s(y) = y^{-2\mu/\sigma^2}\) up to a constant), yet never reaches it. The full criterion also involves the \emph{speed density} \(m(x) = 2/\bigl(\sigma_d^2(x)\, s(x)\bigr)\): the boundary \(\ell\) is attainable if and only if
+\[
+    \int_\ell^{x_0} \bigl(S(x) - S(\ell)\bigr)\, m(x)\,dx \;<\; +\infty,
+\]
+with \(S(\ell) = \lim_{x \downarrow \ell} S(x)\). This is one of \emph{Feller's tests} for boundary attainability; see \cite{KaratzasShreve1991} \S5.5 or \cite{KarlinTaylor1981} \S15.6.
 
 \paragraph{Application to CIR.}
 For \eqref{eq:cir} on the interval \((0, \infty)\), \(b(z) = \kappa(\theta - z)\), \(\sigma_d^2(z) = \sigma^2 z\). Take the reference point \(v_0 = 1\) for definiteness (any positive choice rescales \(s\) by a constant, which does not affect integrability). Then
@@ -243,7 +247,7 @@ The integrability of \(s\) on \((0, 1]\) is therefore controlled entirely by the
 \[
     \int_0^1 s(y)\,dy \;<\; +\infty \quad \iff \quad \nu < 1.
 \]
-This translates immediately into the classification of the boundary at zero:
+For \(\nu \geq 1\) the boundary is therefore unattainable. For \(\nu < 1\) the speed condition also holds: near \(0\), \(S(y) - S(0) \sim e^{-2\kappa/\sigma^2}\, y^{1-\nu}/(1 - \nu)\) and \(m(y) = 2/(\sigma^2 y\, s(y)) \sim (2/\sigma^2)\, e^{2\kappa/\sigma^2}\, y^{\nu - 1}\), so \(\bigl(S(y) - S(0)\bigr)\, m(y)\) stays bounded and its integral is finite. This gives the classification of the boundary at zero:
 
 \begin{theorem}[Feller condition for CIR]\label{thm:feller}
     Let \(v\) be the unique strong solution of \eqref{eq:cir} with \(v_0 \geq 0\). Then:
@@ -265,7 +269,7 @@ Second, the time the process spends at the boundary is Lebesgue-null: the occupa
 The numerical implication is direct: when running an Euler discretization, negative excursions of \(\hat v_t\) are an artifact of the discretization, not of the model. Schemes such as full-truncation Euler (see the note on Heston Monte Carlo with full-truncation Euler), which project \(\hat v_t \mapsto \max(\hat v_t, 0)\) before computing \(\sqrt{\hat v_t}\), are not modifying the model; they are correcting a discretization error.
 
 \paragraph{Discussion: numerical examples.}
-For typical equity-index calibrations one finds parameters such as \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), giving \(\nu = 2(2)(0.04)/0.09 \approx 1.78 \geq 1\). Feller is satisfied. For FX or short-dated equity calibrations the vol-of-vol can be much larger: \(\kappa = 1\), \(\theta = 0.04\), \(\sigma = 0.5\) gives \(\nu = 2(1)(0.04)/0.25 = 0.32 < 1\). Feller is violated. Calibrated examples of both regimes appear in the calibration note.
+For typical equity-index calibrations one finds parameters such as \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), giving \(\nu = 2(2)(0.04)/0.09 \approx 1.78 \geq 1\). Feller is satisfied. For FX or short-dated equity calibrations the vol-of-vol can be much larger: \(\kappa = 1\), \(\theta = 0.04\), \(\sigma = 0.5\) gives \(\nu = 2(1)(0.04)/0.25 = 0.32 < 1\). Feller is violated. The only calibration in this repository, the calibration note's fit to a synthetic surface generated with \(\kappa = 2\), \(\theta = 0.04\), \(\sigma = 0.3\), returns \(\nu \approx 1.55\) (\texttt{heston\_calibration.csv}), in the first regime; there is no calibrated example of the second.
 
 %-----------------------------------------------------------
 \subsection{Transition density: non-central chi-squared}
@@ -298,7 +302,7 @@ the chi-squared and Poisson being independent. Representation~\eqref{eq:ncchi-po
 \end{remark}
 
 \begin{remark}[Why exact simulation is expensive]
-    The transition density is known in closed form, so in principle one could simulate \(v_t\) exactly, without time-stepping. The catch is that sampling from a non-central chi-squared with non-integer \(d\) requires either (i) sampling a Poisson, then a chi-squared with random degrees of freedom, or (ii) inverting a hypergeometric-series CDF. Both are far slower than evaluating an Euler step, by orders of magnitude. Andersen's QE scheme \cite{Andersen2008} (see the QE note) gets around this by matching only the first two moments of \(v_t \mid v_s\), sacrificing exact distributional matching for a 100\(\times\) speedup. The exact result, Theorem~\ref{thm:cir-density}, remains the conceptual reference point against which all discretization schemes are measured.
+    The transition density is known in closed form, so in principle one could simulate \(v_t\) exactly, without time-stepping. The catch is that sampling from a non-central chi-squared with non-integer \(d\) requires either (i) sampling a Poisson, then a chi-squared with random degrees of freedom, or (ii) inverting a hypergeometric-series CDF. Both are far slower than evaluating an Euler step, by orders of magnitude. Andersen's QE scheme \cite{Andersen2008} (see the QE note) gets around this by matching only the first two moments of \(v_t \mid v_s\), sacrificing exact distributional matching for a much cheaper sampling step. The exact result, Theorem~\ref{thm:cir-density}, remains the conceptual reference point against which all discretization schemes are measured.
 \end{remark}
 
 %-----------------------------------------------------------

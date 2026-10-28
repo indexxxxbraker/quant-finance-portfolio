@@ -52,11 +52,11 @@ The full chain has three stages.
 
 \paragraph{Derivation of the characteristic function.} We apply Feynman--Kac to obtain a backward PDE for \(\phi\), substitute the affine ansatz, separate coefficients, solve a Riccati ODE in closed form for \(D(\tau; u)\), and integrate by quadrature to obtain \(C(\tau; u)\). This produces the explicit formula due to Heston (1993).
 
-\paragraph{The ``Heston trap''.} The naive way of writing the closed-form formula contains a complex square root, and the principal-branch convention for that square root introduces a discontinuity in the integrand of the inversion formula whenever the time to maturity is large. This was diagnosed by Albrecher, Mayer, Schoutens and Tistaert in 2007 \cite{AMSS2007}, after more than a decade in which the bug had silently corrupted production calibrations. We work directly with the AMSST (``Little Trap'') formulation, which is mathematically equivalent and numerically robust.
+\paragraph{The ``Heston trap''.} The naive way of writing the closed-form formula contains a complex square root, and the principal-branch convention for that square root introduces a discontinuity in the integrand of the inversion formula whenever the time to maturity is large. The problem was diagnosed by Kahl and J\"ackel (2005) \cite{KahlJaeckel2005}; Albrecher, Mayer, Schoutens and Tistaert (2007) \cite{AMSS2007} showed that a rearranged form of the formula avoids it. We work directly with the AMSST (``Little Trap'') formulation, which is mathematically equivalent and numerically robust.
 
 \paragraph{Fourier inversion.} The most common production approach is Carr--Madan's damped Fourier transform \cite{CarrMadan1999}, which expresses the European call price as a single integral that can be evaluated on a uniform grid via FFT and hence gives prices at hundreds of strikes simultaneously --- a property that makes it the standard tool for surface calibration. As a precision cross-check at single strikes we also implement the Lewis formula \cite{Lewis2000}, which uses a different contour deformation and avoids the damping factor.
 
-The implementation described in this note (\texttt{quantlib.heston\_fourier}) is a Heston pricer that, for a single quote, runs in microseconds and matches Black--Scholes in the appropriate limit; for a full surface, calibration becomes feasible in seconds. Both ingredients are prerequisites for calibration to market data.
+The implementation described in this note (\texttt{quantlib.heston\_fourier}) is a Heston pricer that, for a single quote, runs in a few milliseconds (Python) and matches Black--Scholes in the appropriate limit; for a full surface, calibration becomes feasible in seconds. Both ingredients are prerequisites for calibration to market data.
 
 %============================================================
 \section{Derivation of the Heston characteristic function}
@@ -281,7 +281,7 @@ for some real-valued functional \(\mathcal{R}\) of the characteristic function. 
 
 In practice, the issue manifests as systematically wrong prices for moderate to long maturities (typically \(T \gtrsim 1\) year for typical equity-index parameters), often by amounts of the order of one to several percent of the true price. The error is non-monotonic in \(T\) (it depends on how many times the trajectory of the log argument winds around \(0\)), which makes it especially insidious: it does not look like a calibration error or a discretization error, just like the model itself being mispriced.
 
-This was the state of affairs from 1993 (the original paper) until 2007. The bug was eventually diagnosed and corrected by Albrecher, Mayer, Schoutens and Tistaert (AMSST) \cite{AMSS2007}, in a paper that is three pages long and refreshingly clear.
+The problem was diagnosed by Kahl and J\"ackel \cite{KahlJaeckel2005}, who also proposed a remedy (see below). Albrecher, Mayer, Schoutens and Tistaert (AMSST) \cite{AMSS2007} then showed that a rearranged form of the formula avoids it, in a paper that is refreshingly clear.
 
 \subsection{The Heston (1993) formulation}
 
@@ -299,9 +299,9 @@ We can construct an example where the original formulation fails. Take parameter
 \[
     \kappa = 1.5, \quad \theta = 0.04, \quad \sigma = 0.3, \quad \rho = -0.7, \quad v_0 = 0.04, \quad r = 0.05, \quad S_0 = 100, \quad K = 100,
 \]
-and price ATM European calls for \(T = 0.5, 1, 2, 5, 10\) years using the original Heston formulation and the AMSST formulation, both with adaptive quadrature on the same integral. For \(T \leq 1\) the two methods agree to at least 6 decimals. For \(T = 2\), the original formulation gives a price differing by \(\sim 0.1\%\). For \(T = 5\), by \(\sim 0.7\%\). For \(T = 10\), by \(\sim 2\%\). The AMSST formulation, validated against an independent Monte Carlo, is the correct one.
+and price ATM European calls for \(T = 0.5, 1, 2, 5, 10\) years, comparing the original and AMSST characteristic functions under the same quadrature (\texttt{scipy.integrate.quad} on \([0, 200]\)). For \(T \leq 1\) the two agree to machine precision. For longer maturities the size of the error depends on the inversion formula in which the original characteristic function is used. In the Lewis integral \eqref{eq:lewis-call} it overprices by \(0.013\%\) at \(T = 2\), \(1.7\%\) at \(T = 5\) and \(8.6\%\) at \(T = 10\); in Heston's \((P_1, P_2)\) integrals \eqref{eq:Pj} it underprices by \(0.81\%\), \(2.4\%\) and \(20\%\). The AMSST characteristic function gives the same price under both inversion formulas at every maturity, whereas the original does not, which is the signature of the branch-cut discontinuity.
 
-The calibration note calibrates Heston to a real implied-volatility surface with maturities up to 5 years; using the original formulation would silently corrupt that calibration. This is why we implement AMSST from the outset.
+The calibration note calibrates Heston to a synthetic implied-volatility surface (Heston prices plus noise, \texttt{benchmark\_phase4.py}) with maturities from 0.25 to 2 years; a surface with longer maturities would be exposed to the errors above. This is why we implement AMSST from the outset.
 
 \subsection{Why AMSST works}
 
@@ -310,7 +310,7 @@ The AMSST formulation differs from the original by a consistent sign flip that, 
 There is an alternative remedy due to Kahl and J\"ackel \cite{KahlJaeckel2005}, sometimes called the ``rotation count'' fix: keep the original formulation but track the winding number of the log argument explicitly, adding the appropriate multiple of \(2\pi i\) to the principal log value. This is more general but more invasive. AMSST is preferred in practice because it removes the issue at the source rather than patching it.
 
 \begin{remark}
-    The deeper structural reason both formulas exist is that the Riccati ODE \eqref{eq:Riccati-clean} has \emph{two} fixed points (the roots of \(\gamma D^2 - \beta D - \alpha\)), corresponding to the two branches of \(d\). The AMSST form picks the branch for which \(D(\tau; u) \to (\beta - d)/\sigma^2\) as \(\tau \to \infty\) (a stable fixed point), while the original picks the unstable one. The numerical behaviour of the two formulas inherits from this stability difference.
+    The two formulas are the same analytic function of \(u\): they give the same \(D(\tau; u)\), with the same limit \(D \to (\beta - d)/\sigma^2\) as \(\tau \to \infty\) (the stable root of \(\gamma D^2 - \beta D - \alpha\) when \(\mathrm{Re}\, d > 0\)). They differ only in the complex logarithm in \(C\), whose two versions agree modulo \(2\pi i\): the AMSST argument \((1 - g e^{-d\tau})/(1 - g)\) contains the decaying factor \(e^{-d\tau}\), whereas the original argument \((1 - \tilde g e^{d\tau})/(1 - \tilde g)\) contains the growing, rotating factor \(e^{d\tau}\). The principal branch is therefore the continuous one for the AMSST argument but not for the original one, and that is the whole numerical difference.
 \end{remark}
 
 %============================================================
@@ -363,7 +363,7 @@ The European call price is then
 \[
     \alpha + 1 \;<\; u_{\max}(\tau)
 \]
-where \(u_{\max}(\tau)\) is the largest moment exponent for which \(E[e^{u_{\max} X_T}] < \infty\). Andersen and Piterbarg \cite{AndersenPiterbarg2007} give a closed-form expression for \(u_{\max}(\tau)\) in terms of the model parameters; for typical equity calibrations one has \(u_{\max} \approx 5\)--\(20\), so \(\alpha = 1.5\) (giving \(\alpha + 1 = 2.5\)) is a safe default. We use \(\alpha = 1.5\) throughout; for other models one would tune.
+where \(u_{\max}(\tau)\) is the largest moment exponent for which \(E[e^{u_{\max} X_T}] < \infty\). Andersen and Piterbarg \cite{AndersenPiterbarg2007} give the moment-explosion time \(T^*(u)\) in closed form in terms of the model parameters, and \(u_{\max}(\tau)\) is obtained by solving \(T^*(u) = \tau\) numerically; for typical equity calibrations one has \(u_{\max} \approx 5\)--\(20\), so \(\alpha = 1.5\) (giving \(\alpha + 1 = 2.5\)) is a safe default. We use \(\alpha = 1.5\) throughout; for other models one would tune.
 
 \paragraph{Why FFT.} Equation \eqref{eq:cm-inversion} is a single integral that can be evaluated by quadrature for a single strike \(k\). But its real virtue is that, when discretized on a uniform grid in \(v\), the integral becomes a discrete Fourier transform that simultaneously gives prices at many strikes \(k\). Specifically, with \(v_n = n \eta\) for \(n = 0, \ldots, N-1\) (so the integration step is \(\eta\) and the integration extends to \(v_{\max} = (N-1)\eta\)), and \(k_m = -b + m \lambda\) for \(m = 0, \ldots, N-1\), the Nyquist relation \(\lambda \eta = 2\pi/N\) is required for the FFT to give the inverse transform exactly. The strike spacing \(\lambda = 2\pi/(N\eta)\) is then determined by the integration parameters.
 
@@ -375,11 +375,16 @@ This is what makes Carr--Madan the workhorse of surface calibration: each LM ite
 
 Lewis \cite{Lewis2000} provides a third route. By a contour deformation in the complex \(u\)-plane, the European call price can be written as
 \begin{equation}
-    C(K, T) \;=\; S_t \;-\; \frac{\sqrt{S_t K}\, e^{-r\tau/2}}{\pi} \int_0^\infty \mathrm{Re}\!\left[\frac{e^{i u \log(K/S_t) - i u r \tau}\,\phi\!\left(u - i/2;\, \tau\right)}{u^2 + 1/4}\right] du.                                                                  \label{eq:lewis-call}
+    C(K, T) \;=\; S_t \;-\; \frac{\sqrt{K}\, e^{-r\tau}}{\pi} \int_0^\infty \mathrm{Re}\!\left[\frac{e^{-i u \log K}\,\phi\!\left(u - i/2;\, \tau\right)}{u^2 + 1/4}\right] du.                                                                  \label{eq:lewis-call}
 \end{equation}
+Writing \(\phi(u - i/2; \tau) = \sqrt{S_t}\, e^{i u \log S_t}\, \phi_0(u - i/2; \tau)\), with \(\phi_0(u; \tau) = \exp\bigl(C(\tau; u) + D(\tau; u)\, v_t\bigr)\) the characteristic function at \(X_t = 0\), gives the equivalent form
+\[
+    C(K, T) \;=\; S_t \;-\; \frac{\sqrt{S_t K}\, e^{-r\tau}}{\pi} \int_0^\infty \mathrm{Re}\!\left[\frac{e^{i u \log(S_t/K)}\,\phi_0\!\left(u - i/2;\, \tau\right)}{u^2 + 1/4}\right] du,
+\]
+which is the one the code evaluates.
 The integrand is well-behaved everywhere on \([0, \infty)\): the factor \(1/(u^2 + 1/4)\) ensures fast decay, and there is no need for a damping factor. The argument of \(\phi\) is again complex (\(u - i/2\)), shifted to a horizontal line in the complex plane that lies in the analyticity strip of the Heston characteristic function.
 
-For single-strike pricing, Lewis is typically slightly faster and more accurate than Carr--Madan because the integrand decays cleanly. For surfaces, FFT accelerates Carr--Madan to be much faster. Both methods give the same prices and are useful as cross-checks.
+For single-strike pricing, Lewis is typically more accurate than Carr--Madan because the integrand decays cleanly. For surfaces, FFT accelerates Carr--Madan to be much faster. Both methods give the same prices and are useful as cross-checks.
 
 \subsection{Implementation choices}
 
@@ -387,10 +392,10 @@ We implement two pricers:
 
 \begin{itemize}[topsep=2pt]
     \item \textbf{Carr--Madan FFT}, with \(\alpha = 1.5\), \(N = 2^{12}\), \(\eta = 0.25\). Production method.
-    \item \textbf{Lewis adaptive quadrature}, with \texttt{scipy.integrate.quad} (Python) and a Gauss--Kronrod implementation (C++). Validation method, also exposed as a single-strike high-precision pricer.
+    \item \textbf{Lewis quadrature}, with adaptive \texttt{scipy.integrate.quad} on \([0, 200]\) (Python) and a fixed composite 32-point Gauss--Legendre rule on the panels \([0, 5]\), \([5, 30]\), \([30, 100]\) (C++, default \(u_{\max} = 100\)). Validation method, also exposed as a single-strike high-precision pricer.
 \end{itemize}
 
-The original \((P_1, P_2)\) approach is not implemented separately --- it is mathematically equivalent to Lewis up to algebraic rearrangement, and Lewis is cleaner numerically.
+The library does not include a pricer based on the original \((P_1, P_2)\) approach: it is mathematically equivalent to Lewis up to algebraic rearrangement, and Lewis is cleaner numerically. The validation script implements it once, as an independent check of the reference values (Test~6 of \texttt{validate\_heston\_fourier.py}).
 
 %============================================================
 \section{Numerical aspects}
@@ -414,7 +419,7 @@ The factor \(e^{-i v_n k_m} = e^{-i n \eta (-b + m\lambda)} = e^{i n \eta b} \cd
 \]
 which is exactly an FFT, and recovers \(C(k_m) = (e^{-\alpha k_m}/\pi)\, \mathrm{Re}[X_m]\).
 
-For \(b = \log(S_t)\), the strike grid is centred around the spot, which is typically what is wanted.
+With \(b = N\lambda/2\), as above, the log-strike grid runs from \(-N\lambda/2\) to \(N\lambda/2 - \lambda\), so it is centred at \(\log K = 0\); this is what the code does, and since \(N\lambda = 2\pi/\eta \approx 25\) at the default \(\eta = 0.25\), the grid covers every practical strike, with prices at the requested strikes obtained by linear interpolation in \(\log K\). To centre the grid on the spot instead, take \(k_m = \log S_t - N\lambda/2 + m\lambda\).
 
 \paragraph{Simpson weights.} The trapezoidal rule has \(O(\eta^2)\) error. For the same grid, Simpson's rule gives \(O(\eta^4)\) error: replace \(w_n\) by Simpson weights \((1, 4, 2, 4, 2, \ldots, 4, 1)/3\). The cost is the same; the accuracy is much better. We use Simpson weights in production.
 
@@ -424,7 +429,7 @@ We summarize the recommended defaults and how to tune them.
 
 \begin{itemize}[topsep=2pt]
     \item Damping factor \(\alpha = 1.5\) for calls. For puts, use \(\alpha < 0\) (e.g., \(-1.5\)), or simply price a call at the same strike and use put--call parity.
-    \item Grid size \(N = 2^{12} = 4096\) is enough for 6-decimal accuracy on typical Heston parameters at typical maturities.
+    \item Grid size \(N = 2^{12} = 4096\) gives prices that agree with Lewis to about \(10^{-3}\) on typical Heston parameters at typical maturities (Test~4 of \texttt{validate\_heston\_fourier.py}: \(\max|\text{CM} - \text{Lewis}|\) between \(4.5 \times 10^{-4}\) and \(1.9 \times 10^{-3}\)).
     \item Step \(\eta = 0.25\) gives \(v_{\max} \approx 1024\), which is well past the point where the integrand decays. The strike spacing is \(\lambda = 2\pi/(N\eta) \approx 0.0061\) in log-strike, i.e., \(\approx 0.6\%\) of spot --- adequate for any real-world calibration.
     \item For very long maturities (\(T > 10\)) or very high vol-of-vol, increase \(N\) to \(2^{14}\) and reduce \(\eta\) to \(0.1\).
 \end{itemize}
@@ -433,7 +438,7 @@ The full set of FFT parameters and damping choices can be tuned, and there is an
 
 \subsection{Adaptive quadrature for Lewis}
 
-For the Lewis formula \eqref{eq:lewis-call}, the integrand decays as \(1/u^2\) and the integration interval is technically \([0, \infty)\). In practice we truncate at \(u_{\max} = 200\) and use \texttt{scipy.integrate.quad} with default tolerances. The adaptive quadrature places more nodes where the integrand has features (typically near \(u = 0\) and across the moneyness location), and gives 10-decimal accuracy in tens of evaluations.
+For the Lewis formula \eqref{eq:lewis-call}, the integrand decays as \(1/u^2\) and the integration interval is technically \([0, \infty)\). In practice we truncate at \(u_{\max} = 200\) and use \texttt{scipy.integrate.quad} with default tolerances. The adaptive quadrature places more nodes where the integrand has features (typically near \(u = 0\) and across the moneyness location); on the reference parameter sets it uses about 315 integrand evaluations and reports an error estimate of about \(10^{-8}\) on the integral.
 
 %============================================================
 \section{Validation strategy}
@@ -442,13 +447,13 @@ For the Lewis formula \eqref{eq:lewis-call}, the integrand decays as \(1/u^2\) a
 We test the implementation against four independent benchmarks, in increasing order of strictness:
 
 \subsection*{1. Black--Scholes limit}
-As \(\sigma \to 0\), the variance process becomes deterministic: \(v_t \to v_0\) (with \(\theta\) and \(\kappa\) irrelevant in the limit since the diffusion vanishes). The Heston call price must converge to the Black--Scholes call price evaluated at constant volatility \(\sqrt{v_0}\). Numerically: for \(\sigma = 10^{-4}\), the prices should agree to 6+ decimals. This is the most useful smoke test --- it catches any sign error or factor-of-2 in the implementation.
+As \(\sigma \to 0\), the variance process becomes deterministic, \(v_t = \theta + (v_0 - \theta) e^{-\kappa t}\); for \(v_0 = \theta\), as in the reference set, this is \(v_t \equiv v_0\). The Heston call price must then converge to the Black--Scholes call price evaluated at constant volatility \(\sqrt{v_0}\). Numerically, the error is \(O(\sigma)\), about \(3 \times 10^{-4}\) at \(\sigma = 10^{-3}\) (Test~2 of \texttt{validate\_heston\_fourier.py}, tolerance \(10^{-3}\)). This is the most useful smoke test --- it catches any sign error or factor-of-2 in the implementation.
 
 \subsection*{2. Put--call parity}
 For European options, \(C(K, T) - P(K, T) = S_t - K e^{-r\tau}\). This is a model-free identity. For Heston, both sides are evaluated independently, and the parity must hold to numerical precision. Failure indicates an error in the inversion or in the damping treatment.
 
 \subsection*{3. Carr--Madan vs Lewis cross-check}
-Both methods compute the same quantity by independent inversions. For any \((K, T, \text{params})\), the two prices should agree to 5--6 decimals. This catches errors in any single inversion that survives the previous tests.
+Both methods compute the same quantity by independent inversions. For any \((K, T, \text{params})\), the two prices should agree to about \(10^{-3}\) at default settings, the error of the FFT grid and interpolation (Test~4: \(\max|\text{CM} - \text{Lewis}|\) between \(4.5 \times 10^{-4}\) and \(1.9 \times 10^{-3}\) for \(K \in [80, 120]\), \(T \in [0.25, 2]\)). This catches errors in any single inversion that survives the previous tests.
 
 \subsection*{4. Reference values}
 Two parameter sets that are common in the literature serve as fixed reference points:
@@ -466,7 +471,7 @@ Two parameter sets that are common in the literature serve as fixed reference po
 
 with \(S_0 = 100\). The Lewis-quadrature pricer gives \(6.825734\) and \(11.445851\) respectively. An independent implementation of Heston's original two-probability formula (in the ``little trap'' form of Albrecher et al., with adaptive quadrature) agrees with both to \(10^{-12}\), and the Carr--Madan FFT pricer agrees to within \(10^{-3}\), the error of its grid and interpolation at default settings. In \texttt{validate\_heston\_fourier.py}, Test~6 checks the Lewis and two-probability prices against the stored values, and Test~4 compares Carr--Madan with Lewis on a grid of strikes and maturities.
 
-A cross-check with Monte Carlo is left to the QE note; the variance of an MC estimator at \(10^6\) paths is on the order of one cent, which is too imprecise to validate Fourier prices but precise enough to confirm consistency.
+A cross-check with Monte Carlo is left to the QE note; the standard error of an MC estimator at \(10^6\) paths is on the order of one cent, which is too imprecise to validate Fourier prices but precise enough to confirm consistency.
 
 %============================================================
 \section{Bibliographical notes}
@@ -474,11 +479,11 @@ A cross-check with Monte Carlo is left to the QE note; the variance of an MC est
 
 \begin{itemize}[topsep=2pt]
     \item Heston (1993) \cite{Heston1993}: original derivation of the characteristic function and the \((P_1, P_2)\) inversion. Worth reading once for the historical perspective; the formulas are equivalent to the AMSST form modulo the branch-cut issue.
-    \item Albrecher, Mayer, Schoutens, Tistaert (2007) \cite{AMSS2007}: the ``Little Heston Trap'' paper. Three pages, very clear, explains the bug and the fix.
+    \item Albrecher, Mayer, Schoutens, Tistaert (2007) \cite{AMSS2007}: the ``Little Heston Trap'' paper. Very clear, explains the bug and the fix.
     \item Kahl, J\"ackel (2005) \cite{KahlJaeckel2005}: alternative fix via rotation count. Useful if you ever need to debug a third-party library that uses the original formulation.
     \item Carr, Madan (1999) \cite{CarrMadan1999}: the FFT method. Seminal and very readable.
     \item Lewis (2000) \cite{Lewis2000}: the alternative inversion formula, plus a wealth of analytical results on stochastic volatility models.
-    \item Rouah (2013) \cite{Rouah2013}: comprehensive computational treatment with Matlab and C\# code; Chapters 1--3 cover everything in this note, with extensive numerical tables we use as benchmarks.
+    \item Rouah (2013) \cite{Rouah2013}: comprehensive computational treatment with Matlab and C\# code, covering the material of this note, with extensive numerical tables.
     \item Andersen, Piterbarg (2007) \cite{AndersenPiterbarg2007}: derives the moment explosion times for Heston, which determine the admissible damping range for Carr--Madan.
 \end{itemize}
 
