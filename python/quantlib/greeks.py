@@ -123,8 +123,10 @@ def gamma_bump(S, K, r, sigma, T, n_paths,
     Three pricer evaluations: at S*(1+h), S, S*(1-h). The standard
     second-difference formula gives Gamma = (f+ - 2 f0 + f-) / (S*h)^2.
 
-    Note: Gamma's variance scales like 1/h^2 even with CRN, so this is
-    intrinsically a high-variance estimator. The half-width can be
+    Note: for the call, the per-path variance of this estimator grows
+    like 1/h even with CRN (the second difference is nonzero only when
+    S_T crosses K between the bumped spots), so this is intrinsically a
+    high-variance estimator. The half-width can be
     much wider than for Delta/Vega.
     """
     validate_model_params(S, r, sigma, T)

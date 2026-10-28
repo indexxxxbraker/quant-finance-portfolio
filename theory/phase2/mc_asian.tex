@@ -257,7 +257,7 @@ from its smallness.
 
 In practice, for a 1-year ATM call with $\sigma = 0.20$ and $N = 50$
 monitoring dates, empirical correlation between $\bar S - K$ and
-$\tilde S - K$ exceeds $0.9999$ on $10^4$ Monte Carlo paths.
+$\tilde S - K$ is about $0.99965$ on $10^4$ Monte Carlo paths.
 
 \paragraph{Implication for variance reduction.} The control variate
 identity of the note on control variates gives, for paired estimators
@@ -266,9 +266,12 @@ $X = e^{-rT}\max(\bar S - K, 0)$ and $Y = e^{-rT}\max(\tilde S - K, 0)$,
 \Var(X - \beta^\star Y) \;=\; \Var(X)(1 - \rho^2),
 \end{equation}
 where $\beta^\star = \Cov(X, Y)/\Var(Y)$ and $\rho = \Corr(X, Y)$.
-With $\rho \approx 0.9999$, the variance reduction factor is
-$1/(1 - \rho^2) \approx 5\,000$. This is by far the most powerful
-control variate in the Monte Carlo notes.
+For these payoffs $\rho = 0.99962$ (Test~3 of
+\texttt{validate\_mc\_asian.py}), so the variance reduction factor is
+$1/(1 - \rho^2) \approx 1.3\times 10^3$; the measured factor is $1327$
+in Test~2 of the same script and $1322$ in
+\texttt{results/phase2/vr\_scoreboard.csv}. This is by far the most
+powerful control variate in the Monte Carlo notes.
 
 \section{Implementation: three pricers}
 \label{sec:impl}
@@ -377,9 +380,9 @@ The geometric-Asian closed form has been re-derived independently
 many times; the version we use is essentially that of Kemna and
 Vorst (1990)~\cite{KemnaVorst1990}. The use of the geometric Asian
 as a control variate for the arithmetic Asian goes back to the same
-paper. Glasserman~\cite[Section 4.5]{Glasserman} treats the
-construction at modern length and discusses the limits of the
-approximation. Asian options are also treated extensively in
+paper. Glasserman~\cite[Section 4.1.1, Example 4.1.2]{Glasserman}
+treats the construction at modern length and discusses the limits of
+the approximation. Asian options are also treated extensively in
 Hull~\cite{Hull}.
 
 \begin{thebibliography}{99}

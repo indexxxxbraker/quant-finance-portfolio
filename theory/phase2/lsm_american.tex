@@ -141,7 +141,8 @@ A \emph{Bermudan} option is the discrete analogue: exercisable only at
 a finite set of pre-specified dates $0 = t_0 < t_1 < \cdots < t_N = T$.
 We take an equispaced grid $t_k = kT/N$ for some large $N$. As $N \to
 \infty$, the Bermudan price converges to the American price
-monotonically from below~\cite[Section 8.3]{Glasserman}.
+from below~\cite[Section 8.1]{Glasserman}, monotonically along nested
+exercise grids (for example, $N$ doubling at each refinement).
 
 Let $S_k \eqdef S_{t_k}$. The Bermudan put value at exercise date
 $t_k$, given $S_k = s$, satisfies the Bellman recursion:
@@ -371,9 +372,12 @@ $S_k(j) = S_0 u^{2j - k}$. The price is $V_0(0)$.
 \subsection{Convergence}
 
 The CRR price converges to the true American price as $N \to \infty$
-at rate roughly $1/\sqrt N$ (see~\cite[Section 4.5]{Hull}); in
-practice $N = 1000$ to $5000$ is sufficient for four-decimal accuracy
-on a one-year ATM American put with $\sigma = 0.20$.
+(see~\cite[Chapter 13]{Hull}); on a one-year ATM American put with
+$\sigma = 0.20$ the convergence is $O(1/N)$ with small oscillations.
+The values of \texttt{validate\_american.py} (Test~1) fit
+$P_\infty - 0.78/N$ with $P_\infty \approx 6.0904$, so the error is
+about $7.8 \times 10^{-4}$ at $N = 1000$ and $1.5 \times 10^{-4}$ at
+$N = 5000$.
 
 \section{Bias and convergence of the LSM estimator}
 \label{sec:bias}
@@ -413,14 +417,17 @@ basis. The literature documents agreement with reference values to
 better than $1\%$ on the canonical American put problem with $n =
 10^5$ and $M = 3$ to $4$ Laguerre basis functions.
 
-\subsection{The unbiased upper bound}
+\subsection{The out-of-sample lower bound}
 
-A rigorously unbiased \emph{lower bound} estimator of the price can
-be obtained by splitting the simulation into two independent batches:
-the first batch is used to fit the regression coefficients, the
-second to apply the resulting exercise rule and average the cash
-flows. This eliminates the in-sample bias at the cost of a constant
-factor of paths.
+A \emph{low-biased} estimator of the price, whose expectation is a
+lower bound, can be obtained by splitting the simulation into two
+independent batches: the first batch is used to fit the regression
+coefficients, the second to apply the resulting exercise rule and
+average the cash flows. On the second batch the rule is a fixed,
+feasible stopping rule, so its expected payoff cannot exceed the
+Bermudan price. This eliminates the in-sample bias at the cost of a
+constant factor of paths, leaving only the negative bias from
+sub-optimal stopping.
 
 A separate \emph{upper bound} can be constructed via the
 Andersen-Broadie (2004) duality approach, which exploits the
@@ -435,22 +442,25 @@ binomial tree.
 The validation script implements four tests.
 
 \paragraph{Test 1: binomial tree convergence.} Compute the binomial
-American put at $N = 100, 500, 1000, 5000, 10000$. The sequence
-should converge to a stable value at four decimal places by
-$N = 5000$.
+American put at $N = 100$, $500$, $1000$, $2000$, $5000$, $10000$
+and require $|P(10000) - P(5000)| < 10^{-3}$. The measured values
+$P(5000) = 6.090219$ and $P(10000) = 6.090295$ differ by
+$7.6 \times 10^{-5}$; the error of $P(5000)$ itself is about
+$1.5 \times 10^{-4}$ (Section~\ref{sec:binomial}).
 
 \paragraph{Test 2: LSM matches binomial.} At canonical parameters
 ($S = K = 100$, $r = 0.05$, $\sigma = 0.20$, $T = 1$), with $N_{LSM} =
 50$ exercise dates and $n = 10^5$ paths, the LSM estimator should
-agree with the binomial reference (at $N_{tree} = 5000$) within
+agree with the binomial reference (at $N_{tree} = 10000$) within
 three half-widths.
 
 \paragraph{Test 3: early exercise premium.} Compute both the European
-put (Black-Scholes) and the American put (LSM, plus binomial as
-sanity). The American minus European spread is the early-exercise
+put (Black-Scholes) and the American put (binomial reference,
+$N = 10000$). The American minus European spread is the early-exercise
 premium; it must be strictly positive, and large enough to be
-distinguishable from MC noise (the canonical ATM case gives a
-premium of order $0.1$ on a put of order $5.6$).
+distinguishable from MC noise (the canonical ATM case gives
+$6.0903$ for the American put and $5.5735$ for the European put, a
+premium of $0.517$).
 
 \paragraph{Test 4: input validation.} Mechanical.
 
@@ -501,11 +511,13 @@ Two pricers live in the module \texttt{quantlib.american}
       basis $M = 4$, in-the-money restriction, exact GBM stepping.
 \end{itemize}
 
-The C++ side adds a file-local helper \texttt{cholesky\_solve} that
-factorises the small $M \times M$ normal-equations matrix and
-back-substitutes for $\beta^{(k)}$. For our $M = 4$ basis, this is a
-direct rather than iterative solve; the matrix is small,
-positive-definite, and well-conditioned in practice.
+The C++ side adds two file-local helpers in an anonymous namespace,
+\texttt{cholesky\_factorize} and \texttt{cholesky\_solve\_in\_place},
+that factorise the small $M \times M$ normal-equations matrix and
+forward- and back-substitute for $\beta^{(k)}$. For our $M = 4$ basis,
+this is a direct rather than iterative solve; the matrix is small,
+positive-definite, and well-conditioned in practice. The Python side
+solves the least-squares problem with \texttt{numpy.linalg.lstsq}.
 
 \section{Bibliographic notes}
 \label{sec:biblio}

@@ -54,10 +54,12 @@ We compute the European-call Greeks (Delta, Vega, Gamma) by Monte
 Carlo using three increasingly sophisticated techniques: bumping
 (finite differences applied to the pricer), pathwise sensitivities
 (differentiation of the payoff under the integral), and likelihood
-ratio (differentiation of the kernel of the underlying density). All
-three are unbiased for the appropriate Greeks under appropriate
-regularity conditions; they trade off variance, bias, and
-applicability differently. We derive each from first principles,
+ratio (differentiation of the kernel of the underlying density). The
+pathwise and likelihood-ratio estimators are unbiased for the
+appropriate Greeks under appropriate regularity conditions, while
+central-difference bumping carries an $O(h^2)$ bias in the bump size
+$h$; the three trade off variance, bias, and applicability
+differently. We derive each from first principles,
 implement them under the exact GBM sampler, and
 validate against closed-form Black-Scholes Greeks at the canonical
 ATM point. The note also surfaces a delicate but important point:
@@ -150,33 +152,47 @@ not the noise. The variance of the difference is then much smaller
 because the noise mostly cancels. For our setting,
 \begin{equation}
 \Var\Bigl(\hat C_n(S_0 + h, \{Z_i\}) - \hat C_n(S_0 - h, \{Z_i\})\Bigr)
-\;\approx\; h^2 \cdot \Var(\partial_{S_0} f_i)
+\;\approx\; \frac{4h^2}{n} \cdot \Var(\partial_{S_0} f_i)
 \end{equation}
-to leading order in $h$, where $f_i = e^{-rT}\max(S_T^{(i)} - K, 0)$.
-The factor of $h^2$ cancels with the $1/h^2$ in $\Gamma$, leaving a
-finite variance estimator.
+to leading order in $h$, where $f_i = e^{-rT}\max(S_T^{(i)} - K, 0)$
+is viewed as a function of $S_0$ with $Z_i$ fixed: the $n$ paths are
+independent, and each per-path difference equals
+$2h\,\partial_{S_0} f_i$ except on paths for which $S_T^{(i)}$ crosses
+$K$ between the bumped spots, an event of probability $O(h)$.
+Dividing by $(2h)^2$, the central-difference Delta estimator has
+variance $\Var(\partial_{S_0} f_i)/n$: the factor $h^2$ cancels, and
+the per-path variance is $O(1)$ in $h$, that of the pathwise Delta of
+Section~\ref{sec:pathwise}. The cancellation does not carry over to
+Gamma, whose per-path variance is $O(1/h)$ (see below).
 
 \subsection{The bias-variance trade-off in $h$}
 
-With CRN, the bumping estimator has:
+With CRN, the bumping estimator of Delta or Vega has:
 \begin{itemize}
 \item Bias: $O(h)$ for forward differences, $O(h^2)$ for central
 differences.
 \item Variance: roughly constant in $h$ (after CRN cancellation).
 \end{itemize}
 The optimal $h$ minimises bias$^2$ + variance. For central
-differences with bias $O(h^2)$ and variance $O(1)$, the optimum is
-where both contribute equally, giving $h_\star$ on the order of
-$\epsilon^{1/4}$ where $\epsilon$ is the floating-point precision
-($\sim 10^{-16}$), so $h_\star \sim 10^{-4}$ for double precision.
-We use $h = 10^{-2}$ for stability against MC noise; the bias is
+differences the mean squared error is $c\,h^4 + \sigma_\Delta^2/n$,
+where the per-path variance $\sigma_\Delta^2$ does not depend on $h$
+to leading order, so the error decreases as $h \to 0$ and the only
+lower limit on $h$ is floating-point round-off. The round-off-optimal
+step for a central first difference is of order $\epsilon^{1/3}$,
+where $\epsilon$ is the floating-point precision ($\sim 10^{-16}$),
+so $h_\star \approx 5 \times 10^{-6}$ (in relative units) for double
+precision. We use $h = 10^{-2}$; the bias is
 then $\sim 10^{-4}$, comfortably below the half-width at our
 budgets.
 
 For Gamma, the second-order central difference has bias $O(h^2)$
-but variance $O(1/h^2)$ even with CRN (the leading-order
-cancellation that worked for $\Delta$ does not extend to the second
-derivative). Gamma is intrinsically harder.
+but per-path variance $O(1/h)$ even with
+CRN~\cite[Section~7.1.2]{Glasserman}. For the call, the per-path
+second difference $f_i(S_0 + h) - 2 f_i(S_0) + f_i(S_0 - h)$ vanishes
+unless $S_T^{(i)}$ crosses $K$ between the bumped spots, an event of
+probability $O(h)$, and is then of size $O(h)$; after division by
+$h^2$ its second moment is $O(h) \cdot O(h^2)/h^4 = O(1/h)$. Gamma is
+intrinsically harder.
 
 \section{Pathwise sensitivities}
 \label{sec:pathwise}
@@ -278,9 +294,11 @@ function, and Monte Carlo can only estimate functions.
 \section{Likelihood ratio}
 \label{sec:lr}
 
-The likelihood-ratio (LR) method, developed by Broadie and
-Glasserman, sidesteps the problem of differentiating the payoff by
-differentiating the \emph{density of the underlying} instead.
+The likelihood-ratio (LR) method, which predates its use for option
+Greeks (Glynn, 1987; Reiman and Weiss, 1989) and was applied to them
+by Broadie and Glasserman~\cite{BroadieGlasserman1996}, sidesteps the
+problem of differentiating the payoff by differentiating the
+\emph{density of the underlying} instead.
 
 \subsection{The construction}
 
@@ -356,8 +374,12 @@ which carries the full payoff $f$ multiplied by a factor that can
 have large absolute value when $|Z|$ is large. Tails of $Z$
 contribute $f(S_T) \cdot Z$, which can be large.
 \end{itemize}
-Empirically, for the call, pathwise has variance roughly $2$--$3
-\times$ smaller than LR. The advantage of LR is universality:
+Empirically, for the call at the canonical ATM point, the per-path
+variance of the pathwise Delta is about $6.4$ times smaller than that
+of the LR Delta ($0.332$ against $2.135$, Test~2 of
+\texttt{validate\_greeks\_mc.py}), and about $12.9$ times smaller for
+Vega (Test~3); the corresponding half-width ratios are $2.5$ and
+$3.6$. The advantage of LR is universality:
 for digital options where $f$ is a Heaviside (not Lipschitz),
 pathwise fails but LR works.
 
@@ -420,25 +442,32 @@ the estimator at $n = 10^5$ should agree with the closed-form BS
 Greek within a few standard errors.
 
 \paragraph{Test 2: variance comparison Delta.} Pathwise vs LR vs
-bumping. Predicted: pathwise $<$ LR $<$ bumping. Report variance
-ratios at fixed budget.
+bumping. Predicted: bumping $\approx$ pathwise $<$ LR; measured
+per-path variances $0.326$ (bumping), $0.332$ (pathwise) and $2.135$
+(LR). With CRN, the central difference converges path by path to the
+pathwise derivative as $h \to 0$, so at small $h$ the two have nearly
+the same variance. Report half-width ratios at fixed budget.
 
-\paragraph{Test 3: variance comparison Vega.} Same as Test 2.
+\paragraph{Test 3: variance comparison Vega.} Same as Test 2;
+measured half-widths $0.4685$ (bumping), $0.4686$ (pathwise) and
+$1.684$ (LR).
 
 \paragraph{Test 4: input validation.} Mechanical: bad inputs
 should raise.
 
 The implementation is a single module
-\texttt{quantlib.greeks} containing nine pricers (3 methods
-$\times$ 3 Greeks, with the caveat that pathwise/LR Gamma is
-``not implemented'' and falls back to bumping).
+\texttt{quantlib.greeks} containing seven estimators: bumping,
+pathwise and LR for Delta and Vega (\texttt{delta\_bump},
+\texttt{delta\_pathwise}, \texttt{delta\_lr} and the corresponding
+\texttt{vega\_} functions), and bumping only for Gamma
+(\texttt{gamma\_bump}); there is no pathwise or LR Gamma.
 
 \section{Bibliographic notes}
 \label{sec:biblio}
 
 The pathwise method for option Greeks is due to Broadie and
-Glasserman~\cite{BroadieGlasserman1996}. The likelihood-ratio
-method is also from \cite{BroadieGlasserman1996}; the broader
+Glasserman~\cite{BroadieGlasserman1996}, who also apply the
+likelihood-ratio method to option Greeks; the broader
 context of efficient simulation of derivatives is in
 \cite[Chapter~7]{Glasserman}. The malliavin calculus generalisation,
 which provides a unified framework for both pathwise and LR, is in

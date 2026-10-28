@@ -22,7 +22,7 @@ volatility sigma_eff and effective rate r_eff; see
 References
 ----------
 theory/phase2/mc_asian.tex. Kemna and Vorst (1990), J. Banking and
-Finance, 14(1):113-129. Glasserman, Section 4.5.
+Finance, 14(1):113-129. Glasserman, Section 4.1.1 (Example 4.1.2).
 """
 
 import math
@@ -190,8 +190,9 @@ def mc_asian_call_arithmetic_cv(S, K, r, sigma, T, n_paths,
     Returns an MCResult whose half-width is computed from the
     variance of (X - beta_star * Y), i.e. (1 - rho^2) Var(X).
 
-    Typical performance: VRF > 1000 vs the IID arithmetic estimator
-    at our canonical parameters (rho_emp > 0.9999).
+    Typical performance: VRF about 1.3e3 vs the IID arithmetic
+    estimator at our canonical parameters (rho_emp about 0.9996; see
+    validate_mc_asian.py, Tests 2 and 3).
     """
     validate_model_params(S, r, sigma, T)
     validate_strike(K)

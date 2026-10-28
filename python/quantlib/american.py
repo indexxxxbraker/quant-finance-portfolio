@@ -77,7 +77,8 @@ def binomial_american_put(S, K, r, sigma, T, n_steps):
 
     Returns the price as a float (no Monte Carlo error -- the only
     error is the lattice discretisation, which vanishes as
-    n_steps -> infty at rate ~1/sqrt(n_steps)).
+    n_steps -> infty at rate O(1/n_steps), with small oscillations;
+    see validate_american.py, Test 1).
     """
     validate_model_params(S, r, sigma, T)
     validate_strike(K)

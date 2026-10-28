@@ -62,8 +62,10 @@ vega_bump(double S, double K, double r, double sigma, double T,
 // Gamma of the European call by central second-order finite differences
 // with CRN. Three pricer evaluations: at S*(1+h), S, S*(1-h).
 //
-// Note: Gamma's variance scales like 1/h^2 even with CRN. The
-// half-width is intrinsically wider than for Delta/Vega.
+// Note: for the call, the per-path variance grows like 1/h even with
+// CRN (the second difference is nonzero only when S_T crosses K
+// between the bumped spots). The half-width is intrinsically wider
+// than for Delta/Vega.
 MCResult
 gamma_bump(double S, double K, double r, double sigma, double T,
            std::size_t n_paths,

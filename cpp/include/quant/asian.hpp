@@ -31,7 +31,7 @@
 //
 // References:
 //   theory/phase2/mc_asian.tex. Kemna and Vorst (1990), J. Banking and
-//   Finance, 14(1):113-129. Glasserman, Section 4.5.
+//   Finance, 14(1):113-129. Glasserman, Section 4.1.1 (Example 4.1.2).
 
 #pragma once
 
