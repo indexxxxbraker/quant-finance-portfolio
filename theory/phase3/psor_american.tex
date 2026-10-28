@@ -249,9 +249,15 @@ where $\rho_J$ is the spectral radius of the Jacobi iteration matrix
 $D^{-1}(L + U)$.
 \end{theorem}
 
-For the matrices arising from BTCS or CN, $\rho_J \approx 1 - O(1/N)$,
-giving $\omega^* \approx 2 - O(1/\sqrt{N})$. For typical project
-parameters, $\omega^* \in [1.2, 1.5]$.
+For the matrices arising from BTCS or CN, $\rho_J$ is governed by the
+mesh ratio $\alpha = \sigma^2 \Delta\tau / (2\Delta x^2)$: ignoring the
+small convective asymmetry, $\rho_J \approx 2\theta\alpha / (1 +
+2\theta\alpha) = 1 - O(1/\alpha)$. Refining the grid with $M \propto N$
+makes $\alpha \propto N$, so $\omega^* \to 2$ like $2 - O(1/\sqrt{N})$.
+For the grids used here it stays well below $2$: for Crank--Nicolson
+($\theta = 1/2$), $\rho_J \approx 0.76$ and $\omega^* \approx 1.21$ at
+$N = 200$, $M = 100$, and $\rho_J \approx 0.86$, $\omega^* \approx 1.33$
+on the $400 \times 200$ benchmark grid.
 
 \paragraph{Asymmetry.} The CN matrix $A$ is not symmetric (the
 convective term $\mu V_x$ uses centred differences, breaking
@@ -260,8 +266,12 @@ However, $A$ remains diagonally dominant, and a generalisation
 (Varga~\cite{Varga2000}, Theorem~3.5) covers diagonally dominant
 M-matrices: SOR converges for $\omega \in (0, 2)$, with
 $\omega^*$ moderately shifted from \eqref{eq:omega-star}. In
-practice, for our parameter range with grid Pe'clet $\leq 0.25$,
-$\omega \approx 1.2$ is near optimal.
+practice the projected iteration has its optimum close to, and a little
+above, the linear prediction: $\omega = 1.2$ on the 100-unknown test
+problem of \texttt{validate\_psor.py} (linear theory: $1.25$), and
+about $1.5$--$1.6$ on the $400 \times 200$ benchmark grid (linear theory:
+$1.33$). The default $\omega = 1.2$ is a safe choice rather than the
+optimum; \texttt{benchmark\_phase3.py} uses $1.4$.
 
 % =====================================================================
 \section{PSOR: SOR with projection}
@@ -360,16 +370,17 @@ Per time step:
 \begin{itemize}[leftmargin=2em]
 \item Each PSOR sweep is $O(N)$ operations.
 \item Number of sweeps to reach tolerance $\epsilon$:
-$K \sim -\log\epsilon / \log(1/\rho(\omega^*))$.
-For $\rho(\omega^*) \approx 1 - C/N$ (typical for our matrices)
-and $\epsilon = 10^{-7}$, $K = O(N)$.
-\item Cost per time step: $O(N^2)$.
+$K \sim -\log\epsilon / \log(1/\rho(\omega))$. At the optimum
+$\rho(\omega^*) = \omega^* - 1 = 1 - O(1/\sqrt{\alpha})$, so
+$K = O(\sqrt{\alpha}\,\log(1/\epsilon))$.
+\item Cost per time step: $O(N K)$.
 \end{itemize}
-Total cost over $M$ time steps: $O(M \cdot N^2)$. Taking $M \sim N$
-(matched to spatial accuracy as in CN), this is $O(N^3)$. For
-$N = 200$, $\epsilon = 10^{-7}$, the constant ratio of CN-PSOR to CN-Thomas is
-roughly $K \sim 200$ --- two orders of magnitude more work per step
-than the European pricer, the price of LCP generality.
+With $M \sim N$ (matched to spatial accuracy as in CN), $\alpha \propto
+N$ and the total cost is $O(N^{5/2})$ up to the logarithm. Measured on
+the $400 \times 200$ benchmark grid with the default tolerances, PSOR
+needs about $30$ sweeps per time step at $\omega = 1.2$ and $18$ at
+$\omega = 1.5$, against one Thomas solve for the European pricer: a few
+tens of times more work per step, the price of LCP generality.
 
 \paragraph{Comparison with other American pricers.}
 \begin{center}
@@ -397,12 +408,12 @@ Two modules:
 Generic LCP solver. The signature mirrors Thomas:
 \begin{verbatim}
 def psor_solve(sub, diag, sup, rhs, obstacle, *,
-               omega=1.2, tol_abs=1e-8, tol_rel=1e-7,
+               omega=1.2, tol_abs=1e-10, tol_rel=1e-9,
                max_iter=10000, x0=None) -> (x, n_iter)
 \end{verbatim}
 Returns both the solution and the number of iterations performed
-(the iteration count is informative diagnostic data; the lesson
-section below uses it to demonstrate $\omega$ optimality).
+(the iteration count is diagnostic data; \texttt{validate\_psor.py}
+uses it in its $\omega$ sweep).
 
 \paragraph{\texttt{quantlib.cn\_american} / \texttt{quant::pde::cn\_american}.}
 American put pricer. Reuses the $\theta$-scheme grid and boundary
@@ -447,9 +458,10 @@ put price must be at least the European put price. Strict in the
 exercise region, equality possible deep in the continuation region.
 
 \item \textbf{$\omega$-sweep convergence}: at fixed problem,
-$\omega \in \{0.5, 1.0, 1.2, 1.5, 1.9\}$ produces different
-iteration counts. The minimum should occur near $\omega \approx 1.2$,
-confirming the theoretical $\omega^*$ prediction.
+$\omega \in \{0.5, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8\}$ produces different
+iteration counts with an interior minimum. It occurs at $\omega = 1.2$,
+in line with the linear-theory value $\omega^* \approx 1.25$ for that
+test matrix.
 
 \item \textbf{$\omega$ outside $(0, 2)$ raises}: $\omega = 0$ or
 $\omega = 2$ produces no-convergence within
