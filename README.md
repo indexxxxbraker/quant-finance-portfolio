@@ -59,10 +59,10 @@ Theory: 13 LaTeX writeups in [`theory/phase2/`](theory/phase2/).
 ### Phase 3 — Finite-difference PDE and lattice methods
 
 - FTCS (forward-time centered-space) with explicit CFL stability analysis: α = (σ²/2)Δt/Δx² ≤ 1/2.
-- BTCS (backward-time) backed by a custom Thomas algorithm, justified by strict diagonal dominance (Higham, Theorem 9.5).
-- Crank-Nicolson with Rannacher smoothing — first two timesteps in BTCS to damp the Nyquist mode from the payoff kink, recovering textbook O(Δt²) convergence ratios.
+- BTCS (backward-time) backed by a custom Thomas algorithm, justified by strict diagonal dominance (Higham, §9.5–9.6).
+- Crank-Nicolson with Rannacher smoothing — the first two time steps replaced by four implicit half-steps (Giles–Carter) to damp the high-frequency mode excited by the payoff kink, recovering O(Δt²) convergence ratios when the time step is large.
 - PSOR (Projected SOR) for American puts via linear complementarity, with empirical tuning of the relaxation parameter ω.
-- Trinomial Kamrad–Ritchken lattice, shown to be structurally equivalent to FTCS with α = 1/(2λ) up to O(Δt) in the discount factor distribution.
+- Stretch-parameter trinomial lattice (Boyle; Kamrad–Ritchken), shown to coincide with FTCS at α = 1/(2λ) apart from where the discount factor is applied, an O(Δt) difference.
 - Final benchmark cross-validating 15 pricers against analytical Black-Scholes and a lattice consensus reference.
 
 Theory: 6 LaTeX writeups in [`theory/phase3/`](theory/phase3/).
@@ -112,11 +112,11 @@ Further artifacts under [`python/results/`](python/results/) include the Douglas
 ## What I learned
 
 - Agreement between independent methods is the only test I trust. A pricer can be internally consistent and still be wrong; checking Fourier against ADI against Monte Carlo, which share no code and no approximation, is what made me confident in the Heston numbers.
-- Stability conditions matter in practice, not only in the theorems. FTCS with the CFL condition violated produces a sawtooth at the highest grid frequency that grows without bound. Crank–Nicolson does not blow up, but the kink in the payoff excites that same mode and CN only damps it to |g| → 1, so two implicit steps at the start (Rannacher) are needed to recover O(Δt²). The American put under PSOR does not need this, because the projection onto the payoff removes the oscillation.
+- Stability conditions matter in practice, not only in the theorems. FTCS with the CFL condition violated produces a sawtooth at the highest grid frequency that grows without bound. Crank–Nicolson does not blow up, but when the time step is large compared with Δx² the kink in the payoff excites that same mode and CN barely damps it (g → −1), so a few implicit half-steps at the start (Rannacher) are needed to recover O(Δt²). For the American put the projection onto the payoff clips the oscillation but does not remove it: CN-PSOR still oscillates at coarse time steps and converges only at first order in Δt.
 - In variance reduction, the gain depends on how closely the control matches the structure of the payoff. Antithetic variates give a factor of 2 and a control variate on S_T gives about 7; the geometric-Asian control gives about 1300 because the arithmetic and geometric means of a lognormal path differ only at second order in σ√T, so their correlation exceeds 0.999. AM–GM gives the ordering A ≥ G, not the correlation.
 - Asymptotic convergence rates can be far away. Sobol RQMC should converge like N^-1, but in dimension 20 with N ≤ 65,536 the observed rate is N^-0.62 because of the (log N)^d prefactor. This is not an implementation error.
 - A better scheme only shows its advantage in the regime it was designed for. With well-behaved Heston parameters, full-truncation Euler and Andersen QE agree within Monte Carlo noise. With the Feller condition strongly violated, Euler overprices by about 10% at 25 time steps and still by about 0.5% at 400, while QE's bias stays below the Monte Carlo resolution (about 0.3% of the price) at every step count tested.
-- Lattices and finite differences are the same construction. The Kamrad–Ritchken trinomial tree with stretch parameter λ is FTCS with α = 1/(2λ), and λ ≥ 1 is the CFL condition.
+- Lattices and finite differences are the same construction. A trinomial tree with log-step Δx = σ√(λΔt) is FTCS with α = 1/(2λ), apart from where the discount is applied, and λ ≥ 1 is the CFL condition.
 - Porting from Python to C++ forced me to make explicit what NumPy had been doing implicitly: types, edge cases and the behaviour of library calls. Writing the same algorithm twice was the most effective review of the first version.
 
 ## Repository structure
