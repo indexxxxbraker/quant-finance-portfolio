@@ -68,10 +68,12 @@ simulate_terminal_heston_qe(double S0,
 // pairs are averaged before the estimator sees them, so that the
 // half-width correctly reflects the variance reduction.
 //
-// QE typically achieves the same precision as full-truncation Euler
-// (heston_mc.hpp) at 4-10x fewer time steps, with the gap widening for low
-// Feller parameter. For benign parameters (Feller >> 1) the gap is
-// modest; for aggressive parameters (Feller << 1) it can exceed 30x.
+// The comparison with full-truncation Euler (heston_mc.hpp) is empirical
+// and was measured on the Python side: in the aggressive regime
+// (Feller 0.04; results/phase4/heston_qe_vs_euler.csv) QE at 25 steps is
+// more accurate than Euler at 400 steps, while with benign parameters
+// (Feller 1.78) both agree with the Fourier price within their confidence
+// intervals at 200 steps. See theory/phase4/heston_qe.tex, Section 7.
 //
 // Throws std::invalid_argument on parameter validation failure.
 MCResult

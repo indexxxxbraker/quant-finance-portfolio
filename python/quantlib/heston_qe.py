@@ -395,13 +395,16 @@ def mc_european_call_heston_qe(S0, K, v0, r, kappa, theta, sigma, rho, T,
 
     Notes
     -----
-    The estimator carries a discretisation bias of order O(dt^2) in
-    benign regimes (high Feller parameter) and approximately O(dt^2)
-    even in low-Feller regimes thanks to QE's atom-at-zero handling.
-    Compared to the full-truncation Euler estimator
-    (``mc_european_call_heston``), QE achieves the same precision with
-    typically 4-10x fewer time steps, with the gap widening for low
-    Feller parameter (see heston_qe.tex Section 7).
+    No weak convergence rate is claimed for QE; the comparison with
+    full-truncation Euler (``mc_european_call_heston``) is empirical.
+    In the aggressive regime (Feller parameter 0.04, T = 1, r = 0.03;
+    benchmark_phase4.py Section 5, results/phase4/heston_qe_vs_euler.csv)
+    the QE bias stays within the Monte Carlo noise from n_steps = 25
+    upwards, and QE at n_steps = 25 is more accurate than Euler at
+    n_steps = 400. With the canonical parameters (Feller 1.78) both
+    schemes agree with the Fourier price within their confidence
+    intervals at n_steps = 200 (heston_cross_validation.csv), and a QE
+    step costs about 1.5x a Euler step. See heston_qe.tex Section 7.
     """
     _validate_strike(K)
 

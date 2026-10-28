@@ -60,7 +60,7 @@ def report(name: str, passed: bool, info: str = "") -> Tuple[str, bool]:
 # Reference parameter sets
 # =====================================================================
 
-# Standard equity case: Feller parameter nu = 1.33, regular boundary.
+# Standard equity case: Feller parameter nu = 1.33, so zero is unattainable.
 PARAMS_STD = dict(
     kappa=1.5,
     theta=0.04,
@@ -260,9 +260,11 @@ def test_convergence_in_paths():
 
 def test_antithetic():
     """Antithetic variates should reduce the sample variance of the
-    paired-average estimator vs plain MC. For monotone payoffs (like a
-    call), the reduction is structural (not parameter-dependent in
-    sign), and typical magnitudes are 3x to 10x for ATM options."""
+    paired-average estimator vs plain MC. The test checks a reduction of
+    at least 2x in the per-sample variance at T = 0.5 (about 5.7x is
+    observed, i.e. about 2.85x at equal path budget); the sign is not
+    guaranteed in general, because flipping the normals also moves the
+    variance path."""
     print("Test 4: Antithetic variance reduction")
 
     T = 0.5

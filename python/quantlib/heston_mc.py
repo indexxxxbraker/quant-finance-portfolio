@@ -12,8 +12,8 @@ Public interface
 - ``simulate_heston_paths``: full-grid path simulator returning
   (log_S, v) on the time mesh of shape (n_steps + 1, n_paths) each.
   Optional antithetic variates available.
-- ``simulate_terminal_heston``: convenience wrapper that returns only
-  the terminal log-spot column.
+- ``simulate_terminal_heston``: separate O(n_paths)-memory loop that
+  returns only the terminal spot S_T.
 - ``mc_european_call_heston``: high-level pricer orchestrating the
   simulator with the discounted call payoff and the model-agnostic
   ``mc_estimator`` from ``quantlib.monte_carlo``.

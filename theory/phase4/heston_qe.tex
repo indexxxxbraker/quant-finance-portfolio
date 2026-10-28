@@ -112,7 +112,7 @@ The result is bias-free in distribution: every step is a draw from the exact tra
 
 \subsection{Why we don't use it}
 
-The cost is dominated by step 2: sampling the integrated variance from a numerically-inverted characteristic function. This costs $O(K)$ floating-point operations per step for some $K$ that depends on the precision target; in practice $K$ is in the hundreds. Compare this to QE's per-step cost of $O(1)$ operations: a uniform draw, a normal draw, and a couple of arithmetic operations. For typical Heston Monte Carlo with $M = 10^5$ paths and $N = 100$ steps, QE costs roughly $10^7$ floating-point operations, while Broadie-Kaya costs $10^9$. The wall-clock factor is 100--1000.
+The cost is dominated by step 2: sampling the integrated variance from a numerically-inverted characteristic function, which requires many evaluations of that characteristic function for every draw, with a count that grows with the precision target. Compare this to QE's per-step cost of $O(1)$ operations: a uniform draw, two normal draws, and a few arithmetic operations. Broadie-Kaya is therefore much more expensive per step than QE; we have not implemented it, so this repository has no measurement of the factor.
 
 In production trading, this cost gap matters. Andersen's insight is that if we are willing to accept a small residual bias instead of zero, we can recover almost all of the precision benefit at a fraction of the cost.
 
@@ -148,13 +148,13 @@ The dimensionless ratio
 \begin{equation}
     \psi(v_t, \Delta) := \frac{s^2(v_t, \Delta)}{m(v_t, \Delta)^2}                                                          \label{eq:psi-def}
 \end{equation}
-is the central object of Andersen's construction. It measures the relative dispersion of the conditional distribution: small $\psi$ means $v_{t+\Delta}$ is concentrated around its mean (a Gaussian-like shape works well), while large $\psi$ means the distribution is dispersed and may even have an atom at zero (a Gaussian fits poorly).
+is the central object of Andersen's construction. It measures the relative dispersion of the conditional distribution: small $\psi$ means $v_{t+\Delta}$ is concentrated around its mean (a Gaussian-like shape works well), while large $\psi$ means the distribution is dispersed, with much of its mass close to zero (a Gaussian fits poorly).
 
 For Heston with typical parameters and $\Delta = 0.01$:
 \begin{itemize}[topsep=2pt]
-    \item When $v_t \sim \theta$ (around the long-run mean), $\psi$ is small, typically $\sim 0.1$--$0.5$.
-    \item When $v_t \to 0$, the conditional distribution has positive mass exactly at zero (the CIR has a regular boundary that can be reached for low Feller); $\psi$ becomes large, $\psi \gtrsim 1.5$.
-    \item In the boundary case $v_t = 0$ exactly, $m = \theta(1 - e^{-\kappa\Delta})$ and $s^2 = (\sigma^2 \theta / 2\kappa)(1 - e^{-\kappa\Delta})^2$, so $\psi = (\sigma^2)/(2\kappa\theta) = 1/\nu$. This shows: the smaller the Feller parameter, the larger $\psi$ at the boundary, the more important QE's atom-at-zero treatment.
+    \item When $v_t \sim \theta$ (around the long-run mean), $\psi$ is small: $\psi \approx \sigma^2\Delta/\theta$ to leading order in $\Delta$, which gives $0.022$ for the standard set ($\kappa = 1.5$, $\sigma = 0.3$) and $0.25$ for the aggressive set ($\kappa = 0.5$, $\sigma = 1$) of the validation section.
+    \item As $v_t$ decreases, $\psi$ increases (the derivative of $s^2/m^2$ in $v_t$ is negative for $v_t > 0$), up to its maximum at $v_t = 0$, computed in the next bullet. For $\nu < 1$ the boundary at zero is attainable and the conditional density piles up near zero, which the exponential regime approximates by an atom.
+    \item In the boundary case $v_t = 0$ exactly, $m = \theta(1 - e^{-\kappa\Delta})$ and $s^2 = (\sigma^2 \theta / 2\kappa)(1 - e^{-\kappa\Delta})^2$, so $\psi = (\sigma^2)/(2\kappa\theta) = 1/\nu$, for every $\Delta$. Hence $\psi \leq 1/\nu$ everywhere, and the exponential regime ($\psi > \psi_c = 1.5$) is entered only when $\nu < 2/3$: never for the standard set ($\psi \leq 0.75$), and for the aggressive set ($1/\nu = 25$) whenever $v_t$ is small. The smaller the Feller parameter, the larger $\psi$ at the boundary, the more important QE's atom-at-zero treatment.
 \end{itemize}
 
 The QE scheme uses $\psi$ to decide between two distinct sampling strategies, glued at a critical threshold $\psi_c$ that Andersen recommends to be $\psi_c = 1.5$ based on numerical experiments.
@@ -212,7 +212,7 @@ The sampling step uses inverse-CDF: draw $U \sim \mathrm{Uniform}(0, 1)$, and
 \begin{equation}
     \hat v_{n+1} = \begin{cases} 0, & U \leq p, \\ -\frac{1}{\beta} \log\!\left(\frac{1 - U}{1 - p}\right), & U > p. \end{cases}                                                                                                  \label{eq:exp-sample}
 \end{equation}
-This explicitly captures the atom at zero, which is essential for low-$\nu$ regimes.
+The atom at zero stands in for the mass that the exact transition law puts close to zero (the exact law has a density and no atom); this is essential for low-$\nu$ regimes.
 
 \paragraph{Why two regimes.} The natural question is: why not use the exponential regime everywhere? The answer is that for small $\psi$, the moment-matching equations \eqref{eq:p-beta} give $p < 0$ (no mixture interpretation possible), so the exponential regime is not even well-defined. Conversely, the quadratic regime requires $\psi \leq 2$. The threshold $\psi_c \in (1, 2)$ is a free parameter of the scheme; Andersen recommends $\psi_c = 1.5$ based on extensive empirical testing.
 
@@ -287,12 +287,12 @@ The reason for the smaller bias is visible in the construction:
 \begin{itemize}[topsep=2pt]
     \item Both schemes match the first conditional moment of $v$ exactly.
     \item Only QE matches the second conditional moment exactly. Full-truncation Euler matches it up to $O(\Delta t^2)$ when no truncation fires, but has $O(\Delta t)$ error when truncation does fire.
-    \item QE reproduces the atom of $v$ at zero through the exponential regime, which Euler's truncation can only imitate step by step.
+    \item QE reproduces the concentration of $v$ near zero through the atom of its exponential regime, which Euler's truncation can only imitate step by step.
 \end{itemize}
 
 \subsection{Empirical comparison}
 
-The bias study in \texttt{benchmark\_phase4.py} (Section~5) uses the aggressive parameter set $\kappa = 0.5$, $\theta = 0.04$, $\sigma = 1$, $\rho = -0.9$, $v_0 = 0.04$ ($\nu = 0.04$), $S_0 = K = 100$, $r = 0.05$, $T = 1$, with $10^5$ paths per run averaged over three seeds and the Fourier price $6.7304$ as reference:
+The bias study in \texttt{benchmark\_phase4.py} (Section~5) uses the aggressive parameter set $\kappa = 0.5$, $\theta = 0.04$, $\sigma = 1$, $\rho = -0.9$, $v_0 = 0.04$ ($\nu = 0.04$), $S_0 = K = 100$, $r = 0.03$, $T = 1$, with $10^5$ paths per run averaged over three seeds and the Fourier price $6.7304$ as reference (\texttt{results/phase4/heston\_qe\_vs\_euler.csv}):
 
 \begin{center}
 \begin{tabular}{rcc}
@@ -307,16 +307,16 @@ $N$ & FT-Euler $|$bias$|$ & QE $|$bias$|$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The $95\%$ half-width of the three-seed average is about $0.010$ (some $0.15\%$ of the price), so every QE value is within about one half-width of zero: no QE bias is resolved at these sample sizes. Euler's bias falls roughly as $1/N$, as first-order weak convergence predicts, while QE at $N = 25$ is already more accurate than Euler at $N = 400$. The validator repeats the comparison at $T = 0.5$, $N = 50$ with five seeds of $2 \times 10^5$ paths: Euler's bias is $+0.155$, QE's $-0.004$, within noise.
+The $95\%$ half-width of the three-seed average is about $0.018$ (some $0.26\%$ of the price; column \texttt{qe\_hw\_avg} of the CSV), so every QE value is within one half-width of zero: no QE bias is resolved at these sample sizes. Euler's bias falls roughly as $1/N$, as first-order weak convergence predicts, while QE at $N = 25$ is already more accurate than Euler at $N = 400$. The validator repeats the comparison at $r = 0.05$, $T = 0.5$, $N = 50$ with five seeds of $2 \times 10^5$ paths: Euler's bias is $+0.155$, QE's $-0.004$, within noise.
 
-With the standard parameters ($\nu = 1.33$) the variance process rarely approaches zero and the two schemes agree with the Fourier price within their confidence intervals at $N = 200$ (\texttt{results/phase4/heston\_cross\_validation.csv}); the advantage of QE is specific to the low-$\nu$ regime.
+With the canonical parameters of \texttt{benchmark\_phase4.py} ($\kappa = 2$, $\theta = 0.04$, $\sigma = 0.3$, $\rho = -0.7$, $v_0 = 0.04$, so $\nu \approx 1.78$; $r = 0.03$, $T = 1$) the variance process rarely approaches zero and the two schemes agree with the Fourier price within their confidence intervals at $N = 200$ for all nine strikes from $80$ to $120$ (\texttt{results/phase4/heston\_cross\_validation.csv}); the advantage of QE is specific to the low-$\nu$ regime.
 
 \subsection{Cost considerations}
 
 QE has a higher per-step cost than FT-Euler:
 \begin{itemize}[topsep=2pt]
     \item FT-Euler: 2 normals per step, plus arithmetic.
-    \item QE: 1 normal + 1 uniform per step (one regime uses normal, the other uniform), plus arithmetic for the moment computation and $\psi$ check.
+    \item QE: 1 uniform + 2 normals per step (the uniform $U$ is used by the exponential regime, the normal $Z$ by the quadratic regime, and the second normal drives the log-spot; all three are drawn at every step), plus arithmetic for the moment computation and $\psi$ check.
 \end{itemize}
 In the Python implementation a QE step costs about $1.5\times$ a full-truncation Euler step (timings in \texttt{results/phase4/heston\_cross\_validation.csv}). In the aggressive regime this is easily repaid, since QE at $N = 25$ beats Euler at $N = 400$; in the benign regime the two are equally accurate at the same $N$ and Euler is the cheaper choice.
 
