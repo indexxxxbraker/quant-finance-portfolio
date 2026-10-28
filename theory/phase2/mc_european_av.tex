@@ -167,7 +167,7 @@ is informative.
 \subsection{Two limiting regimes}
 
 \paragraph{Deep ITM ($K \to 0$):} the call payoff approaches the
-forward, $f(z) \to e^{-rT} S(z) - e^{-rT} K \cdot e^{rT} = e^{-rT}
+forward, $f(z) \to e^{-rT} \bigl(S(z) - K\bigr) = e^{-rT}
 S(z) - K e^{-rT}$. (For ATM and ITM cases below the strike $K$
 appears as a constant after discounting.) The dominant variation is
 in $S(z)$, which is monotone in $z$ in a strict, smooth way. The
@@ -275,17 +275,11 @@ For our canonical ATM call, the prediction is $\hat\rho \in [-0.7,
 the empirical correlation is negative and the VRF is meaningfully
 above $1$.
 
-\paragraph{Test 2: consistency with the IID estimator.} The AV
-estimator and the IID estimator should agree on the same path data
-(when computed from the same RNG state, which they will in our
-design). Concretely: at $M = 10^4$ pairs, run AV pricer and IID
-pricer with $M_{\text{IID}} = 2M$ paths from the same seed, and
-verify that both estimates fall within a few half-widths of the
-closed-form Black-Scholes price. (We do not require pathwise
-equality of the two estimates because the path constructions
-differ: the AV pricer uses each $Z_i$ for both elements of the
-pair, while the IID pricer would treat them as $2M$ independent
-draws.)
+\paragraph{Test 2: consistency with the closed-form price.} Run the
+AV pricer at $M = 50\,000$ pairs and verify that its estimate falls
+within three half-widths of the closed-form Black-Scholes price.
+Only the AV estimate is checked here; the comparison with the IID
+pricer is Test~3.
 
 \paragraph{Test 3: VxT comparison at fixed budget.} Run both
 estimators with the same number of payoff evaluations ($2M$ each)
@@ -298,10 +292,12 @@ payoffs.
 \item Ratio (which should equal $\widehat{\mathrm{VRF}}$ from Test~1
 up to noise).
 \end{itemize}
-Wall-clock measurements are not necessary for the test to pass; the
-per-pair compute is dominated by two payoff evaluations and one
-shared random draw, with negligible overhead, so the VxT ratio
-equals the variance ratio to within rounding.
+Wall-clock time is not measured: the comparison is at equal payoff
+count. At that count the AV pricer draws $M$ standard normals where
+the IID pricer draws $2M$, and the remaining work (one exponential
+and one maximum per payoff) is the same up to forming the pair
+averages, so the AV cost is not larger and its VxT gain over IID is
+at least its VRF.
 
 \paragraph{Test 4: input validation.} Mechanical: the AV pricer
 rejects bad inputs and accepts negative interest rates.

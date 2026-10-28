@@ -105,10 +105,12 @@ The \emph{star discrepancy} of $P$ is
 \end{definition}
 
 A sequence with small discrepancy distributes points evenly across
-all anchored rectangles. For random points, $\E[\Disc(P)] =
-\Theta(\sqrt{(\log \log n) / n})$ by the law of the iterated
-logarithm; for QMC sequences, deterministic constructions can
-achieve $\Disc(P) = O((\log n)^d / n)$.
+all anchored rectangles. For $n$ i.i.d.\ uniform points in fixed
+dimension $d$, $\E[\Disc(P)] = \Theta(n^{-1/2})$ (the law of the
+iterated logarithm adds a $\sqrt{\log \log n}$ factor only to the
+almost-sure $\limsup$ along an infinite random sequence); for QMC
+sequences, deterministic constructions can achieve $\Disc(P) =
+O((\log n)^d / n)$.
 
 \begin{theorem}[Koksma-Hlawka inequality]
 \label{thm:kh}
@@ -136,16 +138,18 @@ For Halton or Sobol sequences in dimension $d$, the discrepancy
 satisfies $\Disc(P_n) = O((\log n)^d / n)$. Compared to MC:
 \begin{center}
 \begin{tabular}{l c c}
-Method & Error rate & Behaviour as $n \to \infty$ \\
+Method & Error rate & Comparison with MC \\
 \hline
-MC                & $O(n^{-1/2})$         & always wins eventually \\
+MC                & $O(n^{-1/2})$         & same rate in every $d$ \\
 QMC, $d$ moderate & $O((\log n)^d / n)$  & wins MC for moderate $n$ \\
-QMC, $d$ large    & $O((\log n)^d / n)$  & loses to MC for practical $n$
+QMC, $d$ large    & $O((\log n)^d / n)$  & bound wins only at impractical $n$
 \end{tabular}
 \end{center}
 
-The crossover point depends on $d$. For $d \leq 5$, QMC dominates
-MC at any $n \geq 10^3$. For $d = 30$, the $(\log n)^d$ factor is
+For every fixed $d$, $(\log n)^d / n = o(n^{-1/2})$, so QMC wins
+eventually; what depends on $d$ is the crossover point. In low
+dimension QMC typically beats MC at the sample sizes used in
+practice. For $d = 30$, the $(\log n)^d$ factor is
 catastrophic --- $(\log 10^6)^{30} \approx 10^{34}$ --- and QMC
 requires extreme $n$ to outperform MC. In practice, QMC is most
 useful for low-to-moderate dimensional problems.
@@ -289,7 +293,8 @@ lines of code once the Joe-Kuo file is loaded.
 \subsection{The Gray-code optimisation}
 
 A naive implementation evaluates the XOR over $K$ direction numbers
-for each new index $i$. Sobol observed that consecutive indices in
+for each new index $i$. Antonov and Saleev~\cite{AntonovSaleev1979}
+observed that consecutive indices in
 \emph{Gray-code order} differ in exactly one bit, so generating
 $u_{i+1}$ from $u_i$ requires only one XOR. This optimisation is
 essential for performance; we adopt it in the C++ implementation.
@@ -420,7 +425,8 @@ of the QMC pricer for the European call.
 We have established the framework:
 \begin{itemize}
 \item QMC sequences (Halton, Sobol) achieve discrepancy $O((\log n)^d
-/ n)$, faster than the MC rate $O(\sqrt{(\log\log n)/n})$.
+/ n)$, asymptotically smaller than the $\Theta(n^{-1/2})$ expected
+discrepancy of random points.
 \item The Koksma-Hlawka bound is deterministic but practically
 unusable for option payoffs because $V(f)$ is hard to bound.
 \item Inverse sampling (chosen in the Monte Carlo foundations) is the
@@ -450,6 +456,12 @@ viewpoint, including effective dimension, is developed by Glasserman
 \cite[Chapter~5]{Glasserman}.
 
 \begin{thebibliography}{99}
+
+\bibitem{AntonovSaleev1979}
+I.\ A.\ Antonov and V.\ M.\ Saleev,
+\emph{An economic method of computing $LP_\tau$-sequences},
+USSR Computational Mathematics and Mathematical Physics,
+19(1):252--256, 1979.
 
 \bibitem{Glasserman}
 P.\ Glasserman,

@@ -261,17 +261,22 @@ control's variance enters in the denominator. \emph{A control with
 excess variance --- variance not explained by linear association
 with $Y$ --- gets penalised in the correlation coefficient}.
 
-In our case, the algebraic source of excess variance for $X_2$ is
-the multiplicative structure of the indicator $\indic_{\{S_T > K\}}$:
-when the call is ITM, the value of $X_2$ depends on $S_T$, which
-ranges widely (the typical ITM path can have $S_T$ anywhere from
-$K$ to several times $K$); the variance of $X_2$ on the ITM region
-is therefore large. The target $Y = X_2 - e^{-rT} K$ on the same
-region has the \emph{same} variance as $X_2$ on this region, but the
-\emph{global} target variance is much smaller because $Y = 0$ on
-OTM (a region of probability $\approx 0.44$). The denominator of
-$\rho_2$ therefore picks up the full $\Var(X_2)$ while the numerator
-$\Cov(Y, X_2)$ picks up only the portion correlated with $Y$.
+In our case the excess variance of $X_2$ does not come from the
+range of $S_T$ on the ITM region: conditional on $\{S_T > K\}$, the
+variables $Y$, $X_1$ and $X_2$ differ only by constants and so have
+the same variance, and on OTM both $Y$ and $X_2$ vanish. It comes
+from the jump of height $e^{-rT} K$ that $X_2$ makes at $S_T = K$,
+where $Y$ is continuous. Writing~\eqref{eq:Y-X2} as $X_2 = Y +
+e^{-rT} K \, A$,
+\begin{equation}
+\Var(X_2) - \Var(Y) \;=\; (e^{-rT} K)^2 \Var(A)
++ 2 e^{-rT} K \,\Cov(Y, A) \;=\; 2229.9 + 875.6 \;=\; 3105.5,
+\end{equation}
+with $\Var(A) = \Phi(d_2)\bigl(1 - \Phi(d_2)\bigr)$ and $\Cov(Y, A)
+= C^{\mathrm{BS}} \bigl(1 - \Phi(d_2)\bigr)$; this recovers
+$3322.15 - 216.66$. The denominator of $\rho_2$ therefore picks up
+the full $\Var(X_2)$ while the numerator $\Cov(Y, X_2)$ picks up
+only the portion correlated with $Y$.
 
 For $X_1$, the analogous algebra plays out differently. $X_1$ has
 \emph{positive but limited} variance on both ITM and OTM regions:
@@ -292,9 +297,9 @@ c_1^* \;=\; \frac{\Cov(Y, X_1)}{\Var(X_1)} \;=\; \frac{274.91}{408.11}
 c_2^* \;=\; \frac{\Cov(Y, X_2)}{\Var(X_2)} \;=\; \frac{654.44}{3322.15}
 \;=\; 0.197.
 \end{equation}
-For the underlying, $c_1^* \approx 0.67$, indicating that subtracting
-$0.67 \times (X_1 - S_0)$ from $Y$ removes about two-thirds of the
-``directional'' variance. For the AON, $c_2^* \approx 0.20$, much
+For the underlying, $c_1^* \approx 0.67$: subtracting $0.67 \times
+(X_1 - S_0)$ from $Y$ removes a fraction $\rho_1^2 \approx 0.855$ of
+$\Var(Y)$. For the AON, $c_2^* \approx 0.20$, much
 smaller: the algorithm ``does not trust'' the AON nearly as much as
 it does the underlying, because the AON has so much variance unrelated
 to $Y$.
@@ -311,24 +316,13 @@ linear fit}. Two variables can match each other piecewise and still
 have moderate correlation if the piecewise pieces have very
 different variances.
 
-A useful diagnostic that would have revealed the problem before
-running any code: compute the ratio $\Var(Y) / \Var(X)$ for each
-candidate control. A good control has this ratio close to $1$: the
-control varies on the same scale as the target. A control with
-$\Var(Y)/\Var(X) \ll 1$ has excess variance and will likely give
-modest $\rho$.
-
-\begin{center}
-\begin{tabular}{l c c c}
-Control & $\Var(Y) / \Var(X)$ & Empirical $\rho$ & VRF \\
-\hline
-$X_1$ (underlying) & $0.53$ & $0.92$ & $6.88$ \\
-$X_2$ (AON)        & $0.07$ & $0.77$ & $2.47$ \\
-\end{tabular}
-\end{center}
-
-The variance-ratio diagnostic correctly predicts the ranking of the
-two controls. The naive shape-matching argument does not.
+The ratio $\Var(Y) / \Var(X)$ is not a usable diagnostic for this:
+replacing the control $X$ by $aX$ with $a > 0$ leaves $\rho$ and the
+CV estimator unchanged ($c^*$ becomes $c^*/a$) but divides the ratio
+by $a^2$. What decides the quality of a control is the correlation
+itself, which here is available in closed form from the moments of
+Section~\ref{sec:correct}. The naive shape-matching argument does
+not predict it.
 
 \section{Implementation: empirical \texorpdfstring{$\hat c$}{c-hat}}
 \label{sec:empirical}

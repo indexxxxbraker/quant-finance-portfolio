@@ -56,11 +56,12 @@ discretisation of the Euler--Maruyama pricer with $N = 20$ time steps,
 giving an integration problem of dimension $d = 20$. We compare four
 estimators: IID Monte Carlo (the Euler--Maruyama baseline), QMC with
 Halton, QMC with Sobol, and randomized QMC (RQMC) with Sobol plus
-digital shifting. The empirical convergence rates measured on a
-log-log slope plot are expected to confirm the theoretical
-predictions: slope $\approx -0.5$ for IID, slope close to $-1$ for
-Sobol RQMC at this dimension. The validation script also confirms
-that RQMC delivers a usable half-width via $R$-replication averaging.
+digital shifting. The theoretical expectation for the log-log
+convergence slope is $-0.5$ for IID and close to $-1$ for Sobol
+RQMC; the validation script measures $-0.48$ and $-0.84$, and the
+benchmark $-0.59$ and $-0.62$ (Section~\ref{sec:rates}). The
+validation script also confirms that RQMC delivers a usable
+half-width via $R$-replication averaging.
 \end{abstract}
 
 \tableofcontents
@@ -95,32 +96,37 @@ genuine $20$-dimensional problem where QMC's advantage matters.
 The difference between exact and Euler is the $O(h)$ weak bias
 documented in the note on the Euler--Maruyama pricer; for $N = 20$ this
 bias is approximately
-$0.05$ in absolute terms, large enough to be visible against MC
-error at $n \sim 10^4$ but small enough not to obscure the
-convergence-rate analysis. We accept this bias as a fixed offset
+$0.007$ in absolute terms (the validation script measures
+$C^{\mathrm{Euler}} = 10.4438 \pm 0.0014$ against $C^{\mathrm{BS}} =
+10.4506$), invisible against the IID-MC half-width of about $0.29$
+at $n = 10^4$. We accept this bias as a fixed offset
 and study the rate at which the Monte Carlo / QMC error around
 $C^{\mathrm{Euler}}$ vanishes as $n$ grows.
 
 \section{The four estimators}
 \label{sec:estimators}
 
-We construct four estimators of $C^{\mathrm{Euler}}$, all sharing
-the same $\Phi^{-1}$ inversion step but differing in how the
-underlying $u_i \in [0, 1)^{20}$ points are produced.
+We construct four estimators of $C^{\mathrm{Euler}}$. The three QMC
+and RQMC estimators share the same $\Phi^{-1}$ inversion step and
+differ in how the underlying $u_i \in [0, 1)^{20}$ points are
+produced; the IID baseline draws its normals directly.
 
-\paragraph{IID-MC.} Standard Monte Carlo. The points $u_i$ are
-pseudo-random uniform draws from a Mersenne-Twister generator. This
-is the Euler--Maruyama baseline.
+\paragraph{IID-MC.} Standard Monte Carlo: the Euler--Maruyama
+baseline \texttt{mc\_european\_call\_euler}, which draws the Brownian
+increments with NumPy's \texttt{Generator.normal} (PCG64 bit
+generator, ziggurat sampler), with no uniform points and no
+$\Phi^{-1}$ step.
 
 \paragraph{QMC-Halton.} The points $u_i$ are the first $n$ entries
 of the $20$-dimensional Halton sequence with primes $p_1 = 2,
 p_2 = 3, \ldots, p_{20} = 71$. The estimator returns a single number
 without a half-width.
 
-\paragraph{QMC-Sobol.} The points $u_i$ are the first $n$ entries
-of the $20$-dimensional Sobol sequence with Joe-Kuo direction
-numbers. As with Halton, the deterministic estimator has no
-half-width.
+\paragraph{QMC-Sobol.} The points $u_i$ are $n$ entries of the
+$20$-dimensional Sobol sequence with Joe-Kuo direction numbers,
+skipping the first point: it is the origin, which $\Phi^{-1}$ maps
+to $-\infty$ in every coordinate. As with Halton, the deterministic
+estimator has no half-width.
 
 \paragraph{RQMC-Sobol.} The points are the Sobol sequence
 randomised by digital shifting with $R$ independent shifts (we use
@@ -130,8 +136,9 @@ i.i.d.\ and a half-width is constructed from their sample variance.
 
 \subsection{The fixed and varying axes}
 
-To compare convergence rates, we vary the per-replication path
-count $n$ across a logarithmic grid. The rest of the configuration
+To compare convergence rates, we vary the path count $n$ (for RQMC,
+the total over the $R$ replications) across a logarithmic grid. The
+rest of the configuration
 is fixed:
 \begin{itemize}
 \item Euler steps: $N = 20$.
@@ -142,15 +149,15 @@ reproducibility.
 \item Target: the same canonical parameters $S_0 = K = 100$, $r =
 0.05$, $\sigma = 0.20$, $T = 1$.
 \end{itemize}
-The reference value against which we measure error is the
-closed-form Black-Scholes price $C^{\mathrm{BS}} = 10.4506$. The
-Euler scheme's $O(h)$ bias creates a systematic offset of
-approximately $0.05$ from $C^{\mathrm{BS}}$; this offset is the
-\emph{same for all four estimators} (they all share the same
-discretised payoff structure), so when we plot ``error vs $n$'' on
-a log-log scale, the bias contributes a horizontal asymptote that
-all four lines share. The slopes at moderate $n$, before the
-asymptote dominates, are what we are after.
+Measured against the closed-form Black-Scholes price
+$C^{\mathrm{BS}} = 10.4506$, the error would include the Euler
+scheme's $O(h)$ bias, a systematic offset of approximately $0.007$
+that is the \emph{same for all four estimators} (they all share the
+same discretised payoff structure). On a log-log plot of ``error vs
+$n$'' it would act as a horizontal floor: far below the IID error
+on our grid, but comparable to the RQMC error at the largest $n$.
+The validation script therefore measures error against
+$C^{\mathrm{Euler}}$ (Section~\ref{sec:conv-test}).
 
 \section{Convergence rates: predictions}
 \label{sec:rates}
@@ -158,19 +165,26 @@ asymptote dominates, are what we are after.
 The theoretical asymptotic rates from the note on quasi-Monte Carlo
 foundations:
 \begin{itemize}
-\item IID-MC: error $= O(n^{-1/2})$. Log-log slope $-0.5$.
+\item IID-MC: error $= O(n^{-1/2})$. Log-log slope $-0.5$. Measured:
+$-0.48$ (validation script), $-0.59$ (benchmark).
 \item QMC-Halton: error $= O((\log n)^{20} / n)$. The $(\log n)^{20}$
 factor at $n = 10^4$ is $(9.2)^{20} \approx 10^{19}$, so the constant
 in the big-O is huge and Halton may not yet be in its asymptotic
 regime at the budgets we test. Empirically, we expect a slope between
-$-0.7$ and $-0.9$ rather than the asymptotic $-1$.
+$-0.7$ and $-0.9$ rather than the asymptotic $-1$. Measured: $-0.95$.
 \item QMC-Sobol (deterministic): same asymptotic rate as Halton,
 but with substantially better constants thanks to the $\mathbb{F}_2$
 construction. Empirically, we expect a slope close to $-1$ at
-moderate $n$.
+moderate $n$. Measured: $-1.32$.
 \item RQMC-Sobol: same expected slope as deterministic Sobol; the
 randomisation provides the half-width without affecting the rate.
+Measured: $-0.84$ (validation script), $-0.62$ (benchmark).
 \end{itemize}
+The measured values come from \texttt{validate\_mc\_european\_qmc.py}
+(Test~1) and from the benchmark file \texttt{qmc\_vs\_mc.csv}; both
+set-ups are described in Section~\ref{sec:conv-test}. The Sobol and
+RQMC errors in the validation script are not monotone in $n$, so
+their fitted slopes are noisy.
 
 \subsection{The dimension-effect caveat}
 
@@ -204,17 +218,31 @@ advantage and the bridge optimisation is left aside
 effective dimension can be much larger).
 
 \subsection{The convergence rate test}
+\label{sec:conv-test}
 
-The validation script computes the absolute error
+For Halton, deterministic Sobol and RQMC, the validation script
+computes the absolute error
 \begin{equation}
 \mathrm{err}(n) \;=\; \bigl|\hat C_n - C^{\mathrm{Euler}}\bigr|
 \end{equation}
-on a logarithmic grid $n \in \{10^3, 10^{3.5}, 10^4, 10^{4.5}, 10^5\}$
-(five points), fits a linear regression of $\log \mathrm{err}$ on
-$\log n$, and reports the slope. We use the bias-corrected target
-$C^{\mathrm{Euler}}$ (estimated from a high-precision IID-MC run)
+on the grid $n \in \{2^{10}, 2^{11}, \ldots, 2^{16}\}$ (seven powers
+of $2$, from $1024$ to $65\,536$), fits a linear regression of
+$\log \mathrm{err}$ on $\log n$, and reports the slope. The RQMC
+error at each $n$ comes from a single run with $R = 20$ shifts of
+$\lfloor n/20 \rfloor$ points each. For IID-MC the script uses
+instead the sample standard deviation of $30$ independent $n$-path
+estimates, an estimate of $\sigma_Y / \sqrt n$. We use the
+bias-corrected target $C^{\mathrm{Euler}}$, estimated from an RQMC
+run with $n = 65\,536$ points and $R = 50$ shifts
+($nR \approx 3.3 \times 10^6$ payoffs, half-width $\approx 0.0014$),
 rather than $C^{\mathrm{BS}}$ to avoid contaminating the rate
 measurement with the Euler bias.
+
+The benchmark (\texttt{python/benchmark\_phase2.py}, output
+\texttt{qmc\_vs\_mc.csv}) measures instead the RMS error over $30$
+seeds against $C^{\mathrm{BS}}$, for $n = 2^{11}, \ldots, 2^{16}$,
+comparing the exact-GBM IID pricer with Sobol RQMC ($R = 16$ shifts
+of $n/16$ points); its RQMC error therefore includes the Euler bias.
 
 \section{Implementation overview}
 \label{sec:impl}
@@ -225,34 +253,41 @@ The Python implementation introduces a new module \texttt{quantlib.qmc}:
 \item \texttt{halton(n, d)}: returns the first $n$ entries of the
 $d$-dimensional Halton sequence as an $(n, d)$ NumPy array.
 Implemented from scratch using the radical inverse function.
-\item \texttt{sobol(n, d, scramble=False, seed=None)}: returns the
-first $n$ Sobol points. Wraps \texttt{scipy.stats.qmc.Sobol}, which
-uses Joe-Kuo direction numbers internally.
+\item \texttt{sobol(n, d, scramble=False, seed=None, skip=0)}: returns
+$n$ Sobol points after discarding the first \texttt{skip}. Wraps
+\texttt{scipy.stats.qmc.Sobol}, which uses Joe-Kuo direction numbers
+internally.
 \item \texttt{mc\_european\_call\_euler\_qmc}: deterministic QMC
 pricer that returns a single estimate (no half-width). Accepts a
 parameter \texttt{sequence} $\in$ \{\texttt{'halton'},
-\texttt{'sobol'}\}.
+\texttt{'sobol'}\}; for Sobol it uses \texttt{skip=1}, dropping the
+origin.
 \item \texttt{mc\_european\_call\_euler\_rqmc}: randomized QMC
 pricer with $R$ digital shifts. Returns a full \texttt{MCResult}
 with the half-width estimated from the $R$ replications.
 \end{itemize}
 
-The pricers reuse the Euler step from \texttt{quantlib.gbm}: only
-the source of normals changes (from
-\texttt{rng.standard\_normal(...)} to $\Phi^{-1}$ applied to a QMC
-sequence). This is exactly the modular separation that motivates
-inversion-based normal sampling in the Monte Carlo foundations.
+The QMC and RQMC pricers do not call the Euler sampler of
+\texttt{quantlib.gbm}: \texttt{quantlib.qmc} has its own helper
+\texttt{\_euler\_payoffs}, which maps an $(n, N)$ array of uniforms
+to normals with $\Phi^{-1}$ (\texttt{scipy.stats.norm.ppf}) and runs
+the same Euler recursion $S_{k+1} = S_k (1 + r h + \sigma \sqrt h \,
+Z_k)$ in a loop over the steps. The IID baseline draws its
+increments with \texttt{rng.normal} instead, so it differs from the
+QMC estimators in the normal sampler as well as in the points.
 
 \section{Empirical validation strategy}
 \label{sec:validation}
 
 The validation script \texttt{python/validate\_mc\_european\_qmc.py}
-runs four tests.
+runs five tests.
 
-\paragraph{Test 1: convergence rate slopes.} Compute the absolute
-error of each estimator (IID, Halton, Sobol-det, Sobol-RQMC) at
-$n \in \{10^3, 10^{3.5}, 10^4, 10^{4.5}, 10^5\}$. Linear-regress
-$\log \mathrm{err}$ on $\log n$. Predicted slopes:
+\paragraph{Test 1: convergence rate slopes.} Compute the error of
+each estimator (IID, Halton, Sobol-det, Sobol-RQMC) at
+$n \in \{2^{10}, \ldots, 2^{16}\}$ as described in
+Section~\ref{sec:conv-test}. Linear-regress $\log \mathrm{err}$ on
+$\log n$ and check each slope against a wide tolerance band. Predicted
+slopes:
 \begin{itemize}
 \item IID: $\approx -0.5$.
 \item Halton: $\approx -0.7$ to $-0.9$.
@@ -262,8 +297,9 @@ randomisation only adds a small constant overhead).
 \end{itemize}
 
 \paragraph{Test 2: BS-coherence of RQMC-Sobol.} The RQMC pricer at
-$n = 10^4$ paths and $R = 20$ replications agrees with $C^{\mathrm{BS}}$
-modulo the Euler bias, within a few half-widths.
+$n = 4096$ points per replication and $R = 20$ replications agrees
+with $C^{\mathrm{BS}}$ modulo the Euler bias (that is, with
+$C^{\mathrm{Euler}}$), within three half-widths.
 
 \paragraph{Test 3: half-width below MC at equal budget.} RQMC-Sobol
 at $n_{\text{paths}} \times R = 100\,000$ payoffs has half-width
@@ -272,13 +308,23 @@ significantly below the IID-MC half-width at the same total budget.
 \paragraph{Test 4: input validation.} Mechanical: the QMC and RQMC
 pricers reject bad inputs.
 
+\paragraph{Test 5: deterministic Sobol at higher volatility.} At
+$\sigma \in \{0.3, 0.4, 0.6\}$, the deterministic Sobol estimate with
+$n = 2^{16}$ must agree with an RQMC estimate of the same Euler price
+($2^{14}$ points, $R = 32$) within three RQMC half-widths plus
+$0.2\%$ of the price. This guards against points at or near the origin, whose
+extreme normals can turn one path into a dominant payoff. Halton is
+printed for comparison but not tested.
+
 \section{Bibliographic notes}
 \label{sec:biblio}
 
 The application of QMC to financial option pricing is reviewed in
 Glasserman~\cite[Chapter~5]{Glasserman}. The Brownian bridge
-construction in QMC is due to Caflisch, Morokoff and Owen
-\cite{CaflischMorokoffOwen}; we do not implement it here. The
+construction in QMC is due to Moskowitz and Caflisch
+\cite{MoskowitzCaflisch}; Caflisch, Morokoff and Owen
+\cite{CaflischMorokoffOwen} apply it to mortgage-backed securities.
+We do not implement it here. The
 analysis of effective dimension in finance is in Wang and Sloan
 \cite{WangSloan}.
 
@@ -294,6 +340,12 @@ Journal of Computational Finance, 1(1):27--46, 1997.
 P.\ Glasserman,
 \emph{Monte Carlo Methods in Financial Engineering},
 Springer, 2004.
+
+\bibitem{MoskowitzCaflisch}
+B.\ Moskowitz and R.\ E.\ Caflisch,
+\emph{Smoothness and dimension reduction in quasi-Monte Carlo
+methods},
+Mathematical and Computer Modelling, 23(8--9):37--54, 1996.
 
 \bibitem{WangSloan}
 X.\ Wang and I.\ H.\ Sloan,
