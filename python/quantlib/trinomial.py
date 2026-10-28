@@ -7,7 +7,9 @@ Implements the lambda-parametrised trinomial tree:
     x -> x       with prob p_m = 1 - 1/lambda
     x -> x - dx  with prob p_d = 1/(2 lambda) - nu sqrt(dt) / (2 sigma sqrt(lambda))
 
-with dx = sigma sqrt(lambda dt) and nu = r - sigma^2/2.
+with dx = sigma sqrt(lambda dt) and nu = r - sigma^2/2. Kamrad and
+Ritchken write the step as lambda_KR sigma sqrt(dt), so the lambda used
+here is lambda_KR^2.
 
 The default lambda = 3 gives (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6) with
 nodes 0 and +-sigma sqrt(3 dt): the three-point Gauss-Hermite rule for
@@ -25,6 +27,7 @@ theory/phase3/trinomial.tex for the explicit identification of coefficients.
 
 References
 ----------
+Boyle (1986), International Options Journal 3, 7-12.
 Kamrad and Ritchken (1991), Management Science 37(12), 1640-1652.
 """
 
@@ -161,9 +164,12 @@ def trinomial_european_call(S, K, r, sigma, T, *, n_steps,
     n_steps : int (keyword-only)
         Number of time steps in the tree.
     lambda_param : float, default 3.0
-        Stretching parameter; must be >= 1. Default 3 is the standard
-        Kamrad-Ritchken choice. Set to 1 to recover binomial-equivalent
-        behaviour (and exact equivalence with FTCS).
+        Stretching parameter; must be >= 1. Default 3 (lambda_KR =
+        sqrt(3)) gives the nodes and weights of the three-point
+        Gauss-Hermite rule. Set to 1 to recover binomial-equivalent
+        behaviour (p_m = 0). For any lambda the recursion matches FTCS
+        with alpha = 1/(2 lambda) up to where the discount factor is
+        applied, an O(dt) difference; the two coincide only when r = 0.
 
     Returns
     -------

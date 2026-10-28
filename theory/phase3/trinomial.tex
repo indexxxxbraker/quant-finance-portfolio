@@ -46,10 +46,10 @@ Two additional benefits:
 \item The finite-difference/lattice benchmark (\texttt{benchmark\_phase3.py}) compares all the project's pricers on the
 American put. The trinomial gives one more independent point of
 comparison.
-\item The trinomial of Kamrad and Ritchken~\cite{KR1991} introduces
-a stretching parameter $\lambda$ that does not exist in the
-binomial. This adds a tuning knob to the family of lattice methods
-which reappears in that benchmark.
+\item The trinomial of Boyle~\cite{Boyle1986}, generalised by Kamrad
+and Ritchken~\cite{KR1991}, has a stretching parameter $\lambda$ that
+does not exist in the binomial. This adds a tuning knob to the family
+of lattice methods; the benchmark uses the default $\lambda = 3$ only.
 \end{itemize}
 
 % =====================================================================
@@ -84,12 +84,16 @@ agree with the centred-difference FTCS scheme, as we will
 see.
 \end{itemize}
 
-\paragraph{The Kamrad--Ritchken step size.} The KR specification picks
+\paragraph{The Kamrad--Ritchken step size.} We take
 \begin{equation}
 \Delta x = \sigma\sqrt{\lambda\,\Delta t}, \qquad \lambda \ge 1.
 \label{eq:kr-step}
 \end{equation}
-The parameter $\lambda$ is the \emph{stretching parameter}.
+The parameter $\lambda$ is the \emph{stretching parameter}. Kamrad
+and Ritchken write the step as
+$\lambda_{\mathrm{KR}}\,\sigma\sqrt{\Delta t}$, with
+$p_m = 1 - 1/\lambda_{\mathrm{KR}}^2$; the $\lambda$ of this note is
+the square of theirs, $\lambda = \lambda_{\mathrm{KR}}^2$.
 Three values are commonly used:
 \begin{center}
 \begin{tabular}{ccc}
@@ -98,7 +102,7 @@ $\lambda$ & Tree type & $p_m$ \\
 \hline
 $1$ & Binomial-equivalent ($p_m = 0$) & $0$ \\
 $2$ & Conservative trinomial          & $1/2$ \\
-$3$ & Standard KR (``third-order'')   & $2/3$ \\
+$3$ & Gauss--Hermite ($\lambda_{\mathrm{KR}} = \sqrt{3}$; default) & $2/3$ \\
 \hline
 \end{tabular}
 \end{center}
@@ -142,7 +146,7 @@ purely by $\lambda$.
 \paragraph{Positivity constraints.}
 \begin{itemize}[leftmargin=2em]
 \item $p_m \ge 0 \iff \lambda \ge 1$.
-\item $p_d \ge 0 \iff \nu\sqrt{\Delta t} \le \sigma\sqrt{\lambda} \iff \dfrac{\nu^2\,\Delta t}{\sigma^2} \le \lambda$. For project parameters ($|\nu| \sim 0.03$, $\sigma = 0.20$, $\Delta t \le 0.02$) the LHS is $\le 1.5\times 10^{-4}$, far below any $\lambda \ge 1$.
+\item $p_d \ge 0$ (and $p_u \ge 0$ when $\nu < 0$) $\iff |\nu|\sqrt{\lambda\,\Delta t} \le \sigma \iff \dfrac{\lambda\,\nu^2\,\Delta t}{\sigma^2} \le 1$, i.e.\ $\lambda \le \sigma^2/(\nu^2\Delta t)$: the grid Péclet condition $|\nu|\Delta x/\sigma^2 \le 1$ of the FTCS note. For project parameters ($|\nu| \sim 0.03$, $\sigma = 0.20$, $\Delta t \le 0.02$) $\nu^2\Delta t/\sigma^2 \le 4.5\times 10^{-4}$, so with $\lambda = 3$ the LHS is at most $1.35\times 10^{-3}$, far below $1$.
 \item $p_u, p_m, p_d \le 1$ is then automatic.
 \end{itemize}
 For the project's parameters, all three probabilities lie comfortably in
@@ -282,11 +286,17 @@ which match the Gaussian log-step to leading order, while
 \]
 against $3\sigma^2\nu\Delta t^2 + O(\Delta t^3)$ and $3\sigma^4
 \Delta t^2 + O(\Delta t^3)$ for the Gaussian. Only $\lambda = 3$ matches
-the third and fourth moments. Schemes that match higher moments have
-smaller \emph{constants} in their error expansion, but the global
-convergence rate remains $O(\Delta t)$ because the non-smooth payoff
-(the kink at the strike) limits the achievable order regardless. The
-gain from $\lambda = 3$ is in the constant, not in the rate.
+the third and fourth moments. The global convergence rate nevertheless
+remains $O(\Delta t)$, because the non-smooth payoff (the kink at the
+strike) limits the achievable order regardless, and for this payoff the
+better moment match does not give a smaller error constant either. The
+$\lambda$ sweep of \texttt{validate\_trinomial.py} (European call,
+$S = K = 100$, $r = 0.05$, $\sigma = 0.2$, $T = 1$, $n = 1000$ steps)
+gives errors $2.06\times10^{-3}$ ($\lambda = 1$), $6.4\times10^{-4}$
+($\lambda = 1.5$), $1.09\times10^{-3}$ ($\lambda = 2$),
+$1.99\times10^{-3}$ ($\lambda = 3$) and $3.80\times10^{-3}$
+($\lambda = 5$): $\lambda = 3$ is no better than $\lambda = 1$, and
+$\lambda = 1.5$ is the best of the five on this problem.
 
 % =====================================================================
 \section{Convergence and comparison}
@@ -305,17 +315,28 @@ regardless of the underlying scheme accuracy.
 Method & Cost (American) & Convergence \\
 \hline
 CRR binomial         & $O(N^2)$ & $O(1/N)$ \\
-Trinomial KR         & $O(N^2)$ & $O(1/N)$, smaller constant at $\lambda = 3$ \\
-CN-PSOR              & $O(N^3 \log\epsilon^{-1})$ & $O(1/N)$ near the kink \\
+Trinomial KR         & $O(N^2)$ & $O(1/N)$ \\
+CN-PSOR              & $O(N^{5/2} \log\epsilon^{-1})$, $M \propto N$ & $O(\Delta x^2) + O(\Delta\tau)$ \\
 \hline
 \end{tabular}
 \end{center}
 
-The binomial and trinomial have the same asymptotic order but
-trinomial typically gives slightly smaller errors at fixed $N$
-(thanks to the third-moment matching). CN-PSOR has the highest order
-but the highest cost. The benchmark script \texttt{benchmark\_phase3.py} compares them numerically on a
-common American put benchmark.
+The binomial and trinomial have the same asymptotic order, and the
+trinomial's better moment match does not make its errors smaller at
+fixed $N$. For the American put, where both trees appear in the
+benchmark, the trinomial's error is about three times larger: $9.97\times10^{-4}$ against $3.17\times10^{-4}$ at
+$n = 1600$ (\texttt{convergence.csv}), and $1.70\times10^{-3}$ against
+$6.14\times10^{-4}$ at $n = 1000$ (\texttt{pricing\_canonical.csv}), both
+measured against the lattice-consensus reference of
+\texttt{benchmark\_phase3.py}. CN-PSOR is the most accurate of the three
+on these runs but the most expensive. In \texttt{convergence.csv}, where
+$M = \max(N/4, 50)$ (so $\Delta\tau$ is fixed for $N \le 200$ and halves
+with $\Delta x$ beyond), its error falls from $2.69\times10^{-2}$ to
+$1.22\times10^{-4}$ over $N = 50$--$800$ (ratios $3.9$, $3.4$, $3.6$,
+$4.7$), close to second order in $N$ on that range; at fixed $N$ its
+time error is first order in $\Delta\tau$ (see the PSOR note). The
+benchmark script \texttt{benchmark\_phase3.py} compares them numerically
+on a common American put benchmark.
 
 % =====================================================================
 \section{Implementation outline}
@@ -348,8 +369,8 @@ Five tests:
 
 \begin{enumerate}[leftmargin=2em]
 \item \textbf{Cross-validation (European)} against Black--Scholes
-closed form on a parameter grid. Tolerance $\sim 10^{-3}$ at
-$N = 2000$.
+closed form on a parameter grid. Tolerance $5 \times 10^{-3}$ at
+$N = 2000$; the largest observed error is $1.42\times10^{-3}$.
 
 \item \textbf{Cross-validation (American)} against an embedded
 CRR binomial reference (the same approach as the CN-PSOR test). Tolerance
@@ -359,10 +380,11 @@ $\sim 5 \times 10^{-3}$.
 halve the error, distinguishing the trinomial from any
 hypothetical second-order scheme.
 
-\item \textbf{Lambda sweep}: at fixed $N$, varying $\lambda \in
-\{1.25, 2, 3, 5\}$ produces prices that all approach the BS limit
-as $N$ grows. The $\lambda = 1$ degenerate case (binomial-equivalent)
-agrees with the rest. This confirms that the choice of $\lambda$
+\item \textbf{Lambda sweep}: at fixed $N = 1000$, $\lambda \in
+\{1, 1.5, 2, 3, 5\}$ (including the degenerate binomial-equivalent
+$\lambda = 1$) all give prices within $5\times10^{-3}$ of Black--Scholes
+(largest error $3.80\times10^{-3}$, at $\lambda = 5$), with a spread
+below $10^{-2}$. This confirms that the choice of $\lambda$
 within the valid range $\lambda \ge 1$ is a tuning preference,
 not a correctness condition.
 
@@ -384,8 +406,15 @@ correctness-determining parameter.
 \bibitem{KR1991}
 B. Kamrad and P. Ritchken.
 \emph{Multinomial approximating models for options with $k$ state variables.}
-Management Science 37(12), 1640--1652, 1991. The original paper
-introducing the $\lambda$-parametrised trinomial.
+Management Science 37(12), 1640--1652, 1991. Generalises the
+stretch-parameter trinomial to $k$ state variables; their stretch
+parameter is the square root of the $\lambda$ used here.
+
+\bibitem{Boyle1986}
+P. Boyle.
+\emph{Option valuation using a three-jump process.}
+International Options Journal 3, 7--12, 1986. The original
+stretch-parameter trinomial.
 
 \bibitem{Hull2018}
 J.~C. Hull.
@@ -396,15 +425,14 @@ of binomial and trinomial trees.
 \bibitem{Wilmott2006}
 P. Wilmott.
 \emph{Paul Wilmott on Quantitative Finance.}
-2nd ed., Wiley, 2006. Chapter 20 on tree methods, including
-implementation pseudocode.
+2nd ed., Wiley, 2006. Chapter 15 on the binomial model.
 
 \bibitem{TavellaRandall2000}
 D. Tavella and C. Randall.
 \emph{Pricing Financial Instruments: The Finite Difference Method.}
-Wiley, 2000. Chapter 5 explicitly relates lattice methods to
-finite-difference schemes; the FTCS--trinomial equivalence is
-implicit in their treatment.
+Wiley, 2000. The finite-difference side of the comparison: pricing
+equations, analysis of finite-difference schemes (Chapter~2);
+Chapter~5 (Numerical Examples) works through applications.
 
 \bibitem{BrennanSchwartz1978}
 M.~J. Brennan and E.~S. Schwartz.
