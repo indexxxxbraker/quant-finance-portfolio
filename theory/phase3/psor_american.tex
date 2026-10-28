@@ -214,8 +214,10 @@ dominant, an alternative to Thomas is the iterative
 \emph{Successive Over-Relaxation} (SOR) method. SOR produces a
 sequence $x^{(0)}, x^{(1)}, x^{(2)}, \dots$ that converges to the
 exact solution. Although asymptotically more expensive than Thomas
-($O(N \log\epsilon^{-1})$ per solve vs $O(N)$), SOR has a structural
-advantage: it generalises naturally to LCPs.
+($O(N\sqrt{\alpha}\,\log\epsilon^{-1})$ per solve at the optimal
+relaxation parameter, with $\alpha$ the mesh ratio defined below,
+against $O(N)$; see the section on computational cost), SOR has a
+structural advantage: it generalises naturally to LCPs.
 
 \paragraph{Definition.} SOR updates one component at a time. For a
 tridiagonal system $a_{i,i-1} x_{i-1} + a_{ii} x_i + a_{i,i+1}
@@ -262,15 +264,28 @@ on the $400 \times 200$ benchmark grid.
 \paragraph{Asymmetry.} The CN matrix $A$ is not symmetric (the
 convective term $\mu V_x$ uses centred differences, breaking
 symmetry). The Ostrowski--Reich theorem does not apply directly.
-However, $A$ remains diagonally dominant, and a generalisation
-(Varga~\cite{Varga2000}, Theorem~3.5) covers diagonally dominant
-M-matrices: SOR converges for $\omega \in (0, 2)$, with
-$\omega^*$ moderately shifted from \eqref{eq:omega-star}. In
-practice the projected iteration has its optimum close to, and a little
-above, the linear prediction: $\omega = 1.2$ on the 100-unknown test
+$A$ is a strictly diagonally dominant M-matrix, but for such matrices
+(and H-matrices in general) the general guarantee is only
+$0 < \omega < 2/(1 + \rho(|J|))$, with $J$ the Jacobi iteration matrix
+(see Varga~\cite{Varga2000}). The full range $\omega \in (0, 2)$ holds
+here for a different reason. With the CN coefficients of the
+Crank--Nicolson note, the two off-diagonals have the same sign,
+$\beta_-\beta_+ = (\alpha^2 - \nu^2)/4 > 0$ whenever the grid Péclet
+number $|\nu|/\alpha = |\mu|\Delta x/\sigma^2$ is below one, so a
+diagonal scaling $D$ with $d_{i+1}/d_i = \sqrt{\beta_-/\beta_+}$ makes
+$D^{-1} A D$ symmetric, with off-diagonals $-\sqrt{\beta_-\beta_+}$ and
+the same diagonal; being strictly diagonally dominant, it is positive
+definite. The scaling preserves the splitting into diagonal, lower and
+upper parts, so the SOR iteration matrices of $A$ and $D^{-1}AD$ are
+similar, and Ostrowski--Reich gives convergence for every
+$\omega \in (0, 2)$; Young's formula \eqref{eq:omega-star} then holds
+with $\rho_J$ computed from $A$. In practice the projected iteration has
+its optimum close to the linear prediction on the small test problem
+and above it on the benchmark grid: $\omega = 1.2$ on the 100-unknown test
 problem of \texttt{validate\_psor.py} (linear theory: $1.25$), and
 about $1.5$--$1.6$ on the $400 \times 200$ benchmark grid (linear theory:
-$1.33$). The default $\omega = 1.2$ is a safe choice rather than the
+$1.33$; sweep counts printed by test~[4] of
+\texttt{validate\_cn\_american.py}). The default $\omega = 1.2$ is a safe choice rather than the
 optimum; \texttt{benchmark\_phase3.py} uses $1.4$.
 
 % =====================================================================
@@ -317,16 +332,16 @@ $(Ax - b)(x - \mathbf{g}) = 0$ from any initial guess $x^{(0)} \geq
 but is a strictly diagonally dominant M-matrix in the project's
 parameter range. PSOR convergence in this setting follows from
 results of Mangasarian and others; see Cottle--Pang--Stone
-\cite{CPS2009}, \S5.3 and \S5.6 for the rigorous treatment. The
-qualitative picture is that for moderate Pe'clet number, asymmetry
+\cite{CPS2009}, Chapter~5, for the rigorous treatment. The
+qualitative picture is that for moderate Péclet number, asymmetry
 slows convergence by a constant factor but does not destroy it.
 
 \paragraph{Initialisation.} A natural choice is $x^{(0)} = \mathbf{g}$
 (the obstacle itself). It is feasible by construction, and is exact
 on the eventual exercise region. An alternative is warm-starting from
 the previous time step, $x^{(0)} = V^n$. Since $V^{n+1} - V^n =
-O(\Delta\tau)$, the warm start saves roughly half the iterations
-in practice.
+O(\Delta\tau)$, the warm start begins much closer to the solution and
+needs fewer sweeps; it is what the implementation uses.
 
 % =====================================================================
 \section{Stopping criterion}
@@ -341,8 +356,8 @@ is on the increment:
 + \texttt{tol}_{\mathrm{rel}} \cdot \bigl\|x^{(k)}\bigr\|_\infty,
 \label{eq:stopping}
 \end{equation}
-with typical values $\texttt{tol}_{\mathrm{abs}} = 10^{-8}$ and
-$\texttt{tol}_{\mathrm{rel}} = 10^{-7}$. The absolute component
+with default values $\texttt{tol}_{\mathrm{abs}} = 10^{-10}$ and
+$\texttt{tol}_{\mathrm{rel}} = 10^{-9}$. The absolute component
 protects against deep-OTM puts where prices are small (cents); the
 relative component protects against deep-ITM puts where prices are
 large (close to $K$). The mixed criterion is robust across the entire
@@ -376,7 +391,11 @@ $K = O(\sqrt{\alpha}\,\log(1/\epsilon))$.
 \item Cost per time step: $O(N K)$.
 \end{itemize}
 With $M \sim N$ (matched to spatial accuracy as in CN), $\alpha \propto
-N$ and the total cost is $O(N^{5/2})$ up to the logarithm. Measured on
+N$ and the total cost is $O(N^{5/2})$ up to the logarithm (at
+$\omega = 1.4$ the mean number of sweeps per step grows from $13.8$ on
+the $200 \times 100$ grid to $20.3$ on $400 \times 200$, a ratio of
+$1.47 \approx \sqrt{2}$; test~[4] of \texttt{validate\_cn\_american.py}).
+Measured on
 the $400 \times 200$ benchmark grid with the default tolerances, PSOR
 needs about $30$ sweeps per time step at $\omega = 1.2$ and $18$ at
 $\omega = 1.5$, against one Thomas solve for the European pricer: a few
@@ -388,9 +407,9 @@ tens of times more work per step, the price of LCP generality.
 \hline
 Method & Cost & Accuracy \\
 \hline
-CRR binomial (\texttt{quantlib.american}) & $O(N^2)$ & $O(1/N)$, $O(1/N^2)$ Richardson \\
+CRR binomial (\texttt{quantlib.american}) & $O(N^2)$ & $O(1/N)$, with oscillations \\
 LSM (\texttt{quantlib.american})          & $O(N_{\mathrm{paths}} N_{\mathrm{steps}})$ & MC, $O(1/\sqrt{N_{\mathrm{paths}}})$ \\
-\textbf{CN-PSOR (this note)} & $O(N^3 \log\epsilon^{-1})$ & $O(\Delta x^2 + \Delta\tau^2)$ \\
+\textbf{CN-PSOR (this note)} & $O(N^{5/2} \log\epsilon^{-1})$, $M \propto N$ & $O(\Delta x^2) + O(\Delta\tau)$ \\
 \hline
 \end{tabular}
 \end{center}
@@ -422,36 +441,47 @@ PSOR solve. Two notable differences from \texttt{cn\_european\_put}:
 \begin{enumerate}[leftmargin=2em]
 \item The lower boundary condition is $V(x_{\min}, \tau) = K
 - K e^{x_{\min}}$ (no discount, since exercise is immediate).
-\item No Rannacher smoothing. Justification: the Rannacher protocol
-addresses the kink in the European payoff, which produces
-high-frequency oscillations that CN cannot damp. For the American
-put the oscillations are the same in nature, but they are
-\emph{absorbed by the projection step}: nodes near the strike fall
-in the exercise region $\mathcal{E}$ where $V = g$ exactly, so the
-oscillation is clipped at $g$ before it can propagate. Empirically,
-CN-PSOR for the American put has $O(\Delta\tau^2)$ convergence
-without Rannacher; the projection does the smoothing implicitly.
+\item No Rannacher smoothing. The Rannacher protocol addresses the
+kink in the European payoff, which produces high-frequency
+oscillations that CN cannot damp. For the American put the
+oscillations are the same in nature, and the projection step clips
+them from below: nodes near the strike fall in the exercise region
+$\mathcal{E}$ where $V = g$ exactly. This does not remove them
+entirely: at $N = 400$ and coarse $M$ the price still oscillates
+($5.9407$ at $M = 12$, $6.1373$ at $M = 25$, $6.0840$ at $M = 50$,
+against $\approx 6.0899$). Nor does CN keep its second order in time.
+At fixed $N = 400$, with PSOR tolerance $10^{-14}$ (test~[8] of
+\texttt{validate\_cn\_american.py}), the successive
+differences of the price for $M = 100 \to 200 \to 400 \to 800$ are
+$1.70\times10^{-4}$, $7.02\times10^{-5}$ and $3.37\times10^{-5}$ (ratios
+$2.42$ and $2.08$): first order in $\Delta\tau$. The early-exercise
+constraint puts a kink in time into the solution (where the free
+boundary crosses a node, $V$ is not smooth in $\tau$), and that limits
+CN to $O(\Delta\tau)$ in practice.
 \end{enumerate}
 
 % =====================================================================
 \section{Validation strategy}
 % =====================================================================
 
-Seven tests certify the new pricer:
+Eight tests certify the new pricer. All but the $\omega$-sweep are in
+\texttt{validate\_cn\_american.py}; the sweep is in
+\texttt{validate\_psor.py}, and \texttt{test\_cn\_american.cpp} repeats
+the CRR, dominance, refinement and input checks for the C++ pricer.
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{Cross-validation against CRR binomial} (\texttt{quantlib.american}):
-the gold-standard reference for American puts. Tolerance comparable
-to the discretisation error.
+\item \textbf{Cross-validation against CRR binomial}: the
+gold-standard reference for American puts, here a self-contained
+2000-step CRR tree embedded in the test files (independent of
+\texttt{quantlib.american}). Seven parameter sets at $N = 200$,
+$M = 100$, tolerance $5\times10^{-3}$.
 
-\item \textbf{Cross-validation against LSM} (\texttt{quantlib.american}): a
-secondary check. Tolerance loosened to account for Monte Carlo
-variance.
-
-\item \textbf{Quadratic convergence in $\Delta x$}: doubling $N$
-should reduce the error by approximately 4. Demonstrates that the
-$\theta = 1/2$ scheme retains its second-order spatial accuracy under
-the projection.
+\item \textbf{Refinement reduces the error}: against a 5000-step CRR
+price, the error must decrease from $(N, M) = (100, 50)$ to
+$(200, 100)$, and be below $5\times10^{-3}$ at $(400, 200)$. Only the
+decrease is checked, not the rate (the validator's docstring expects
+$O(h)$ near the free boundary); the printed error ratios are $3.80$
+and $4.37$.
 
 \item \textbf{American $\geq$ European}: at every spot, the American
 put price must be at least the European put price. Strict in the
@@ -463,14 +493,28 @@ iteration counts with an interior minimum. It occurs at $\omega = 1.2$,
 in line with the linear-theory value $\omega^* \approx 1.25$ for that
 test matrix.
 
-\item \textbf{$\omega$ outside $(0, 2)$ raises}: $\omega = 0$ or
-$\omega = 2$ produces no-convergence within
-\texttt{max\_iter}, raising a runtime error.
+\item \textbf{$\omega$ outside $(0, 2)$ raises}: \texttt{psor\_solve}
+checks $0 < \omega < 2$ before iterating and raises a
+\texttt{ValueError} for $\omega \in \{0, 2, -0.5, 2.5\}$.
 
-\item \textbf{Free boundary monotonicity}: the recovered exercise
-boundary $S_f(\tau)$ (the largest $S$ such that $V = g$ at each
-$\tau$) is monotonically increasing in $\tau$, with $S_f(\tau \to T)
-\to K$. A qualitative shape test that catches gross errors.
+\item \textbf{Free boundary}: the recovered exercise boundary $S_f$
+(the largest $S$ in the money with $V = g$) lies below $K$, and is
+closer to $K$ for the shorter maturity: $S_f = 86.94$ at $T = 0.25$
+against $80.57$ at $T = 1$. With $\tau$ the time to maturity, $S_f(\tau)$
+decreases in $\tau$ and tends to $K$ as $\tau \to 0$; the full curve is
+in \texttt{free\_boundary.csv} of \texttt{benchmark\_phase3.py}
+($98.78$ at $\tau = 0.00125$ on the trinomial trace, decreasing
+thereafter). The validator compares the two maturities only: a
+qualitative shape test that catches gross errors.
+
+\item \textbf{Input validation}: $S = 0$ and a spot outside the
+truncated domain raise.
+
+\item \textbf{Order in time}: at fixed $N = 400$, the successive price
+differences for $M = 100, 200, 400, 800$ must shrink by a factor
+between $1.5$ and $3$ (first order in $\Delta\tau$); the measured
+ratios are $2.42$ and $2.08$. The prices at $M = 12, 25, 50$ are
+printed to show the residual oscillation.
 \end{enumerate}
 
 % =====================================================================
@@ -485,22 +529,26 @@ P. Wilmott, S.~Howison and J. Dewynne.
 CUP, 1995. Chapter 7 on American options as free-boundary problems;
 self-contained derivation of smooth pasting from optimality.
 
-\bibitem{Wilmott1998}
+\bibitem{Wilmott2006}
 P. Wilmott.
 \emph{Paul Wilmott on Quantitative Finance.}
-Wiley, 1998 (2nd ed. 2006). Chapters 8 and 35: practical PSOR
-implementation with code.
+2nd ed., Wiley, 2006. Chapters 9 and 63 on American options;
+Chapters 77--78 (finite-difference methods for one-factor models) and
+82 (finite-difference programs).
 
 \bibitem{TavellaRandall2000}
 D. Tavella and C. Randall.
 \emph{Pricing Financial Instruments: The Finite Difference Method.}
-Wiley, 2000. Chapter 5 on American options; explicit treatment of
-PSOR with code.
+Wiley, 2000. Pricing equations and the relationship between European
+and American derivatives; analysis of finite-difference schemes
+(Chapter~2); Chapter~5 (Numerical Examples) works through
+applications.
 
 \bibitem{Seydel2017}
 R. Seydel.
 \emph{Tools for Computational Finance.}
-6th ed., Springer, 2017. \S4.5 on American options; concise.
+6th ed., Springer, 2017. Chapter~4 on American options as obstacle
+problems and LCPs; concise.
 
 \bibitem{Cryer1971}
 C.~W. Cryer.
@@ -513,8 +561,8 @@ proof of convergence for symmetric positive-definite LCPs.
 R.~W. Cottle, J.-S. Pang and R.~E. Stone.
 \emph{The Linear Complementarity Problem.}
 SIAM Classics in Applied Mathematics, 2009 (orig. Academic Press,
-1992). The rigorous reference for LCP theory. \S5.2--5.3 cover
-PSOR convergence in detail.
+1992). The rigorous reference for LCP theory. Chapter~5 (Iterative
+Methods) covers iterative methods for the LCP, projected SOR among them.
 
 \bibitem{Glowinski2008}
 R. Glowinski.

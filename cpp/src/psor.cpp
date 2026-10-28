@@ -53,10 +53,12 @@ PSORResult psor_solve(
             + std::to_string(obstacle.size()));
     }
     // omega = 1 is projected Gauss-Seidel. The best omega depends on the
-    // matrix: about 1.2 on the small problem swept in validate_psor.py, about
-    // 1.4 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py. The
-    // classical SOR formula is only a heuristic once the projection is active,
-    // so omega is left as a parameter rather than fixed.
+    // matrix: about 1.2 on the small problem swept in validate_psor.py, and
+    // 1.5-1.6 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py
+    // (about 18 sweeps per step, against about 20 at the omega = 1.4 that
+    // the benchmark uses). The classical SOR formula is only a heuristic once
+    // the projection is active, so omega is left as a parameter rather than
+    // fixed.
     if (!(0.0 < omega && omega < 2.0)) {
         throw std::invalid_argument(
             "psor_solve: omega must lie strictly in (0, 2), got "

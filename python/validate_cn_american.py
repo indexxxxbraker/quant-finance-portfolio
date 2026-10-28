@@ -1,21 +1,23 @@
 """
 Validation script for the CN-American put pricer.
 
-Seven checks:
+Eight checks:
 
-1. Cross-validation against the CRR binomial reference (as in
-   quantlib.american).
+1. Cross-validation against a CRR binomial reference (a self-contained
+   tree defined in this file).
 2. American put price >= European put price at every spot.
 3. Spatial refinement reduces the error toward the CRR reference
-   (qualitative monotonic decrease over a moderate bracket; American
-   pricing is O(h), not O(h^2), due to the kink at the free boundary).
+   (only the decrease is tested, not the rate).
 4. omega sweep: optimal omega is interior to (0, 2); the iteration
    count is much higher near the boundaries.
 5. omega outside (0, 2) raises (delegated to PSOR).
-6. Free-boundary monotonicity: the recovered exercise boundary
-   S_f(tau) is monotonically increasing in tau.
-7. American put recovers European put when r=0 (no early-exercise
-   premium for an undiscounted put -- holds approximately).
+6. Free boundary: S_f lies below K and is closer to K for the shorter
+   maturity (T = 0.25 against T = 1).
+7. Input validation.
+8. Order in time: at fixed N = 400, refining M shows first-order
+   convergence in dtau (no Rannacher start-up; the free boundary limits
+   Crank-Nicolson to O(dtau)). Coarse-M prices are printed to show the
+   residual oscillation.
 """
 
 import math
@@ -151,7 +153,8 @@ def test_omega_sweep():
                                     omega=w, max_iter=8000,
                                     return_diagnostics=True)
         iter_counts.append(diag["total_iterations"])
-        print(f"    omega={w}: total iter = {diag['total_iterations']}")
+        print(f"    omega={w}: total iter = {diag['total_iterations']}"
+              f" ({diag['total_iterations'] / 100:.1f} sweeps per step)")
 
     # Interior should be much faster than extremes.
     interior_min = min(iter_counts[1], iter_counts[2])
@@ -160,6 +163,14 @@ def test_omega_sweep():
           interior_min < extreme_max / 2,
           detail=f"interior min = {interior_min}, "
                  f"extreme max = {extreme_max}")
+
+    # For reference only (no assertion): sweeps per step on the 400 x 200
+    # grid of benchmark_phase3.py, where the optimum is near 1.5-1.6.
+    for w in (1.2, 1.4, 1.5, 1.6):
+        _, diag = cn_american_put(S, K, r, sigma, T, N=400, M=200,
+                                  omega=w, return_diagnostics=True)
+        print(f"    400 x 200, omega={w}: "
+              f"{diag['total_iterations'] / 200:.1f} sweeps per step")
 
 
 def test_omega_validation():
@@ -175,7 +186,7 @@ def test_omega_validation():
 
 
 def test_free_boundary_monotonic():
-    print("[6] Free boundary S_f(tau) is monotonically increasing")
+    print("[6] Free boundary: below K, closer to K at shorter maturity")
     S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
 
     # We need access to the full V grid at each time step. Easiest:
@@ -247,6 +258,33 @@ def test_input_validation():
         check("out-of-domain S raises", True)
 
 
+def test_time_order():
+    """At fixed N, CN-PSOR without Rannacher start-up converges at first
+    order in dtau: successive price differences roughly halve when M is
+    doubled. A tight PSOR tolerance keeps the iteration error out of the
+    differences. At coarse M the price still oscillates in sign."""
+    print("[8] Order in time at fixed N = 400 (CN-PSOR, no Rannacher)")
+    S, K, r, sigma, T = 100.0, 100.0, 0.05, 0.20, 1.0
+    for M in (12, 25, 50):
+        p = cn_american_put(S, K, r, sigma, T, N=400, M=M, omega=1.5)
+        print(f"    coarse M={M:3d}: price = {p:.6f}")
+    Ms = (100, 200, 400, 800)
+    prices = [cn_american_put(S, K, r, sigma, T, N=400, M=M, omega=1.5,
+                              tol_abs=1e-14, tol_rel=1e-14)
+              for M in Ms]
+    for M, p in zip(Ms, prices):
+        print(f"    M={M:3d}: price = {p:.10f}")
+    diffs = [prices[i + 1] - prices[i] for i in range(len(prices) - 1)]
+    ratios = [diffs[i] / diffs[i + 1] for i in range(len(diffs) - 1)]
+    print("    successive differences: "
+          + ", ".join(f"{d:.3e}" for d in diffs))
+    print("    ratios: " + ", ".join(f"{q:.2f}" for q in ratios)
+          + "  (2 = first order, 4 = second order)")
+    check("ratios in the first-order band [1.5, 3]",
+          all(1.5 <= q <= 3.0 for q in ratios),
+          detail=", ".join(f"{q:.2f}" for q in ratios))
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 72)
@@ -260,6 +298,7 @@ if __name__ == "__main__":
     test_omega_validation()
     test_free_boundary_monotonic()
     test_input_validation()
+    test_time_order()
 
     print()
     print("=" * 72)

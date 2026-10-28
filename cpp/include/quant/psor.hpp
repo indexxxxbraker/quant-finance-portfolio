@@ -18,8 +18,11 @@
 //                                                  - sup_i * x_{i+1}^{(k)}) }
 //
 // Convergence is geometric for omega in (0, 2) when A is symmetric
-// positive-definite (Cryer 1971), and for diagonally-dominant
-// M-matrices in the non-symmetric case.
+// positive-definite (Cryer 1971). For non-symmetric diagonally dominant
+// M-matrices the general SOR guarantee is only
+// 0 < omega < 2 / (1 + rho(|J|)), J the Jacobi matrix; the project's CN
+// matrices have same-signed off-diagonals and are diagonally similar to
+// symmetric positive-definite ones, so the full range (0, 2) applies.
 
 #pragma once
 
