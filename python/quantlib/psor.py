@@ -18,11 +18,17 @@ followed by a max-projection onto the obstacle:
                                                  - sup_i  x_{i+1}^{(k)}) }
 
 Convergence is geometric for omega in (0, 2) when A is symmetric
-positive-definite (Cryer 1971), and for diagonally-dominant M-matrices
-in the non-symmetric case (Cottle-Pang-Stone, ch. 5). The optimal
-omega is approximately 2 / (1 + sqrt(1 - rho_J^2)) where rho_J is
-the spectral radius of the Jacobi iteration, typically in [1.2, 1.5]
-for the project's CN matrices.
+positive-definite (Cryer 1971). For non-symmetric diagonally dominant
+M-matrices the general SOR guarantee is only 0 < omega <
+2 / (1 + rho(|J|)), J the Jacobi matrix (Varga, Matrix Iterative
+Analysis); the non-symmetric LCP theory is in Cottle-Pang-Stone, ch. 5.
+The project's CN matrices have same-signed off-diagonals and are
+diagonally similar to symmetric positive-definite ones, so the full
+range (0, 2) applies to them. The optimal omega of linear SOR is
+2 / (1 + sqrt(1 - rho_J^2)) where rho_J is the spectral radius of the
+Jacobi iteration, about 1.2-1.35 for the project's CN matrices; with
+the projection active the measured optimum is between 1.2 and 1.6
+(see the comment in psor_solve).
 
 Used by quantlib.cn_american for the per-step solve in
 American option pricing.
@@ -50,7 +56,7 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
         Lower-bound constraint: solution must satisfy x >= obstacle.
     omega : float, default 1.2
         Relaxation parameter; must be in (0, 2). Optimal for typical
-        CN/BTCS matrices is approximately 1.2-1.5.
+        CN/BTCS matrices is approximately 1.2-1.6.
     tol_abs : float, default 1e-10
         Absolute tolerance on the iteration increment.
     tol_rel : float, default 1e-9
@@ -108,10 +114,12 @@ def psor_solve(sub, diag, sup, rhs, obstacle, *,
 
     # Parameter validation.
     # omega = 1 is projected Gauss-Seidel. The best omega depends on the
-    # matrix: about 1.2 on the small problem swept in validate_psor.py, about
-    # 1.4 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py. The
-    # SOR formula in the module docstring is only a heuristic once the
-    # projection is active, so omega is left as a parameter rather than fixed.
+    # matrix: about 1.2 on the small problem swept in validate_psor.py, and
+    # 1.5-1.6 on the 400 x 200 Crank-Nicolson grid of benchmark_phase3.py
+    # (about 18 sweeps per step, against about 20 at the omega = 1.4 that
+    # the benchmark uses). The SOR formula in the module docstring is only a
+    # heuristic once the projection is active, so omega is left as a
+    # parameter rather than fixed.
     if not (0.0 < omega < 2.0):
         raise ValueError(
             f"psor_solve: omega must lie strictly in (0, 2), got {omega}"

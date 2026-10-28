@@ -11,8 +11,9 @@
 // complementarity condition distinguishing continuation from exercise
 // regions.
 //
-// No Rannacher smoothing: the projection step absorbs the kink-induced
-// oscillations that motivated Rannacher in the European case.
+// No Rannacher smoothing. The projection clips the kink-induced
+// oscillation from below but does not remove it; at fixed N the time
+// error is first order in dtau (validate_cn_american.py, test [8]).
 //
 // The lower boundary condition for the American put is
 //

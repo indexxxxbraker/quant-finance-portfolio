@@ -15,10 +15,11 @@ PSOR enforces V >= g, and the complementarity condition
 distinguishes the continuation region (where V > g) from the
 exercise region (where V = g).
 
-No Rannacher smoothing: the kink in the payoff that motivated
-Rannacher in the European case is absorbed by the projection step
-in the American case, since nodes near the strike fall in the
-exercise region where V = g exactly.
+No Rannacher smoothing. The projection clips the kink-induced
+oscillation from below (nodes near the strike fall in the exercise
+region, where V = g exactly) but does not remove it: at coarse M the
+price still oscillates, and at fixed N the time error is first order
+in dtau (validate_cn_american.py, test [8]).
 
 The boundary conditions for the American put differ from the European:
 
