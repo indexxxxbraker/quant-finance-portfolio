@@ -51,7 +51,7 @@ Full-truncation Euler (see the note \emph{Heston model: Monte Carlo simulation w
 
 The remedy is to exploit a property the Heston model gives us \emph{for free}: the conditional distribution of $v_{t+\Delta} \mid v_t$ is known explicitly, in closed form, as a non-central chi-squared (the Heston model note, \S3.3). A simulator that samples $v_{t+\Delta}$ from this exact distribution would be bias-free \emph{within the variance process}, with discretisation error coming only from the spot equation. Such a sampler exists and was constructed by Broadie and Kaya (2006); we discuss it below.
 
-The Broadie-Kaya method is bias-free but expensive: each step requires sampling a non-central chi-squared variate, which involves an iterative algorithm (typically rejection sampling or numerical inversion). Andersen (2008) observed that for the dynamics of a Heston call option, an \emph{approximate} simulator that matches the first two conditional moments of $v_{t+\Delta} \mid v_t$ is sufficient: the higher moments contribute corrections of order $O(\Delta t^{3/2})$ to the option price, which are negligible at typical step sizes. Andersen's Quadratic-Exponential (QE) scheme is the workhorse of this insight.
+The Broadie-Kaya method is bias-free but expensive: each step requires sampling a non-central chi-squared variate, which involves an iterative algorithm (typically rejection sampling or numerical inversion). Andersen (2008) observed that for the dynamics of a Heston call option, an \emph{approximate} simulator that matches the first two conditional moments of $v_{t+\Delta} \mid v_t$ is sufficient in practice: the bias left by the unmatched higher moments is small at typical step sizes, as his numerical experiments show. Andersen's Quadratic-Exponential (QE) scheme is the workhorse of this insight.
 
 This note has four goals.
 
@@ -71,13 +71,13 @@ This note has four goals.
 
 As noted in the full-truncation Euler note, the truncation $v_n^+ = \max(\hat v_n, 0)$ fires with non-negligible probability when $\hat v_n$ is small. Each truncation event contributes a small bias: rather than letting the ``true'' continuous variance reach zero and immediately reflect upward (the regime captured by the non-central chi-squared distribution), the discretised process is artificially pinned at zero for one step, missing both the negative diffusive impulse and the structural drift back towards $\theta$.
 
-Quantitatively, Lord, Koekkoek, van Dijk (2010) show that the per-step bias of full-truncation Euler is $O(\Delta t)$ as expected from weak convergence theory, but with a coefficient that scales as the time the process spends near zero. For $\nu \ll 1$ (e.g., the aggressive equity case of the full-truncation Euler note with $\nu = 0.04$), this coefficient is large, and the practical error at $\Delta t = 0.005$ can be 0.1--0.5\% of the option price. In a calibration setting that demands 0.1\% accuracy, this is the difference between converged and unconverged.
+Lord, Koekkoek and van Dijk (2010) compare the Euler-type fixes for negative variance and find full truncation the least biased of them; its weak error is still first order in $\Delta t$, with a constant that grows with the time the process spends near zero. For $\nu \ll 1$ the constant is large. In this repository's aggressive case ($\nu = 0.04$, $T = 1$, \texttt{benchmark\_phase4.py}, Section~5) the bias of full-truncation Euler is about $0.8\%$ of the option price at $\Delta t = 0.005$, too large for a calibration that needs $0.1\%$ accuracy.
 
 \subsection{The right diagnostic}
 
 To diagnose the issue empirically, the right experiment is: fix $M$ at a large value (so statistical error is negligible), vary $N$, and plot the bias $|\widehat C(N) - C_{\mathrm{Fourier}}|$ on a log-log scale. For full-truncation Euler in the low-$\nu$ regime, the slope is approximately $-1$ (weak rate 1), but the absolute error at typical $N$ is large enough to motivate a better scheme.
 
-For Andersen QE in the same regime, the slope is steeper (approximately $-2$, consistent with the higher weak rate that comes from matching the second moment of the variance process), and the absolute error at typical $N$ is smaller by an order of magnitude or more.
+For Andersen QE in the same regime the bias is much smaller at every $N$; in this repository's study it stays below the Monte Carlo resolution from $N = 25$ upwards, so its slope cannot be measured at these sample sizes (see the empirical comparison below).
 
 %============================================================
 \section{Exact simulation: Broadie-Kaya (conceptual)}
@@ -114,7 +114,7 @@ The result is bias-free in distribution: every step is a draw from the exact tra
 
 The cost is dominated by step 2: sampling the integrated variance from a numerically-inverted characteristic function. This costs $O(K)$ floating-point operations per step for some $K$ that depends on the precision target; in practice $K$ is in the hundreds. Compare this to QE's per-step cost of $O(1)$ operations: a uniform draw, a normal draw, and a couple of arithmetic operations. For typical Heston Monte Carlo with $M = 10^5$ paths and $N = 100$ steps, QE costs roughly $10^7$ floating-point operations, while Broadie-Kaya costs $10^9$. The wall-clock factor is 100--1000.
 
-In production trading, this cost gap matters. Andersen's insight is that if we are willing to accept a residual bias of order $O(\Delta t^2)$ instead of zero, we can recover almost all of the precision benefit at a fraction of the cost.
+In production trading, this cost gap matters. Andersen's insight is that if we are willing to accept a small residual bias instead of zero, we can recover almost all of the precision benefit at a fraction of the cost.
 
 %============================================================
 \section{The Andersen QE scheme: conditional moments}
@@ -185,7 +185,7 @@ This requires $2\psi^{-1} \geq 1$, i.e., $\psi \leq 2$. For $\psi \in (0, 2]$ th
 
 The sampling step is straightforward: draw $Z \sim \mathcal{N}(0, 1)$, set $\hat v_{n+1} = a(b + Z)^2$. This is non-negative by construction.
 
-\paragraph{Properties of the quadratic regime.} The samples are non-negative (good), the first two moments match exactly (good), but the higher moments do not match. The third moment, in particular, is captured only approximately, leading to a residual bias of order $O(\Delta t^{3/2})$ in the option price; this is what we trade for the cheap sampling.
+\paragraph{Properties of the quadratic regime.} The samples are non-negative (good), the first two moments match exactly (good), but the higher moments do not match. The third moment, in particular, is captured only approximately, leaving a small residual bias in the option price; this is what we trade for the cheap sampling.
 
 \subsection{Exponential regime ($\psi > \psi_c$)}
 
@@ -221,7 +221,7 @@ This explicitly captures the atom at zero, which is essential for low-$\nu$ regi
 A subtle but important fact: at $\psi = \psi_c = 1.5$, both regimes give well-defined (though different) approximating distributions. The two are continuous in their first two moments by construction, but \emph{the higher moments} jump at the threshold. In practice this discontinuity is invisible because:
 \begin{itemize}[topsep=2pt]
     \item Each path uses one regime per step, not both.
-    \item Aggregating across paths and steps, the threshold is crossed many times in opposite directions and the third-moment jumps average out to a small bias of order $O(\Delta t^2)$.
+    \item Aggregating across paths and steps, the threshold is crossed many times in opposite directions and the third-moment jumps average out to a small bias.
 \end{itemize}
 The lack of higher-moment continuity means that QE is not a smooth interpolation between two limiting samplers; it is two distinct samplers spliced at a parameter-dependent threshold. This is fine for option pricing where we care about $\mathbb{E}[f(S_T)]$, but would be problematic for path-dependent quantities like maxima or local times.
 
@@ -281,48 +281,44 @@ We discuss the weak convergence properties of QE and contrast with full-truncati
 
 \subsection{Theoretical results}
 
-Andersen's original paper does not prove a rigorous weak convergence rate, but provides numerical evidence of high accuracy. Subsequent analysis (Smith 2010, Lord et al. 2010) suggests:
+Andersen's paper does not prove a weak convergence rate for QE; it gives extensive numerical evidence that its bias at practical step sizes is far smaller than that of Euler-type schemes, above all when the Feller condition fails. Full-truncation Euler has first-order weak error. We make no claim about the asymptotic rate of QE: the comparison below is empirical.
 
-\begin{itemize}[topsep=2pt]
-    \item In the high-$\nu$ regime ($\nu \gg 1$, where the variance process stays well away from zero), QE has weak rate $O(\Delta t^2)$, comparable to the optimal achievable for moment-matching schemes.
-    \item In the low-$\nu$ regime ($\nu \lesssim 1$), QE retains weak rate close to $O(\Delta t^2)$ thanks to the explicit atom-at-zero handling. Full-truncation Euler in the same regime degrades to $O(\Delta t)$ or worse.
-\end{itemize}
-
-The mechanism for the rate improvement is:
+The reason for the smaller bias is visible in the construction:
 \begin{itemize}[topsep=2pt]
     \item Both schemes match the first conditional moment of $v$ exactly.
     \item Only QE matches the second conditional moment exactly. Full-truncation Euler matches it up to $O(\Delta t^2)$ when no truncation fires, but has $O(\Delta t)$ error when truncation does fire.
-    \item The third moment is matched approximately by both schemes, with QE doing somewhat better in the low-$\nu$ regime due to the structural handling of the boundary.
+    \item QE reproduces the atom of $v$ at zero through the exponential regime, which Euler's truncation can only imitate step by step.
 \end{itemize}
 
 \subsection{Empirical comparison}
 
-For the standard Heston parameters of the full-truncation Euler note ($\nu = 1.33$, ATM, $T = 0.5$, comparing against the Fourier reference $C_{\mathrm{Fourier}} = 6.8257$):
+The bias study in \texttt{benchmark\_phase4.py} (Section~5) uses the aggressive parameter set $\kappa = 0.5$, $\theta = 0.04$, $\sigma = 1$, $\rho = -0.9$, $v_0 = 0.04$ ($\nu = 0.04$), $S_0 = K = 100$, $r = 0.05$, $T = 1$, with $10^5$ paths per run averaged over three seeds and the Fourier price $6.7304$ as reference:
 
 \begin{center}
 \begin{tabular}{rcc}
 \toprule
-$N$ & FT-Euler bias & QE bias \\
+$N$ & FT-Euler $|$bias$|$ & QE $|$bias$|$ \\
 \midrule
-50 & 0.012 & 0.001 \\
-100 & 0.005 & 0.0004 \\
-200 & 0.002 & 0.0001 \\
-400 & 0.0008 & 0.00003 \\
+25 & 0.688 & 0.007 \\
+50 & 0.293 & 0.003 \\
+100 & 0.119 & 0.002 \\
+200 & 0.056 & 0.007 \\
+400 & 0.032 & 0.011 \\
 \bottomrule
 \end{tabular}
 \end{center}
-QE achieves at $N = 50$ the bias that FT-Euler reaches at $N = 400$. The empirical observation is roughly $10\times$ smaller bias at the same $N$, equivalent to $4\times$ fewer steps for the same precision.
+The $95\%$ half-width of the three-seed average is about $0.010$ (some $0.15\%$ of the price), so every QE value is within about one half-width of zero: no QE bias is resolved at these sample sizes. Euler's bias falls roughly as $1/N$, as first-order weak convergence predicts, while QE at $N = 25$ is already more accurate than Euler at $N = 400$. The validator repeats the comparison at $T = 0.5$, $N = 50$ with five seeds of $2 \times 10^5$ paths: Euler's bias is $+0.155$, QE's $-0.004$, within noise.
 
-For the aggressive parameters ($\nu = 0.04$, the regime where the atom-at-zero matters), the gap widens further: QE can be $30$--$100\times$ more accurate than full-truncation Euler at the same $N$.
+With the standard parameters ($\nu = 1.33$) the variance process rarely approaches zero and the two schemes agree with the Fourier price within their confidence intervals at $N = 200$ (\texttt{results/phase4/heston\_cross\_validation.csv}); the advantage of QE is specific to the low-$\nu$ regime.
 
 \subsection{Cost considerations}
 
-QE has a slightly higher per-step cost than FT-Euler:
+QE has a higher per-step cost than FT-Euler:
 \begin{itemize}[topsep=2pt]
     \item FT-Euler: 2 normals per step, plus arithmetic.
     \item QE: 1 normal + 1 uniform per step (one regime uses normal, the other uniform), plus arithmetic for the moment computation and $\psi$ check.
 \end{itemize}
-The arithmetic in QE is more involved (square roots, exponentials, conditionals), but it is bounded and predictable; total cost is roughly $1.5$--$2\times$ that of FT-Euler per step. Since QE allows $4$--$10\times$ fewer steps for the same precision, the net cost is $2$--$5\times$ \emph{less} for any given precision target, with the saving growing as the precision target tightens.
+In the Python implementation a QE step costs about $1.5\times$ a full-truncation Euler step (timings in \texttt{results/phase4/heston\_cross\_validation.csv}). In the aggressive regime this is easily repaid, since QE at $N = 25$ beats Euler at $N = 400$; in the benign regime the two are equally accurate at the same $N$ and Euler is the cheaper choice.
 
 %============================================================
 \section{Validation strategy}
@@ -332,13 +328,17 @@ The validation strategy mirrors that of full-truncation Euler, but with stricter
 
 \subsection{Pillars}
 
-\paragraph{1. BS limit.} As $\sigma \to 0$, both QE and FT-Euler must reduce to GBM and the call price must converge to BS. This is the cheapest sanity check.
+The pillars below are the tests of \texttt{validate\_heston\_qe.py}.
 
-\paragraph{2. Cross-method consistency.} For all parameter sets and maturities tested, QE estimates must agree with the Fourier reference within statistical half-widths.
+\paragraph{1. BS limit.} As $\sigma \to 0$, QE must reduce to GBM and the call price must converge to BS. This is the cheapest sanity check.
 
-\paragraph{3. Bias comparison vs FT-Euler.} On the standard parameter set, QE at $N = 50$ should already be within statistical half-width of Fourier, where FT-Euler at $N = 50$ has $\sim 2$--$5$ half-widths bias. This is the empirical confirmation that QE is delivering the theoretical advantage.
+\paragraph{2. Cross-method consistency.} For the standard and the aggressive parameter sets and $T \in \{0.25, 0.5, 1\}$, QE estimates must agree with the Fourier reference within statistical half-widths.
 
-\paragraph{4. Aggressive parameter regime.} Repeat 3 in the low-$\nu$ regime where QE's structural advantage is largest. The bias gap should be even more pronounced.
+\paragraph{3. Statistical convergence.} At fixed $N$, the half-width times $\sqrt{M}$ must be approximately constant in $M$.
+
+\paragraph{4. Antithetic variates.} The antithetic version must reduce the variance by at least a factor of two and agree with the plain estimator.
+
+\paragraph{5. Bias comparison vs FT-Euler.} In the aggressive regime at $N = 50$, QE's bias must be smaller than full-truncation Euler's by at least a factor of five.
 
 \subsection{Numerical reference}
 
@@ -383,8 +383,8 @@ The Catch2 tests in \texttt{cpp/tests/test\_heston\_qe.cpp} verify the four pill
 \begin{itemize}[topsep=2pt]
     \item Andersen (2008) \cite{Andersen2008}: the seminal QE paper, with detailed parameter tables and benchmarks. The reference for this entire note; readable and well-organized.
     \item Broadie, Kaya (2006) \cite{BroadieKaya2006}: the exact simulation algorithm. Worth reading once to understand what QE is approximating.
-    \item Lord, Koekkoek, van Dijk (2010) \cite{LKvD2010}: comparison of all biased schemes; QE comes out on top in their benchmarks.
-    \item Smith (2010) \cite{Smith2010}: refined analysis of the QE error structure.
+    \item Lord, Koekkoek, van Dijk (2010) \cite{LKvD2010}: comparison of the Euler-type fixes for negative variance; full truncation has the smallest bias among them.
+    \item Smith (2007) \cite{Smith2007}: an almost exact simulation method that extends Broadie--Kaya to payoffs monitored at many dates.
     \item Glasserman, Kim (2011) \cite{GlassermanKim2011}: an alternative exact simulation by gamma expansion; cheaper than Broadie-Kaya but still more expensive than QE.
 \end{itemize}
 
@@ -393,7 +393,7 @@ The Catch2 tests in \texttt{cpp/tests/test\_heston\_qe.cpp} verify the four pill
     \bibitem{BroadieKaya2006}         Broadie, M.; Kaya, \"O. (2006). \emph{Exact simulation of stochastic volatility and other affine jump diffusion processes}. Operations Research, 54(2), 217--231.
     \bibitem{GlassermanKim2011}       Glasserman, P.; Kim, K. (2011). \emph{Gamma expansion of the Heston stochastic volatility model}. Finance and Stochastics, 15, 267--296.
     \bibitem{LKvD2010}                Lord, R.; Koekkoek, R.; van Dijk, D. (2010). \emph{A comparison of biased simulation schemes for stochastic volatility models}. Quantitative Finance, 10(2), 177--194.
-    \bibitem{Smith2010}               Smith, R. D. (2010). \emph{An almost exact simulation method for the Heston model}. Journal of Computational Finance, 13(1), 105--132.
+    \bibitem{Smith2007}               Smith, R. D. (2007). \emph{An almost exact simulation method for the Heston model}. Journal of Computational Finance, 11(1), 115--125.
 \end{thebibliography}
 
 \end{document}
