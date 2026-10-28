@@ -497,15 +497,16 @@ contribution does not violate the mixed bound; in the parameter range
 of this project this reduces effectively to $\alpha \le 1/2$.
 BTCS and Crank--Nicolson are unconditionally stable
 in $\alpha$. As shown in the trinomial-tree note, the Kamrad--Ritchken trinomial
-tree maps to FTCS under a specific reparametrisation; its
-non-negative-probability condition $\lambda^2 \ge 1/\alpha$ is the
-discrete-tree avatar of the CFL constraint \eqref{eq:cfl}.
+tree maps to FTCS with $\alpha = 1/(2\lambda)$; its
+non-negative-probability condition $p_m = 1 - 1/\lambda \ge 0$, that
+is $\lambda \ge 1$ or $\alpha \le 1/2$, is the discrete-tree avatar of
+the CFL constraint \eqref{eq:cfl}.
 
 % =====================================================================
 \section{Implementation outline}
 % =====================================================================
 
-The implementation (\texttt{quantlib.pde}) provides four ingredients:
+The implementation (\texttt{quantlib.pde}) provides five ingredients:
 \begin{enumerate}[leftmargin=2em]
 \item \texttt{Grid} (Python dataclass / C++ struct): an immutable
       container holding $N$, $M$, $T$, $\sigma$, $r$, $K$,

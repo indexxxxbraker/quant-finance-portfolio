@@ -261,18 +261,32 @@ violates the CFL condition. In tree language this manifests as
 $p_m < 0$: a probability that is no longer a probability. The same
 phenomenon, two different symptoms.
 
-\paragraph{Why $\lambda = 3$ is called ``third-order accurate''.}
-With $\lambda = 3$, the probabilities are $(p_u, p_m, p_d) = (1/6, 2/3, 1/6) +
-O(\sqrt{\Delta t})$. These are the weights of \emph{Simpson's rule}
-for numerical integration. Simpson exactly integrates polynomials up
-to degree~$3$. As a consequence, the third moment of the discrete
-trinomial step matches the third moment of the GBM step (which is
-$3\sigma^2\nu\Delta t^2 + O(\Delta t^3)$). Schemes that match higher
-moments have smaller \emph{constants} in their error expansion, but
-the global convergence rate remains $O(\Delta t)$ because the
-non-smooth payoff (the kink at the strike) limits the achievable
-order regardless. ``Third-order'' refers to moment matching, not
-to global convergence.
+\paragraph{Why $\lambda = 3$.}
+With $\lambda = 3$ the probabilities are $(p_u, p_m, p_d) = (1/6, 2/3,
+1/6) + O(\sqrt{\Delta t})$ and the nodes are $0$ and
+$\pm\sigma\sqrt{3\Delta t}$. These are exactly the nodes and weights
+of the three-point Gauss--Hermite rule for $\mathcal{N}(0, \sigma^2
+\Delta t)$, which integrates polynomials up to degree~$5$ exactly. (The
+weights coincide with those of Simpson's rule, but the relevant fact is
+the Gauss--Hermite one: Simpson's rule is exact for a uniform weight,
+not a Gaussian one.) The moments of the step $\Delta X$ make this
+concrete. For any $\lambda$,
+\[
+\mathbb{E}[\Delta X] = \nu \Delta t, \qquad
+\mathbb{E}[\Delta X^2] = \sigma^2 \Delta t,
+\]
+which match the Gaussian log-step to leading order, while
+\[
+\mathbb{E}[\Delta X^3] = \lambda \sigma^2 \nu \Delta t^2, \qquad
+\mathbb{E}[\Delta X^4] = \lambda \sigma^4 \Delta t^2,
+\]
+against $3\sigma^2\nu\Delta t^2 + O(\Delta t^3)$ and $3\sigma^4
+\Delta t^2 + O(\Delta t^3)$ for the Gaussian. Only $\lambda = 3$ matches
+the third and fourth moments. Schemes that match higher moments have
+smaller \emph{constants} in their error expansion, but the global
+convergence rate remains $O(\Delta t)$ because the non-smooth payoff
+(the kink at the strike) limits the achievable order regardless. The
+gain from $\lambda = 3$ is in the constant, not in the rate.
 
 % =====================================================================
 \section{Convergence and comparison}

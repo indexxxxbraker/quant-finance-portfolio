@@ -10,8 +10,10 @@
 //
 // where L = lambda_param, dx = sigma sqrt(L dt), nu = r - sigma^2/2.
 //
-// The default lambda = 3 corresponds to (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6),
-// the weights of Simpson's rule for numerical integration.
+// The default lambda = 3 corresponds to (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6)
+// with nodes 0 and +-sigma sqrt(3 dt): the three-point Gauss-Hermite rule,
+// so the step matches the Gaussian moments up to the fifth at leading
+// order (see theory/phase3/trinomial.tex).
 //
 // This scheme is structurally equivalent to FTCS (ftcs.hpp) with
 // alpha = 1/(2 lambda) up to an O(dt) discount-treatment difference.

@@ -9,12 +9,14 @@ Implements the lambda-parametrised trinomial tree:
 
 with dx = sigma sqrt(lambda dt) and nu = r - sigma^2/2.
 
-The default lambda = 3 corresponds to (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6),
-the weights of Simpson's rule. The odd moments of the step match for
-any lambda (up to the drift term); the fourth moment is
-lambda sigma^4 dt^2, so lambda = 3 is the value that also matches the
-Gaussian fourth moment 3 sigma^4 dt^2. For lambda = 1, p_m = 0 and the tree degenerates to a
-binomial-equivalent.
+The default lambda = 3 gives (p_u, p_m, p_d) ~ (1/6, 2/3, 1/6) with
+nodes 0 and +-sigma sqrt(3 dt): the three-point Gauss-Hermite rule for
+N(0, sigma^2 dt), exact for polynomials up to degree 5. At leading order
+the step then matches the Gaussian moments up to the fifth: the mean and
+variance match for any lambda, while E[dX^3] = lambda sigma^2 nu dt^2
+and E[dX^4] = lambda sigma^4 dt^2 equal the Gaussian 3 sigma^2 nu dt^2
+and 3 sigma^4 dt^2 only for lambda = 3. For lambda = 1, p_m = 0 and the
+tree degenerates to a binomial-equivalent.
 
 The trinomial backward induction is structurally equivalent to the
 FTCS finite-difference scheme (quantlib.ftcs) with alpha = 1/(2 lambda).
