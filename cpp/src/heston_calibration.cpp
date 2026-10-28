@@ -211,7 +211,9 @@ double implied_vol_bs(double C_target, double K, double T,
         if (vega < 1e-12) break;
         double sigma_new = sigma - diff / vega;
         sigma_new = std::max(0.001, std::min(5.0, sigma_new));
-        if (std::abs(sigma_new - sigma) < 1e-14) return sigma_new;
+        // Stalled, e.g. pinned at a clamp because the implied vol lies
+        // outside [0.001, 5]: let the bracketed fallback decide.
+        if (std::abs(sigma_new - sigma) < 1e-14) break;
         sigma = sigma_new;
     }
 

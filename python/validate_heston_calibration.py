@@ -292,6 +292,17 @@ def test_iv_inversion():
         all_ok,
         info="see table above for details",
     ))
+
+    # A volatility above the search range [1e-4, 5] has no admissible
+    # answer: Newton pins at the clamp, and the routine must return NaN
+    # rather than the clamp value.
+    C_high = black_scholes_call(S0_REF, 100.0, 1.0, R_REF, 6.0)
+    sigma_high = implied_vol_bs(C_high, 100.0, 1.0, S0_REF, R_REF)
+    results.append(report(
+        "IV above the search range returns NaN",
+        bool(np.isnan(sigma_high)),
+        info=f"returned {sigma_high}",
+    ))
     return results
 
 
