@@ -8,15 +8,13 @@ exotic options under Heston:
     - Floating-strike lookback call
     - Up-and-out barrier call
 
-All three share the same simulation infrastructure --- the QE scheme
-of quantlib.heston_qe --- and differ only in the path-functional accumulated
-during the time loop. The pattern mirrors the "infrastructure reusable,
-recipe replaceable" design of quantlib.heston_mc and quantlib.heston_qe:
-the simulator structure is shared, the payoff is the recipe.
+All three use the QE scheme of quantlib.heston_qe (its step kernel is
+copied below so that this module is self-contained) and differ only in
+the path-functional accumulated during the time loop.
 
-For early-exercise payoffs (American puts), see the PDE-based PSOR
-extension in a separate module; Monte Carlo with forward-only paths
-cannot natively price early exercise.
+For early-exercise payoffs (American puts), see quantlib.heston_american_pde
+(2D PDE with a projection onto the exercise constraint); Monte Carlo with
+forward-only paths cannot natively price early exercise.
 
 See ``theory/phase4/heston_calibration_exotics.tex`` for the
 mathematical statement of each payoff and the discussion of

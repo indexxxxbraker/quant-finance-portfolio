@@ -7,7 +7,8 @@
 //   - mc_lookback_call_heston    (floating-strike lookback call)
 //   - mc_barrier_call_heston     (up-and-out barrier call)
 //
-// All three share the QE simulation infrastructure (heston_qe.hpp) and
+// All three use the QE scheme of heston_qe.hpp (with the step copied into
+// heston_exotics.cpp so that the module is self-contained) and
 // differ only in the path-functional accumulated during the time
 // loop. See theory/phase4/heston_calibration_exotics.tex for
 // the mathematical statement of each payoff and discussion of

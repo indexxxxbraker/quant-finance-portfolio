@@ -8,7 +8,7 @@
 // controls for CV). Mirrors the Python module layout
 // (quantlib.variance_reduction).
 //
-// Currently implemented:
+// Implemented:
 //
 //   - mc_european_call_exact_av: antithetic-variates pricer for the
 //     European call under exact GBM.

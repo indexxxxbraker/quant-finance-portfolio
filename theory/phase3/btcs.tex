@@ -45,7 +45,9 @@ that solves tridiagonal systems in $O(N)$ work.
 \end{enumerate}
 Thomas is implemented from scratch as a standalone module
 (\texttt{quantlib.thomas} in Python, \texttt{quant::pde::thomas} in
-C++). It is reused by the Crank--Nicolson and PSOR pricers.
+C++). It is reused by the Crank--Nicolson pricer through the generic
+$\theta$-scheme stepper (\texttt{quantlib.theta\_scheme}); the American
+pricer replaces it with PSOR (\texttt{quantlib.psor}).
 
 % =====================================================================
 \section{The BTCS discretisation}

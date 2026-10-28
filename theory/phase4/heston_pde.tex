@@ -178,7 +178,7 @@ Uniform grids in both directions:
 \end{align*}
 The grid has $(N_X + 1)(N_v + 1)$ nodes. We denote the discrete approximation $W^n_{ij} \approx W(\tau_n, X_i, v_j)$, where $\tau_n = n \Delta\tau$.
 
-A non-uniform grid in $v$ (with concentration near $v_0$ and near $v = 0$) gives noticeably better accuracy at fixed $N_v$, since the option payoff is most sensitive to variance values near $v_0$. We start with uniform grids for clarity; non-uniform grids are a further refinement.
+The implementation uses uniform grids in both directions. A non-uniform grid in $v$ (concentrated near $v_0$ and near $v = 0$) would give better accuracy at fixed $N_v$, since the option price is most sensitive to variance values near $v_0$; it is not implemented here.
 
 \subsection{Finite difference operators}
 
@@ -262,7 +262,7 @@ We implement \textbf{Douglas} as the production scheme. Reasons:
     \item Upgrading to CS or HV is mechanical: the discrete operators $L_X, L_v, L_{Xv}$ are identical; only the time-stepping orchestration changes.
 \end{itemize}
 
-\paragraph{If higher precision is required} (e.g., for option Greeks where $O(\Delta\tau)$ truncation is amplified), the upgrade to HV is in scope for a future iteration.
+\paragraph{If higher precision is required} (e.g., for option Greeks where $O(\Delta\tau)$ truncation is amplified), the Hundsdorfer--Verwer scheme is the appropriate upgrade; it is not implemented here.
 
 %============================================================
 \section{Stability}
@@ -321,11 +321,11 @@ The module \texttt{quantlib.heston\_pde} exposes:
     \item \texttt{heston\_call\_pde(S0, K, T, params, N\_X=200, N\_v=100, N\_tau=100)}: high-level pricer. Builds the grid, sets the call payoff initial condition, runs $N_\tau$ Douglas steps, and interpolates the price at $(S_0, v_0)$ from the grid.
 \end{itemize}
 
-The Thomas solver is reused from \texttt{quantlib.theta\_scheme}. In the ADI sweeps, each line of the grid produces a tridiagonal system; we batch them by line and solve in a vectorised manner.
+The module has its own batched Thomas solver (\texttt{\_thomas\_batch}): in the ADI sweeps each line of the grid produces a tridiagonal system, and the systems of all lines are solved together in vectorised form.
 
 \subsection{C++}
 
-The C++ implementation in \texttt{cpp/include/quant/heston\_pde.hpp} and \texttt{cpp/src/heston\_pde.cpp} mirrors Python with the standard adaptations: \texttt{HestonParams} from \texttt{heston\_fourier.hpp}, Thomas solver from the finite-difference pricers, \texttt{std::vector<double>} for the flattened 2D grid. The 2D grid is stored row-major (X-major: index $(i, j) \to i \cdot (N_v + 1) + j$).
+The C++ implementation in \texttt{cpp/include/quant/heston\_pde.hpp} and \texttt{cpp/src/heston\_pde.cpp} mirrors Python with the standard adaptations: \texttt{HestonParams} from \texttt{heston\_fourier.hpp}, its own batched Thomas solver, \texttt{std::vector<double>} for the flattened 2D grid. The 2D grid is stored row-major (X-major: index $(i, j) \to i \cdot (N_v + 1) + j$).
 
 The Catch2 tests in \texttt{cpp/tests/test\_heston\_pde.cpp} verify the four pillars at reduced grid sizes for runtime, with snapshot agreement against Python and Fourier.
 

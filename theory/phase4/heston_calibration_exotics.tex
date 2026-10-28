@@ -190,9 +190,9 @@ Like the lookback, the maximum is biased downward by discrete monitoring; the Br
 American puts cannot be priced by Monte Carlo on a forward-only path, since the optimal exercise decision at each time depends on the conditional distribution of future paths. Two methods:
 \begin{itemize}[topsep=2pt]
     \item \textbf{Longstaff-Schwartz Monte Carlo (LSM)}: simulates paths and uses regression on the path state to approximate the continuation value, then exercises optimally backward in time. Standard in MC-only environments.
-    \item \textbf{PSOR on the 2D PDE}: extends the Douglas ADI pricer of the Heston PDE note by adding a free-boundary projection at each time step. The projection enforces $V \geq \Phi_{\mathrm{exercise}}$ in the discretised state, and the PSOR iterations converge to the optimal exercise policy.
+    \item \textbf{2D PDE with projection}: extends the Douglas ADI pricer of the Heston PDE note with the early-exercise constraint. A rigorous treatment solves a linear complementarity problem inside each implicit sweep (PSOR, as in the 1D PSOR note); the simpler operator-splitting alternative takes one European Douglas step and then projects onto the constraint, $W \leftarrow \max(W, e^{r\tau}\Phi_{\mathrm{exercise}})$.
 \end{itemize}
-We use PSOR-on-2D-PDE because (a) the PDE infrastructure of the Heston PDE note is already available, (b) PSOR exists for 1D (see the PSOR note) and the extension is mechanical, and (c) PDE methods give Greeks for free. The implementation (\texttt{quantlib.heston\_american\_pde}) is the 1D PSOR pattern lifted to 2D operating on the Douglas ADI sweeps.
+We use the PDE with operator-splitting projection because (a) the Douglas ADI pricer of the Heston PDE note is already available, (b) the projection adds a single line to its time loop, and (c) PDE methods give Greeks for free. The price is a splitting error that vanishes as $\Delta\tau \to 0$; the early-exercise premium increases with $N_\tau$ refinement, and PSOR inside each sweep would be the more accurate choice. The implementation is \texttt{quantlib.heston\_american\_pde}.
 
 %============================================================
 \section{Validation strategy}
@@ -221,7 +221,7 @@ These limits give us anchored validation against Fourier (\texttt{quantlib.hesto
 
 \paragraph{Cross-method consistency.}
 \begin{itemize}[topsep=2pt]
-    \item For payoffs that admit multiple methods (e.g., American puts via QE-LSM and via 2D PSOR), require agreement.
+    \item For the American put, which has no Fourier reference: American $\geq$ European, intrinsic value deep in the money, closeness to the European price deep out of the money, and convergence under grid halving.
     \item For barrier options where there exists a closed-form analogue under BS (using the reflection principle), compare BS-with-Heston-IV vs Heston-via-MC. The discrepancy is informative about the impact of stochastic vol on barrier pricing.
 \end{itemize}
 
@@ -244,13 +244,13 @@ The module \texttt{quantlib.heston\_exotics} exposes:
     \item \texttt{mc\_asian\_call\_heston(S0, K, T, p, n\_steps, n\_paths, n\_avg, *, ...)}: arithmetic-average Asian call.
     \item \texttt{mc\_lookback\_call\_heston(S0, T, p, n\_steps, n\_paths, *, ...)}: floating-strike lookback.
     \item \texttt{mc\_barrier\_call\_heston(S0, K, T, H, p, n\_steps, n\_paths, *, ...)}: up-and-out barrier call.
-    \item \texttt{american\_put\_heston\_pde(S0, K, T, p, ...)}: American put via 2D PDE with PSOR. Reuses the Douglas ADI sweep machinery from \texttt{quantlib.heston\_pde}.
+    \item \texttt{heston\_american\_put\_pde(S0, K, T, kappa, theta, sigma, rho, v0, r, ...)}, in the separate module \texttt{quantlib.heston\_american\_pde}: American put via the 2D PDE with operator-splitting projection. The module repeats the Douglas ADI kernels of \texttt{quantlib.heston\_pde} so that it is self-contained.
 \end{itemize}
-The MC exotics share a common pattern: a path-aware simulator that accumulates the path-functional during the time loop. The QE step of \texttt{quantlib.heston\_qe} is refactored into a callable kernel that the exotic simulators wrap.
+The MC exotics share a common pattern: a path-aware simulator that accumulates the path-functional during the time loop. The QE step of \texttt{quantlib.heston\_qe} is copied into \texttt{quantlib.heston\_exotics} as a private kernel that the three simulators call, so that the module is self-contained.
 
 \subsection{C++}
 
-Same structure: \texttt{quant::heston::calibration} and \texttt{quant::heston::exotics} namespaces, with the corresponding pricer functions. The American PSOR builds on the 2D PDE infrastructure (\texttt{heston\_pde.hpp}), with only the projection step added inside the time loop.
+Same structure: \texttt{quant::heston::calibration} and \texttt{quant::heston::exotics} namespaces, with the corresponding pricer functions. The American pricer (\texttt{heston\_american\_pde.hpp}) repeats the Douglas ADI step of \texttt{heston\_pde.cpp} and adds the projection inside the time loop.
 
 \subsection{Tests}
 

@@ -19,13 +19,13 @@ intrinsic value when S < K. American calls without dividends have the
 same value as European calls (no early-exercise premium); they are
 covered by the European pricer of quantlib.heston_pde.
 
-See ``theory/phase4/heston_calibration_exotics.tex`` Section 4.4
-for the rationale of choosing PSOR-on-PDE over Longstaff-Schwartz MC.
+See ``theory/phase4/heston_calibration_exotics.tex``, section on
+American options, for the choice of a PDE method over Longstaff-Schwartz
+Monte Carlo and of projection over PSOR.
 
 The kernel functions (Thomas batched solver, operator coefficients,
 operator application, implicit solves, Douglas step) are reproduced
-from ``heston_pde.py`` for self-containment. A future refactor may
-extract these into a shared private kernel module.
+from ``heston_pde.py`` for self-containment.
 
 Public interface
 ----------------

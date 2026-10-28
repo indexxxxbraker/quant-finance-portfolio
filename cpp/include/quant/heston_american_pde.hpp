@@ -9,9 +9,9 @@
 // followed by a max-projection in the (X = log S, tau = T - t,
 // W = e^{r tau} U) coordinates.
 //
-// See theory/phase4/heston_calibration_exotics.tex Section 4.4
-// for the rationale (PSOR-on-PDE vs Longstaff-Schwartz MC) and the
-// derivation of the projection in W coordinates.
+// See theory/phase4/heston_calibration_exotics.tex, section on
+// American options, for the choice of a PDE method over
+// Longstaff-Schwartz Monte Carlo and of projection over PSOR.
 //
 // The kernel functions (Thomas batched solver, operator coefficients,
 // operator application, implicit solves, Douglas step) are reproduced
