@@ -140,7 +140,7 @@ double fourier_number(double sigma, double dtau, double dx) noexcept;
 ///
 /// With centred space differences for the convective term, the FTCS
 /// von Neumann factor for the full BS PDE is
-///     g(theta) = 1 - 4*alpha*sin^2(theta/2) + i*nu*sin(theta).
+///     g(theta) = 1 - 4*alpha*sin^2(theta/2) + 2*i*nu*sin(theta).
 /// For typical finite-difference parameters the diffusive bound
 /// alpha <= 1/2 dominates over the convective constraint.
 double courant_number(double mu, double dtau, double dx) noexcept;

@@ -96,7 +96,7 @@ def build_grid(*, N, M, T, sigma, r, K, n_sigma=4.0):
         x in [-n_sigma * sigma * sqrt(T), +n_sigma * sigma * sqrt(T)],
     where x = ln(S/K). With n_sigma = 4 the lognormal-tail mass outside
     the domain is O(exp(-n_sigma^2 / 2)) ~ 6e-5; with n_sigma = 5 it is
-    ~3e-7. For n_sigma >= 4 the truncation error is dominated by the
+    ~6e-7. For n_sigma >= 4 the truncation error is dominated by the
     discretisation error at any practical (N, M).
 
     Parameters
@@ -247,7 +247,7 @@ def courant_number(mu, dtau, dx):
 
     With centred space differences for the convective term, the FTCS
     von Neumann factor for the full BS PDE is
-        g(theta) = 1 - 4*alpha*sin^2(theta/2) + i*nu*sin(theta).
+        g(theta) = 1 - 4*alpha*sin^2(theta/2) + 2*i*nu*sin(theta).
     For typical parameters the diffusive bound alpha <= 1/2
     dominates over the convective constraint.
     """
