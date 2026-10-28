@@ -130,6 +130,13 @@ TEST_CASE("Implied vol inversion: NaN outside no-arbitrage bounds",
         const double iv = implied_vol_bs(150.0, 100.0, 0.5, S0_REF, R_REF);
         REQUIRE(std::isnan(iv));
     }
+    SECTION("implied vol above the search range") {
+        // Newton pins at the clamp sigma = 5; the result must be NaN,
+        // not the clamp value.
+        const double C = black_scholes_call(S0_REF, 100.0, 1.0, R_REF, 6.0);
+        const double iv = implied_vol_bs(C, 100.0, 1.0, S0_REF, R_REF);
+        REQUIRE(std::isnan(iv));
+    }
 }
 
 

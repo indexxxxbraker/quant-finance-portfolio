@@ -136,7 +136,9 @@ def implied_vol_bs(C_target, K, T, S0, r,
         # Bound the step to prevent runaway
         sigma_new = max(0.001, min(5.0, sigma_new))
         if abs(sigma_new - sigma) < 1e-14:
-            return sigma_new
+            # Stalled, e.g. pinned at a clamp because the implied vol
+            # lies outside [0.001, 5]: let the bracketed fallback decide.
+            break
         sigma = sigma_new
     else:
         # Newton converged within max_iter (loop exhausted but not via break)
