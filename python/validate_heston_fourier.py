@@ -16,6 +16,12 @@ is correct:
                                         formulation would fail; we check
                                         that both inversion methods
                                         still agree.
+    6. Reference values:                two standard parameter sets,
+                                        priced by Lewis and by an
+                                        independent implementation of
+                                        Heston's two-probability formula
+                                        written in this script, and
+                                        compared with stored values.
 
 Run from the ``python/`` directory:
 
@@ -31,6 +37,7 @@ import time
 from typing import Tuple
 
 import numpy as np
+from scipy.integrate import quad
 
 from quantlib.heston_fourier import (
     heston_cf,
@@ -270,6 +277,70 @@ def test_amsst_long_maturity():
     return results
 
 
+def _heston_call_two_probability(K, T, S0, v0, r, kappa, theta, sigma, rho):
+    """Heston (1993) call price C = S0 P1 - K e^{-rT} P2.
+
+    Written here, independently of quantlib.heston_fourier, as a check
+    on the Lewis pricer. The characteristic function of log S_T is in the
+    "little trap" form of Albrecher et al. (2007); P1 uses the share
+    measure, phi(u - i) / phi(-i).
+    """
+    x0 = np.log(S0)
+
+    def phi(u):
+        b = kappa - rho * sigma * 1j * u
+        d = np.sqrt(b * b + sigma**2 * (1j * u + u * u))
+        g = (b - d) / (b + d)
+        e = np.exp(-d * T)
+        C = (r * 1j * u * T
+             + kappa * theta / sigma**2
+             * ((b - d) * T - 2.0 * np.log((1.0 - g * e) / (1.0 - g))))
+        D = (b - d) / sigma**2 * (1.0 - e) / (1.0 - g * e)
+        return np.exp(C + D * v0 + 1j * u * x0)
+
+    lnK = np.log(K)
+    phi_mi = phi(-1j)
+    P1 = 0.5 + quad(lambda u: (np.exp(-1j * u * lnK) * phi(u - 1j)
+                               / (1j * u * phi_mi)).real,
+                    0.0, 200.0, limit=500)[0] / np.pi
+    P2 = 0.5 + quad(lambda u: (np.exp(-1j * u * lnK) * phi(u)
+                               / (1j * u)).real,
+                    0.0, 200.0, limit=500)[0] / np.pi
+    return S0 * P1 - K * np.exp(-r * T) * P2
+
+
+# (kappa, theta, sigma, rho, v0, r, T, K, stored price); S0 = 100.
+REFERENCE_CASES = [
+    (1.5, 0.04,   0.3, -0.7, 0.04,   0.05, 0.5, 100.0, 6.825734),
+    (2.0, 0.0625, 0.5, -0.5, 0.0625, 0.04, 1.0, 100.0, 11.445851),
+]
+
+
+def test_reference_values():
+    """
+    Two standard parameter sets (theory/phase4/heston_fourier.tex,
+    Section "Reference values"). The Lewis price must agree with the
+    independent two-probability implementation to 1e-8 and with the
+    stored value to its 6 printed decimals.
+    """
+    print("Test 6: reference values (independent two-probability formula)")
+
+    results = []
+    for kappa, theta, sigma, rho, v0, r, T, K, stored in REFERENCE_CASES:
+        C_le = heston_call_lewis(K, T, 100.0, v0, r, kappa, theta, sigma, rho)
+        C_tp = _heston_call_two_probability(K, T, 100.0, v0, r,
+                                            kappa, theta, sigma, rho)
+        ok = abs(C_le - C_tp) < 1e-8 and abs(C_le - stored) < 5e-7
+        results.append(report(
+            f"kappa={kappa}, sigma={sigma}, rho={rho}, T={T}",
+            ok,
+            info=(f"Lewis = {C_le:.8f}, two-prob = {C_tp:.8f}, "
+                  f"stored = {stored:.6f}")
+        ))
+    print()
+    return results
+
+
 # =====================================================================
 # Timing benchmark (informational, not a pass/fail test)
 # =====================================================================
@@ -326,6 +397,7 @@ def main():
     all_results.extend(test_put_call_parity())
     all_results.extend(test_cm_vs_lewis_grid())
     all_results.extend(test_amsst_long_maturity())
+    all_results.extend(test_reference_values())
 
     benchmark_timing()
 

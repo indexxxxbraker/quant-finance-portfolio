@@ -450,8 +450,8 @@ For European options, \(C(K, T) - P(K, T) = S_t - K e^{-r\tau}\). This is a mode
 \subsection*{3. Carr--Madan vs Lewis cross-check}
 Both methods compute the same quantity by independent inversions. For any \((K, T, \text{params})\), the two prices should agree to 5--6 decimals. This catches errors in any single inversion that survives the previous tests.
 
-\subsection*{4. Rouah benchmarks}
-Rouah \cite{Rouah2013} tabulates Heston call prices for parameter sets canonical in the literature with 6 decimals. We reproduce a representative set:
+\subsection*{4. Reference values}
+Two parameter sets that are common in the literature serve as fixed reference points:
 
 \begin{center}
 \begin{tabular}{cccccccc}
@@ -464,7 +464,7 @@ Rouah \cite{Rouah2013} tabulates Heston call prices for parameter sets canonical
 \end{tabular}
 \end{center}
 
-with \(S_0 = 100\). Reference prices (Rouah, p.~33) are \(7.5821\) and \(11.0524\) respectively. Our implementation must reproduce these to 4 decimals.
+with \(S_0 = 100\). The Lewis-quadrature pricer gives \(6.825734\) and \(11.445851\) respectively. An independent implementation of Heston's original two-probability formula (in the ``little trap'' form of Albrecher et al., with adaptive quadrature) agrees with both to \(10^{-12}\), and the Carr--Madan FFT pricer agrees to within \(10^{-3}\), the error of its grid and interpolation at default settings. In \texttt{validate\_heston\_fourier.py}, Test~6 checks the Lewis and two-probability prices against the stored values, and Test~4 compares Carr--Madan with Lewis on a grid of strikes and maturities.
 
 A cross-check with Monte Carlo is left to the QE note; the variance of an MC estimator at \(10^6\) paths is on the order of one cent, which is too imprecise to validate Fourier prices but precise enough to confirm consistency.
 
