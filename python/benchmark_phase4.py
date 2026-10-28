@@ -7,7 +7,7 @@ artifacts in python/results/phase4/ demonstrating:
   - Section 1: cross-validation of 4 pricing methods
         (Fourier, MC Euler, MC QE, PDE ADI) at K in [80, 120]
   - Section 2: calibration to synthetic noisy vol surface
-        (LM with vega weighting, 4 maturities)
+        (inverse-vega-weighted least squares, 4 maturities)
   - Section 3: empirical verification of PDE O(h^2)
         convergence rate (log-log)
   - Section 4: exotic option prices (Asian, Lookback,
@@ -331,7 +331,7 @@ def calibration_section():
     print(f"  Truth params:  {truth}")
     print(f"  Initial guess: {initial}")
 
-    print("\n  Calibrating (LM with vega weighting)...")
+    print("\n  Calibrating (inverse-vega-weighted least squares, TRF)...")
     t0 = time.perf_counter()
     result = calibrate_heston(market, S0, R, initial_guess=initial)
     elapsed = time.perf_counter() - t0
