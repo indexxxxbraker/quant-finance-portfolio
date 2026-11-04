@@ -1,6 +1,6 @@
 # Quantitative Finance Portfolio
 
-Numerical methods for derivative pricing — analytical, Monte Carlo, finite-difference PDE and Heston stochastic volatility — implemented in Python, ported to C++ with a Catch2 test suite, and written up in LaTeX. Built as a self-directed continuation of my bachelor's thesis.
+Numerical methods for derivative pricing — closed-form formulas, Monte Carlo, finite differences and the Heston stochastic-volatility model — implemented in Python, ported to C++ and written up in 28 LaTeX notes. A self-directed continuation of my bachelor's thesis, built with AI coding assistants (see [How this project was made](#how-this-project-was-made)).
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
@@ -11,72 +11,61 @@ Numerical methods for derivative pricing — analytical, Monte Carlo, finite-dif
 </p>
 
 <p align="center">
-  <em>European call under Heston priced by four independent methods — Fourier inversion, Monte Carlo with Andersen QE, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo. Bottom panel: relative difference from the Fourier price, with 95% confidence intervals for Monte Carlo.</em>
+  <em>A European call under Heston priced four independent ways: Fourier inversion, Monte Carlo with Andersen's QE scheme, a 2D Douglas ADI PDE solver and full-truncation Euler Monte Carlo. Bottom panel: relative difference from the Fourier price, with 95% confidence intervals for Monte Carlo.</em>
 </p>
 
 ## About this project
 
 This repository grew out of my bachelor's thesis in Mathematics, [*From the Risk-Neutral Measure to Girsanov's Theorem in Stochastic Integration: Pricing of Financial Products*](https://github.com/indexxxxbraker/option-pricing-via-martingales) (University of Oviedo; defence expected May 2027), which develops the theory of European option pricing from the binomial model up to the Black-Scholes formula. The thesis ends where the numerical questions begin: how do you compute a price when there is no closed form, how do you know that a computed price is right, and what changes once volatility stops being constant.
 
-This project is my attempt to work through those three questions on my own, outside any course. I built it in the spring of 2026, during my Erasmus year in Rome, while I was finishing the thesis and the underlying theory was fresh. It is organised as four phases of increasing difficulty, and every phase follows the same loop: read the theory and write it up in LaTeX, implement it in Python, validate it numerically, then port it to C++ and test it again. The guiding rule throughout is that every pricer must agree with at least one independent method within a stated tolerance.
+This project is my attempt to work through those three questions on my own, outside any course. I built it in the spring of 2026, during my Erasmus year in Rome, while I was finishing the thesis and the theory was fresh. It is organised in four phases of increasing difficulty, and every phase follows the same loop: write up the theory in LaTeX, implement it in Python, validate it numerically, then port it to C++ and test it again. One rule runs through all of it: no pricer is accepted until it agrees with an independent method within a stated tolerance.
 
-## How this project was made
+## Highlights
 
-I used AI assistants (Anthropic's Claude) throughout, and I would rather say precisely what that means than leave it to the reader to guess. Most of the code and most of the LaTeX were drafted by the assistant from specifications I wrote: which method to implement, which references to follow, which checks it had to pass. The choice of topics and their order, the choice of sources, the review of every derivation, the design of the validation (what each pricer is checked against, and how tightly), the trade-offs along the way (which scheme, which parameters, what to drop) and the debugging were mine. Everything in this repository is something I can explain and defend; if I could not, it would not be here.
+- **Heston priced four independent ways.** The PDE matches the Fourier price to within 0.1% for strikes 80–115 (0.3% at 120), and all eighteen Monte Carlo prices fall inside their 95% confidence intervals.
+- **Variance reduction from a factor of 2 to a factor of 1,300.** Antithetic variates halve the variance of a European call; a geometric-Asian control variate cuts that of an arithmetic Asian call by about 1,300.
+- **Solvers written from scratch** rather than imported: Cholesky, Thomas, projected SOR, Acklam's inverse normal CDF, Sobol sequences with Joe–Kuo direction numbers.
+- **Convergence studies.** On the test problems, the observed error slopes for Euler–Maruyama and Milstein (1/2 and 1), Crank–Nicolson with Rannacher start-up and the Douglas ADI grid (2) agree with the orders given in the literature.
+- **200 Catch2 test cases** on the C++ side, mirroring the Python validation scripts.
 
-## What is in here
-
-- A Heston European call priced four independent ways — Fourier inversion, Andersen QE Monte Carlo, 2D Douglas ADI PDE, and full-truncation Euler Monte Carlo. The PDE matches the Fourier price to within 0.1% for strikes 80–115 (0.3% at 120), and all eighteen Monte Carlo prices fall inside their 95% confidence intervals (0.1–0.4% of the price with 1.6 million paths).
-- Variance reduction on European and Asian calls, from antithetic variates (VRF ≈ 2) to a geometric-Asian control variate (VRF ≈ 1300: on the same path the arithmetic and geometric means differ only at second order, so ρ > 0.999).
-- Solvers written from scratch rather than imported: Cholesky decomposition, Thomas algorithm, Projected SOR, Acklam's inverse normal CDF, Sobol sequences with Joe–Kuo direction numbers.
-- Convergence rates checked against theory: strong order 1/2 vs 1 for Euler–Maruyama vs Milstein, O(Δt²) for Crank–Nicolson with Rannacher smoothing, O(h²) for Douglas ADI.
-- Heston calibration to a synthetic surface by weighted least squares (bounded trust-region in Python, a hand-written Levenberg–Marquardt in C++).
-- 200 Catch2 test cases on the C++ side, mirroring the Python validation scripts.
-
-**Scope and assumptions.** European, American and selected exotic options under Black-Scholes and Heston dynamics, assuming non-dividend-paying assets, a constant interest rate and, under Black-Scholes, constant volatility. Jump-diffusion and local volatility models are out of scope.
+**Scope.** European, American and selected exotic options under Black-Scholes and Heston dynamics, with non-dividend-paying assets and a constant interest rate. Jump-diffusion and local-volatility models are out of scope.
 
 ## Project phases
 
 ### Phase 1 — European options under Black-Scholes
 
-- Black-Scholes analytical pricer (call and put), derived via the martingale approach with explicit change of measure under the risk-neutral measure Q.
-- Five closed-form Greeks (Δ, Γ, Vega, Θ, ρ), validated by three independent routes: centered finite differences, residual of the Black-Scholes PDE on a random grid, and the Vega–Gamma algebraic identity.
-- Implied volatility inversion: Newton-Raphson with safeguards (Vega floor, domain checks, max iterations) and a Brent fallback. Existence and uniqueness proven from no-arbitrage bounds.
+- Black-Scholes pricer derived by the martingale route, with the five closed-form Greeks checked three independent ways.
+- Implied volatility by safeguarded Newton–Raphson with a Brent fallback.
 
-Theory: 3 LaTeX writeups in [`theory/phase1/`](theory/phase1/).
+Theory: 3 notes in [`theory/phase1/`](theory/phase1/).
 
 ### Phase 2 — Monte Carlo methods
 
-- Foundations: LLN, CLT, half-width confidence intervals, Acklam's inverse normal CDF.
-- Exact GBM sampling and SDE discretization: Euler–Maruyama (strong order 1/2) and Milstein (strong order 1), both verified empirically against same-Brownian exact paths.
-- Variance reduction: antithetic variates, control variates (underlying, asset-or-nothing, geometric Asian), and randomized quasi-Monte Carlo with Sobol and Halton sequences.
-- Monte Carlo Greeks: bumping with common random numbers, pathwise sensitivities, likelihood-ratio.
-- Asian arithmetic call with geometric control variate yielding VRF ≈ 1300. Along a path, log A − log G ≈ ½·Var(log S) = O(σ²T); AM–GM only fixes the sign of this gap, and its smallness is what pushes the correlation above 0.999.
-- American put via Longstaff–Schwartz with Laguerre basis (Cholesky decomposition implemented from scratch for the normal equations).
+- Exact GBM sampling; Euler–Maruyama and Milstein discretisations, with their strong convergence observed against exact paths.
+- Variance reduction: antithetic variates, control variates and randomised quasi-Monte Carlo (Sobol and Halton).
+- Monte Carlo Greeks: bumping with common random numbers, pathwise and likelihood-ratio estimators.
+- Arithmetic Asian call with a geometric-Asian control variate: on the same path the two averages differ only at second order, so their correlation exceeds 0.999.
+- American put by Longstaff–Schwartz regression.
 
-Theory: 13 LaTeX writeups in [`theory/phase2/`](theory/phase2/).
+Theory: 13 notes in [`theory/phase2/`](theory/phase2/).
 
-### Phase 3 — Finite-difference PDE and lattice methods
+### Phase 3 — Finite differences and lattices
 
-- FTCS (forward-time centered-space) with explicit CFL stability analysis: α = (σ²/2)Δt/Δx² ≤ 1/2.
-- BTCS (backward-time) backed by a custom Thomas algorithm, justified by strict diagonal dominance (Higham, §9.5–9.6).
-- Crank-Nicolson with Rannacher smoothing — the first two time steps replaced by four implicit half-steps (Giles–Carter) to damp the high-frequency mode excited by the payoff kink, recovering O(Δt²) convergence ratios when the time step is large.
-- PSOR (Projected SOR) for American puts via linear complementarity, with empirical tuning of the relaxation parameter ω.
-- Stretch-parameter trinomial lattice (Boyle; Kamrad–Ritchken), shown to coincide with FTCS at α = 1/(2λ) apart from where the discount factor is applied, an O(Δt) difference.
-- Final benchmark cross-validating 15 pricers against analytical Black-Scholes and a lattice consensus reference.
+- Explicit (FTCS), implicit (BTCS) and Crank–Nicolson schemes, with their stability analysed and their convergence observed on test problems.
+- A Thomas solver for the tridiagonal systems and projected SOR for the American put.
+- A trinomial lattice, shown to coincide with the explicit scheme up to where the discount factor is applied.
+- A final benchmark cross-validating 16 pricers against Black-Scholes and a lattice reference.
 
-Theory: 6 LaTeX writeups in [`theory/phase3/`](theory/phase3/).
+Theory: 6 notes in [`theory/phase3/`](theory/phase3/).
 
-### Phase 4 — Heston stochastic volatility model
+### Phase 4 — The Heston model
 
-- Heston SDE theory: Feller condition for v > 0, conditional moments of v_t and integrated variance ∫₀ᵀ v_s ds.
-- Fourier-based pricing via the AMSST characteristic function, Carr–Madan FFT, and Lewis quadrature.
-- Monte Carlo schemes: full-truncation Euler (baseline) and Andersen QE with two regimes (moment-matched lognormal and quadratic exponential).
-- 2D Douglas ADI PDE solver with operator splitting; O(h²) convergence empirically verified against the Fourier reference.
-- Calibration against a synthetic implied volatility surface: price residuals weighted by inverse vega, minimised with scipy's bounded trust-region least squares in Python and a hand-written Levenberg–Marquardt in C++.
-- Exotic pricers: Asian, Lookback, Barrier (via Monte Carlo) and American put (via PDE with projection).
+- The variance process: Feller condition and conditional moments.
+- Fourier pricing (Carr–Madan FFT and Lewis), Monte Carlo (full-truncation Euler and Andersen's QE scheme) and a 2D Douglas ADI PDE solver.
+- Calibration to a synthetic implied-volatility surface by inverse-vega-weighted least squares.
+- Exotics: Asian, lookback and barrier options by Monte Carlo; the American put by PDE with projection.
 
-Theory: 6 LaTeX writeups in [`theory/phase4/`](theory/phase4/).
+Theory: 6 notes in [`theory/phase4/`](theory/phase4/).
 
 ## Results
 
@@ -84,40 +73,45 @@ Theory: 6 LaTeX writeups in [`theory/phase4/`](theory/phase4/).
   <img src="python/results/phase2/vr_scoreboard.png" alt="Variance reduction scoreboard" width="80%">
 </p>
 
-*Variance reduction techniques benchmarked against the IID baseline. The geometric Asian control variate exploits ρ > 0.999 between the arithmetic and geometric means of the same path for a VRF of about 1300, the largest reduction in the project; it is shown separately because it changes the product being priced, not just the estimator. Sobol RQMC reaches a VRF of about 60 under conservative replication settings; it prices the 20-step Euler discretisation, whose bias (about 0.007) the VRF does not count.*
+*Variance reduction against the IID baseline. The geometric-Asian control variate is shown apart because it prices a different product. Sobol RQMC reaches a factor of about 60; it prices the 20-step Euler discretisation, whose small bias that factor does not count.*
 
 <p align="center">
   <img src="python/results/phase4/heston_calibration.png" alt="Heston calibration to synthetic vol surface" width="80%">
 </p>
 
-*Heston model calibrated to a synthetic implied volatility surface by inverse-vega-weighted least squares. Each subplot shows market versus model smiles at a fixed maturity, with RMSE annotated.*
+*Heston calibrated to a synthetic implied-volatility surface. Each panel shows market and model smiles at one maturity, with the RMSE.*
 
 <p align="center">
   <img src="python/results/phase2/euler_milstein_convergence.png" alt="Strong convergence: Euler-Maruyama vs Milstein" width="80%">
 </p>
 
-*Strong convergence of Euler–Maruyama (slope 1/2) and Milstein (slope 1) for GBM, validated empirically against same-Brownian exact paths. Empirical slopes match the Itô–Taylor predictions.*
+*Strong convergence of Euler–Maruyama (slope 1/2) and Milstein (slope 1) for GBM, measured against exact paths driven by the same Brownian increments.*
 
-Further artifacts under [`python/results/`](python/results/) include the Douglas ADI convergence study, the QMC-vs-IID error comparison, Heston exotic prices, and the QE-vs-Euler bias study. Two notebooks under [`notebooks/`](notebooks/) walk through the Heston cross-validation and the variance reduction progression step by step; GitHub renders them with their outputs, so nothing needs to be run to read them.
-
-## Limitations and caveats
-
-- **Model scope.** Non-dividend-paying assets and a constant interest rate throughout; constant volatility under Black-Scholes. No jumps, no local volatility.
-- **Calibration data.** The Heston calibrator is exercised on a synthetic implied-volatility surface (Heston-generated, then perturbed), not on market quotes. It has not been tested against real data.
-- **QMC convergence rate.** In the QMC-vs-MC study, Sobol RQMC converges empirically like N^-0.62 rather than the asymptotic N^-1: the integrand lives in dimension 20 (Euler with 20 steps), and for N ≤ 2^16 the (log N)^d prefactor has not disappeared (Glasserman, §5.2). The plot keeps the N^-1 reference line rather than hiding it.
-- **QE vs Euler regime.** The QE-vs-Euler bias study uses a Feller-violating parameter set (κ = 0.5, σ = 1, ρ = −0.9) that differs from the canonical set used elsewhere. Under canonical parameters the two schemes are within Monte Carlo noise of each other; the aggressive regime is the one QE was designed for, and the change is stated in the plot title, the CSV headers and the script output.
-- **C++ performance.** The C++ code is a faithful port of the Python, written while learning the language. It is single-threaded and not tuned for speed.
-- **No CI.** Tests are run locally; there is no continuous-integration pipeline.
+More output is under [`python/results/`](python/results/): the ADI convergence study, the QMC-versus-IID comparison, the Heston exotic prices and the QE-versus-Euler bias study. Two notebooks in [`notebooks/`](notebooks/) walk through the Heston cross-validation and the variance-reduction comparison; GitHub shows them with their outputs, so nothing needs to be run.
 
 ## What I learned
 
-- Agreement between independent methods is the only test I trust. A pricer can be internally consistent and still be wrong; checking Fourier against ADI against Monte Carlo, which share no code and no approximation, is what made me confident in the Heston numbers.
-- Stability conditions matter in practice, not only in the theorems. FTCS with the CFL condition violated produces a sawtooth at the highest grid frequency that grows without bound. Crank–Nicolson does not blow up, but when the time step is large compared with Δx² the kink in the payoff excites that same mode and CN barely damps it (g → −1), so a few implicit half-steps at the start (Rannacher) are needed to recover O(Δt²). For the American put the projection onto the payoff clips the oscillation but does not remove it: CN-PSOR still oscillates at coarse time steps and converges only at first order in Δt.
-- In variance reduction, the gain depends on how closely the control matches the structure of the payoff. Antithetic variates give a factor of 2 and a control variate on S_T gives about 7; the geometric-Asian control gives about 1300 because the arithmetic and geometric means of a lognormal path differ only at second order in σ√T, so their correlation exceeds 0.999. AM–GM gives the ordering A ≥ G, not the correlation.
-- Asymptotic convergence rates can be far away. Sobol RQMC should converge like N^-1, but in dimension 20 with N ≤ 65,536 the observed rate is N^-0.62 because of the (log N)^d prefactor. This is not an implementation error.
-- A better scheme only shows its advantage in the regime it was designed for. With well-behaved Heston parameters, full-truncation Euler and Andersen QE agree within Monte Carlo noise. With the Feller condition strongly violated, Euler overprices by about 10% at 25 time steps and still by about 0.5% at 400, while QE's bias stays below the Monte Carlo resolution (about 0.3% of the price) at every step count tested.
-- Lattices and finite differences are the same construction. A trinomial tree with log-step Δx = σ√(λΔt) is FTCS with α = 1/(2λ), apart from where the discount is applied, and λ ≥ 1 is the CFL condition.
-- Porting from Python to C++ forced me to make explicit what NumPy had been doing implicitly: types, edge cases and the behaviour of library calls. Writing the same algorithm twice was the most effective review of the first version.
+- I trust a number when two methods that share no code agree on it. Checking Fourier against the PDE and against Monte Carlo is what convinced me the Heston prices were right.
+- Checking a result is not the same as understanding it. My validation tells me when a price is right, and the convergence plots show how the error behaved on these particular problems, but neither tells me why the methods work or how fast the error must fall in general. That theory is what I want to learn next.
+- Stability theory is not a formality. The explicit scheme blows up as soon as the CFL condition fails, and Crank–Nicolson, which never blows up, still lets the payoff kink oscillate at large time steps unless the first steps are implicit.
+- A geometric-Asian control variate cuts the variance of the arithmetic-Asian estimator by a factor of about 1,300: a suitable auxiliary problem can matter more than adding samples. On the European call, antithetic variates and simple controls gave factors of 2 to 7.
+- Asymptotic rates can be a long way off. Quasi-Monte Carlo in dimension 20 converged like N^-0.62, not N^-1, for every sample size I tried (up to 2^16).
+- A review is never finished: going back over the project in October turned up errors I had missed in May.
+
+## Limitations
+
+- **Model scope.** Non-dividend-paying assets and a constant interest rate throughout; constant volatility under Black-Scholes. No jumps, no local volatility.
+- **Calibration data.** The Heston calibrator is tested on a synthetic surface (Heston prices plus noise), not on market quotes.
+- **QMC convergence rate.** Sobol RQMC converges like N^-0.62 rather than N^-1 in this 20-dimensional problem; the (log N)^d factor has not died out at N ≤ 2^16. The plot keeps the N^-1 reference line.
+- **QE versus Euler.** The bias study uses a Feller-violating parameter set, the regime QE was designed for; with the canonical parameters the two schemes agree within Monte Carlo noise.
+- **C++.** The port of the Python pricers was developed with AI coding assistants, and I could not yet write it on my own. It is single-threaded and not tuned for speed.
+- **No CI.** The tests are run locally.
+
+## How this project was made
+
+I wanted to learn these methods by building them, and working with AI coding assistants (Anthropic's Claude) was the most effective way I found to do that on my own. The assistants drafted most of the code and most of the LaTeX from specifications I wrote: which method to implement, which references to follow, which checks it had to pass. I chose the topics, their order and the sources, checked every derivation, designed the validation (what each pricer is checked against, and how tightly), made the trade-offs along the way (which scheme, which parameters, what to drop) and did the debugging. Much of what I learned came from that loop: specifying a method, checking it against an independent one, and working out why the two disagreed when they did.
+
+**October 2026 revision.** Five months later I went over the project again, with the same tools: every claim in the notes was checked against the code and its output, and I reviewed the corrections commit by commit. It turned up errors I had missed in May: a few bugs and silently failing checks in the code, and in the notes some numbers the code did not reproduce, convergence orders stated without being checked, a misprinted formula and wrong citations. All of them are fixed, each in its own commit with the reason in the message, and every number in the notes now has to come from a script in the repository. I will keep checking the notes, the code and this README against each other.
 
 ## Repository structure
 
@@ -183,14 +177,14 @@ ctest --output-on-failure
 
 - Etheridge, A. (2002). *A Course in Financial Calculus.* Cambridge University Press.
 - Glasserman, P. (2004). *Monte Carlo Methods in Financial Engineering.* Springer.
-- Hull, J. C. (2017). *Options, Futures, and Other Derivatives*, 10th ed. Pearson.
+- Hull, J. C. (2018). *Options, Futures, and Other Derivatives*, 10th ed. Pearson.
 - Kloeden, P. E., & Platen, E. (1992). *Numerical Solution of Stochastic Differential Equations.* Springer.
 
 **Papers**
 
 - Heston, S. L. (1993). A closed-form solution for options with stochastic volatility. *Review of Financial Studies*, 6(2), 327–343.
 - Carr, P., & Madan, D. (1999). Option valuation using the fast Fourier transform. *Journal of Computational Finance*, 2(4), 61–73.
-- Lewis, A. (2001). A simple option formula for general jump-diffusion and other exponential Lévy processes.
+- Lewis, A. (2001). A simple option formula for general jump-diffusion and other exponential Lévy processes. Working paper.
 - Andersen, L. (2008). Simple and efficient simulation of the Heston stochastic volatility model. *Journal of Computational Finance*, 11(3), 1–42.
 - Longstaff, F. A., & Schwartz, E. S. (2001). Valuing American options by simulation: a simple least-squares approach. *Review of Financial Studies*, 14(1), 113–147.
 - Giles, M. B., & Carter, R. (2006). Convergence analysis of Crank-Nicolson and Rannacher time-marching. *Journal of Computational Finance*, 9(4), 89–112.
