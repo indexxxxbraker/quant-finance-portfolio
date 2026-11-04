@@ -18,7 +18,7 @@ Numerical methods for derivative pricing — closed-form formulas, Monte Carlo, 
 
 This repository grew out of my bachelor's thesis in Mathematics, [*From the Risk-Neutral Measure to Girsanov's Theorem in Stochastic Integration: Pricing of Financial Products*](https://github.com/indexxxxbraker/option-pricing-via-martingales) (University of Oviedo; defence expected May 2027), which develops the theory of European option pricing from the binomial model up to the Black-Scholes formula. The thesis ends where the numerical questions begin: how do you compute a price when there is no closed form, how do you know that a computed price is right, and what changes once volatility stops being constant.
 
-This project is my attempt to work through those three questions on my own, outside any course. I built it in the spring of 2026, during my Erasmus year in Rome, while I was finishing the thesis and the theory was fresh. It is organised in four phases of increasing difficulty, and every phase follows the same loop: write up the theory in LaTeX, implement it in Python, validate it numerically, then port it to C++ and test it again. One rule runs through all of it: no pricer is accepted until it agrees with an independent method within a stated tolerance.
+This project is my attempt to work through those three questions. I built it in the spring of 2026, during my Erasmus year in Rome, while I was finishing the thesis and the theory was fresh. It is organised in four phases of increasing difficulty, and every phase follows the same loop: write up the theory in LaTeX, implement it in Python, check it against an independent method within a stated tolerance, then port it to C++ and test it again.
 
 ## Highlights
 
@@ -92,9 +92,9 @@ More output is under [`python/results/`](python/results/): the ADI convergence s
 ## What I learned
 
 - I trust a number when two methods that share no code agree on it. Checking Fourier against the PDE and against Monte Carlo is what convinced me the Heston prices were right.
-- Checking a result is not the same as understanding it. My validation tells me when a price is right, and the convergence plots show how the error behaved on these particular problems, but neither tells me why the methods work or how fast the error must fall in general. That theory is what I want to learn next.
+- A correct price says nothing about how fast you get there. The American put by Crank–Nicolson and projected SOR matched the binomial price, yet its error falls only at first order in the time step, not at the second order the notes first claimed. Only measuring the rate showed that.
 - Stability theory is not a formality. The explicit scheme blows up as soon as the CFL condition fails, and Crank–Nicolson, which never blows up, still lets the payoff kink oscillate at large time steps unless the first steps are implicit.
-- A geometric-Asian control variate cuts the variance of the arithmetic-Asian estimator by a factor of about 1,300: a suitable auxiliary problem can matter more than adding samples. On the European call, antithetic variates and simple controls gave factors of 2 to 7.
+- The biggest variance reduction came from the product itself, not from a generic technique. The geometric Asian has a closed-form price and is almost perfectly correlated with the arithmetic one, so as a control variate it cut the variance by a factor of about 1,300; on the European call, antithetic variates and simple controls gave factors of 2 to 7.
 - Asymptotic rates can be a long way off. Quasi-Monte Carlo in dimension 20 converged like N^-0.62, not N^-1, for every sample size I tried (up to 2^16).
 - A review is never finished: going back over the project in October turned up errors I had missed in May.
 
@@ -104,7 +104,7 @@ More output is under [`python/results/`](python/results/): the ADI convergence s
 - **Calibration data.** The Heston calibrator is tested on a synthetic surface (Heston prices plus noise), not on market quotes.
 - **QMC convergence rate.** Sobol RQMC converges like N^-0.62 rather than N^-1 in this 20-dimensional problem; the (log N)^d factor has not died out at N ≤ 2^16. The plot keeps the N^-1 reference line.
 - **QE versus Euler.** The bias study uses a Feller-violating parameter set, the regime QE was designed for; with the canonical parameters the two schemes agree within Monte Carlo noise.
-- **C++.** The port of the Python pricers was developed with AI coding assistants, and I could not yet write it on my own. It is single-threaded and not tuned for speed.
+- **C++.** The port follows the Python code closely and was written with AI coding assistants; my own C++ is not yet at that level. It is single-threaded and not tuned for speed.
 - **No CI.** The tests are run locally.
 
 ## How this project was made
